@@ -94,3 +94,12 @@ local runs, every part runs
 ([D16](docs/decisions.md#d16-pull-request-checks-skip-the-parts-a-change-cannot-affect--agreed)).
 An issue that adds a part, or a dependency between parts, updates the mapping
 in `scripts/parts.mjs`.
+
+### Developer tools
+
+Run these by hand from the repository root. No check script runs them.
+
+| Command | What it does |
+| --- | --- |
+| `(cd core && cargo run -p lyre-cli -- build ../tests/fixtures/song/song.toml ../artifacts/fixture.lyre)` | Builds the fixture song into a version-0 song file. See the [lyre-cli reference](docs/reference/lyre-cli.md). |
+| `tests/fixtures/song/make.sh` | Recreates the fixture song's media and thumbnail. Needs ffmpeg built with libvpx and libopus. |

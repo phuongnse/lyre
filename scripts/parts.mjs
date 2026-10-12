@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 // `paths` are the prefixes that make a part "checked". `needs` lists the parts it builds on.
 export const PARTS = [
-  { name: 'core', label: 'the core', paths: ['core/'], needs: [] },
+  { name: 'core', label: 'the core', paths: ['core/', 'tests/fixtures/'], needs: [] },
   { name: 'web', label: 'the web client', paths: ['web/', 'core/'], needs: ['core'] },
   {
     name: 'e2e',

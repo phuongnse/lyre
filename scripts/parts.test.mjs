@@ -42,6 +42,15 @@ describe('parts picked from changed paths', () => {
     assert.deepEqual(checkedParts(['scripts/lint.sh']), every)
   })
 
+  test('tests/fixtures picks the core', () => {
+    assert.deepEqual(checkedParts(['tests/fixtures/song/lyrics.txt']), ['core'])
+  })
+
+  test('lyre-cli picks every part, as the rest of the core does', () => {
+    const every = ['core', 'web', 'e2e', 'android']
+    assert.deepEqual(checkedParts(['core/lyre-cli/src/main.rs']), every)
+  })
+
   test('a mixed list picks the union in order', () => {
     assert.deepEqual(checkedParts(['docs/a.md', 'android/x.kt', 'tests/e2e/b.ts']), [
       'e2e',

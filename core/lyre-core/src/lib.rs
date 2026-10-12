@@ -2,6 +2,7 @@
 
 pub mod lyrics;
 pub mod song_file;
+pub mod words;
 
 /// The version of the Lyre core, from the workspace package version.
 pub fn version() -> &'static str {

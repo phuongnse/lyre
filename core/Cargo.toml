@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["lyre-core", "lyre-wasm", "lyre-ffi"]
+members = ["lyre-core", "lyre-wasm", "lyre-ffi", "lyre-cli"]
 
 [workspace.package]
 version = "0.1.0"

@@ -26,13 +26,18 @@ M4.
 
 - Use only Material 3 system tokens. On the web these are the `--mat-sys-*`
   CSS variables. In Compose they are `MaterialTheme.colorScheme`,
-  `typography` and `shapes`.
+  `typography` and `shapes`. The only other colour tokens are the Lyre tokens
+  `--lyre-highlight` and `--lyre-vocal-*` from
+  [Lyrics in the Player](#lyrics-in-the-player).
 - Put no hard-coded colours, font sizes, radii or spacing values in
-  components. The one exception is the
+  components. The exceptions are the white and black of the
+  [lyric text style](#text-style), its em-based outline and shadow sizes, and
+  the [vocal role colours](#vocal-role-colours).
+- All tokens come from one seed colour, `#6B5778` (smoky purple), including the
+  [highlight colour](#highlight-colour). Two sets of colours do not come from
+  the seed, and a seed change never changes them: the white and black of the
+  [lyric text style](#text-style) and the
   [vocal role colours](#vocal-role-colours).
-- All tokens come from one seed colour, `#6B5778` (smoky purple). The one
-  exception is the [vocal role colours](#vocal-role-colours), which a seed
-  change never changes.
 - The same seed generates the Kotlin `ColorScheme`, `Typography` and `Shapes`
   *(planned for M4)*. `dynamicColor` is off.
 - The typeface must cover Vietnamese, including stacked diacritics.
@@ -72,27 +77,76 @@ M4.
 - The highlight goes syllable by syllable. See
   [why](domain/knowledge.md#lyrics).
 
-## Vocal role colours
+## Lyrics in the Player
 
-- Lyrics are coloured by [vocal role](domain/concepts.md#songs): male blue,
-  female red, duet pink. This is a fixed rule *(planned for M8)*.
+How the Player draws [lyrics](domain/concepts.md#songs). These rules apply
+from M1, except those marked *(planned for M8)*.
+
+### Text style
+
+- A syllable not yet sung has a white `#FFFFFF` fill, a black `#000000`
+  outline and a black shadow.
+- The outline is a 0.125 em stroke centred on the glyph edge and drawn under
+  the fill, so about 0.06 em shows outside the glyph. On the web this is
+  `-webkit-text-stroke: 0.125em` with `paint-order: stroke fill`. In Compose
+  the stroke layer is drawn first, then the fill *(planned for M4)*.
+- The shadow is crisp. It is offset 0.08 em to the right and 0.08 em down,
+  with a blur of 0.
+- Outline width and shadow offset are given in em, so they scale with the font
+  size.
+- As the sweep passes a syllable, its fill turns to the
+  [highlight colour](#highlight-colour) and its outline turns white, together.
+  The shadow never changes.
+- Lyrics have no backdrop. The outline and shadow keep them readable over any
+  video.
+
+### Highlight colour
+
+- A song with no vocal role, or with one vocal role, uses the highlight
+  colour. It is made from the seed: the seed's HCT hue, at the highest chroma
+  that hue allows, at HCT tone 45.
+- The formula is `Hct.from(Hct.fromInt(seed).hue, 200, 45)` from Material
+  Color Utilities. Asking for chroma 200 returns the highest chroma the hue
+  allows at that tone. For the seed `#6B5778` the result is `#A100FB`.
+- It is not the scheme's `primary` token, which is too pale under a white
+  outline.
+- It is the token `--lyre-highlight` on the web. Compose uses the same value
+  *(planned for M4)*.
+- It follows the seed. A seed change recomputes it.
+- A song with more than one vocal role colours each lyric line by its role.
+  See [vocal role colours](#vocal-role-colours) *(planned for M8)*.
+
+### Vocal role colours
+
+- Lyrics of a song with more than one [vocal role](domain/concepts.md#songs)
+  are coloured by role *(planned for M8)*.
 - The colours do not come from the seed. They are the same on the web and on
   Android.
-- The lyrics backdrop is the Material 3 `scrim` system token
-  (`--mat-sys-scrim`, or `MaterialTheme.colorScheme.scrim` in Compose) at 80%
-  opacity, behind the lyrics over the video. The scrim is black for every seed.
-- Contrast is measured against the backdrop's lightest case, `#333333`. This
-  is the scrim over pure white video. Each colour needs at least 4.5:1.
-  Ratios are rounded down to one decimal place.
-- How the Player's highlight uses these colours is decided later.
 
-| Vocal role | Token | Colour | Contrast against `#333333` |
-| --- | --- | --- | --- |
-| Male | `--lyre-vocal-male` | `#8AB4F8` (blue) | 5.9:1 |
-| Female | `--lyre-vocal-female` | `#FF8A80` (red) | 5.5:1 |
-| Duet | `--lyre-vocal-duet` | `#FF80AB` (pink) | 5.3:1 |
+| Vocal role | Token | Colour |
+| --- | --- | --- |
+| Male | `--lyre-vocal-male` | `#0000FF` (blue) |
+| Female | `--lyre-vocal-female` | `#FF0000` (red) |
+| Duet | `--lyre-vocal-duet` | `#FF00FF` (magenta) |
 
 Compose uses the same three values *(planned for M4)*.
+
+### Countdown dots
+
+- Four dots come before a lyric line at the start of the song and after a
+  break of 5 s or longer with no singing.
+- They also come when the vocal role changes from one line to the next
+  *(planned for M8)*.
+- The gap before a line runs from the end of the previous line's last syllable
+  to the start of this line's first syllable. At the start of the song it runs
+  from media time 0.
+- Each dot uses the lyric [text style](#text-style) at the line's font size.
+- The dots change one by one from the left, like sung text. The fill turns
+  from white to the line's highlight colour and the outline from black to
+  white. The shadow does not change.
+- Each step takes 0.5 s. The fourth step ends as the line's first syllable
+  starts.
+- When the gap is shorter than 2 s, the four steps share it evenly.
 
 ## Check pages
 
