@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Builds every part of the repository that exists: the core, the web client and the Android app.
+# On a NexKit pull request it builds only the parts that the change can affect, and what they build on (D16).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/parts.sh
 
 built=0
 # Each part adds its build here when it is created, and sets built=1.
 
-if [[ -f core/Cargo.toml ]]; then
+if [[ -f core/Cargo.toml ]] && needs core; then
   export PATH="$HOME/.cargo/bin:$PATH"
   # Run cargo inside core/ so rustup picks up core/rust-toolchain.toml.
   (
@@ -17,7 +19,7 @@ if [[ -f core/Cargo.toml ]]; then
   built=1
 fi
 
-if [[ -f web/package.json ]]; then
+if [[ -f web/package.json ]] && needs web; then
   export PATH="$HOME/.cargo/bin:$PATH"
   # The generated package is not committed: it is always rebuilt from the core.
   wasm-bindgen --target web --out-dir web/src/lyre-wasm core/target/wasm32-unknown-unknown/release/lyre_wasm.wasm
@@ -25,7 +27,7 @@ if [[ -f web/package.json ]]; then
   built=1
 fi
 
-if [[ -f android/settings.gradle.kts ]]; then
+if [[ -f android/settings.gradle.kts ]] && needs android; then
   export PATH="$HOME/.cargo/bin:$PATH"
   export ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}"
   ndk=$(sed -nE 's/^ndk = "([^"]+)"/\1/p' android/gradle/libs.versions.toml)

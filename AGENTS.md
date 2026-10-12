@@ -72,11 +72,19 @@ Run from the repository root. Each script is also a NexKit check and a CI step.
 | Script | What it does |
 | --- | --- |
 | `scripts/setup.sh` | Installs what the checks need, including the Rust toolchain pinned in `core/rust-toolchain.toml` with rustfmt, Clippy and the WebAssembly and `aarch64-linux-android` targets, `wasm-bindgen-cli` at the version the core pins (from its prebuilt release binary, checked against a pinned SHA-256 hash, or with `cargo install` on machines other than x86_64 Linux), the web client's packages with `npm ci`, and the Playwright packages and Chromium for `tests/e2e` (with Chromium's system libraries when `CI` is set). For `android/` it installs JDK 17, the Android SDK platform and NDK pinned in `android/gradle/libs.versions.toml` (only the packages the SDK at `ANDROID_HOME` lacks), `cargo-ndk` (installed like `wasm-bindgen-cli`), ktlint and the Gradle wrapper's distribution. Safe to run repeatedly. |
-| `scripts/build.sh` | Builds every part that exists: the core workspace, `lyre-wasm` for `wasm32-unknown-unknown`, the `lyre-wasm` JavaScript package in `web/src/lyre-wasm`, the web client with `vite build`, and the Android app: `lyre-ffi` for `arm64-v8a`, its Kotlin bindings in `android/app/src/main/java/uniffi` and the debug APK, which must contain the native library. Run it before `scripts/lint.sh` and `scripts/test.sh`, which need the generated files. |
-| `scripts/lint.sh` | Linters and format checks for every part that exists (`cargo fmt --check` and Clippy with warnings as errors for the core; oxlint, the Prettier check and `tsc --noEmit` for `web/`; `tsc --noEmit` for `tests/e2e`; ktlint for `android/`, without the generated bindings), and the Markdown link and anchor check |
-| `scripts/test.sh` | Unit tests for every part that exists (`cargo test` for the core workspace, Vitest for `web/`, the JVM unit tests of `android/` through Gradle), and the tests of the scripts |
+| `scripts/build.sh` | Builds every part that exists and the change can affect: the core workspace, `lyre-wasm` for `wasm32-unknown-unknown`, the `lyre-wasm` JavaScript package in `web/src/lyre-wasm`, the web client with `vite build`, and the Android app: `lyre-ffi` for `arm64-v8a`, its Kotlin bindings in `android/app/src/main/java/uniffi` and the debug APK, which must contain the native library. Run it before `scripts/lint.sh` and `scripts/test.sh`, which need the generated files. |
+| `scripts/lint.sh` | Linters and format checks for every part that exists and the change can affect (`cargo fmt --check` and Clippy with warnings as errors for the core; oxlint, the Prettier check and `tsc --noEmit` for `web/`; `tsc --noEmit` for `tests/e2e`; ktlint for `android/`, without the generated bindings), and the Markdown link and anchor check |
+| `scripts/test.sh` | Unit tests for every part that exists and the change can affect (`cargo test` for the core workspace, Vitest for `web/`, the JVM unit tests of `android/` through Gradle), and the tests of the scripts |
 | `scripts/e2e.sh` | Playwright journeys in Chromium against the built web client, which it serves from `web/dist` with `vite preview`, once `tests/e2e` exists. Run `scripts/build.sh` first. The report and traces go to `artifacts/e2e/`. |
 
 A script runs the checks of the parts of the repository that exist and skips
 the parts not built yet (D14). An issue that creates a part adds that part's
 steps to the scripts and its commands to this table.
+
+On a NexKit pull request, `NEXKIT_BASE_SHA` is set, and the scripts also skip
+the parts that the changed paths cannot affect. A part that runs still builds
+what it needs. With the variable unset or unknown, as in CI on `main` and in
+local runs, every part runs
+([D16](docs/decisions.md#d16-pull-request-checks-skip-the-parts-a-change-cannot-affect--agreed)).
+An issue that adds a part, or a dependency between parts, updates the mapping
+in `scripts/parts.mjs`.

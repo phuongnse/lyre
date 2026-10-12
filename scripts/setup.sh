@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Installs every dependency the checks need. Safe to run repeatedly.
 # Each part of the repository adds its own steps here when it is created.
+# On a NexKit pull request it sets up only the parts that the change can affect, and what they build on (D16).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/parts.sh
 
 # Downloads $1 to $2 and stops setup unless the file's SHA-256 hash is $3.
 fetch_checked() {
@@ -20,7 +22,7 @@ prebuilt=0
 
 node --version
 
-if [[ -f core/Cargo.toml ]]; then
+if [[ -f core/Cargo.toml ]] && needs core; then
   if ! command -v rustup >/dev/null 2>&1 && [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
   fi
@@ -46,11 +48,11 @@ if [[ -f core/Cargo.toml ]]; then
   fi
 fi
 
-if [[ -f web/package.json ]]; then
+if [[ -f web/package.json ]] && needs web; then
   (cd web && npm ci)
 fi
 
-if [[ -f tests/e2e/package.json ]]; then
+if [[ -f tests/e2e/package.json ]] && needs e2e; then
   (
     cd tests/e2e
     npm ci
@@ -63,7 +65,7 @@ if [[ -f tests/e2e/package.json ]]; then
   )
 fi
 
-if [[ -f android/settings.gradle.kts ]]; then
+if [[ -f android/settings.gradle.kts ]] && needs android; then
   # The Android versions are pinned in one place: the Gradle version catalog.
   catalog=android/gradle/libs.versions.toml
   catalog_version() { sed -nE "s/^$1 = \"([^\"]+)\"/\1/p" "$catalog"; }
