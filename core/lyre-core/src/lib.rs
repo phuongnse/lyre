@@ -1,5 +1,6 @@
 //! The shared Lyre core. The web client and the Android app both call it.
 
+pub mod display_lines;
 pub mod lyrics;
 pub mod song_file;
 pub mod words;

@@ -144,15 +144,20 @@ struct Part {
 
 impl Part {
     fn new(syllable: &str) -> Part {
-        let is_punct = |c: char| !(c.is_alphanumeric() || is_combining_mark(c));
-        let after_start = syllable.trim_start_matches(is_punct);
-        let core = after_start.trim_end_matches(is_punct);
+        let after_start = syllable.trim_start_matches(is_punctuation);
+        let core = after_start.trim_end_matches(is_punctuation);
         Part {
             key: (!core.is_empty()).then(|| syllable_key(core)),
             leading_punct: after_start.len() < syllable.len(),
             trailing_punct: core.len() < after_start.len(),
         }
     }
+}
+
+/// Whether `c` counts as punctuation around a word: anything that is not a
+/// letter, a digit or a combining mark.
+pub(crate) fn is_punctuation(c: char) -> bool {
+    !(c.is_alphanumeric() || is_combining_mark(c))
 }
 
 /// The matching key of one syllable: lowercase and NFC, with its tone marks

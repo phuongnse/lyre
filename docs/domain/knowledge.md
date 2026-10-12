@@ -43,8 +43,8 @@ being followed blindly.
   but display and storage keep the text exactly as written.
 - **Display lines are not lyric lines.** A long lyric line can be shown as
   several display lines. The split uses the owner's punctuation, real pauses
-  in the singing (about 0.18 s or longer) and the measured width of the text.
-  It never adds punctuation and never changes the number of lyric lines.
+  in the singing (0.18 s (180 ms) or longer) and the measured width of the
+  text. It never adds punctuation and never changes the number of lyric lines.
 - **Do not split Vietnamese words.** Many Vietnamese words have two or more
   syllables ("kỷ niệm", "nụ cười"). A display split inside one reads badly. A
   split should also avoid ending a line on a linking word ("và", "của",
@@ -53,6 +53,16 @@ being followed blindly.
   multi-syllable words, plus short lists written for Lyre for linking words
   and trailing modifiers. See
   [D18](../decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed).
+- **Choosing a layout.** The core picks the fewest display lines that fit.
+  Among those, it prefers splits at punctuation or pauses, then plain splits,
+  then splits that end on a linking word or start with a trailing modifier.
+  A split at punctuation or a pause counts as good even next to such a word,
+  because the owner's punctuation and the singer's pause show where the
+  phrase really breaks, while the short lists only guess. A remaining tie
+  goes to the most even line widths, which read better while singing. A run
+  that cannot be split without breaking a listed word stays whole, even when
+  it is wider than the screen, because a broken word reads worse than a
+  clipped line.
 
 ## Processing
 
