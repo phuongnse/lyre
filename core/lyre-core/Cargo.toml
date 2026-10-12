@@ -3,6 +3,7 @@ name = "lyre-core"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license = "MIT"
 
 [dev-dependencies]
 toml = "1"

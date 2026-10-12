@@ -3,6 +3,7 @@ name = "lyre-ffi"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "lib"]

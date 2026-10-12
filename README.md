@@ -38,3 +38,19 @@ See [D10](docs/decisions.md#d10-technology-stack--agreed) and
 - Shared core: Rust, compiled to WebAssembly and to a native Android library.
 - Web: TypeScript, Angular, Angular Material, ONNX Runtime Web on WebGPU.
 - Android: Kotlin, Jetpack Compose, Media3, ONNX Runtime for Android.
+
+## Licence
+
+The code in this repository is under the [MIT licence](LICENSE).
+
+Data and models that Lyre uses or downloads are not part of the code and keep
+their own licences. For example:
+
+- The Vietnamese word list is under CC BY-SA 4.0. See
+  [D18](docs/decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed).
+- The CC-BY-NC models that
+  [D20](docs/decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
+  allows stay under their CC-BY-NC licence.
+
+See [models and licences](docs/domain/knowledge.md#models-and-licences) for
+the models Lyre uses.
