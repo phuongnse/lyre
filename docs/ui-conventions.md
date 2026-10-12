@@ -83,7 +83,8 @@ M4.
   area's width changes. The syllable being sung carries `aria-current`.
   Between lines, none does.
 - On the web, a `requestAnimationFrame` loop reads the media time. It sets a
-  CSS variable, the sweep progress, on the active display line. It never
+  CSS variable, the sweep progress, on the active display line. It also asks
+  the core for the rows and updates them only when they change. It never
   causes a re-render or a signal update per frame.
 - In Compose *(planned for M4)* the idea is the same. Read the frame time in
   the draw phase, so nothing recomposes per frame.

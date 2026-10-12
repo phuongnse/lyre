@@ -1,7 +1,7 @@
 import { provideZonelessChangeDetection } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { afterEach, expect, test, vi } from 'vitest'
-import { OpenedSong } from '../song-file'
+import { LyricsRows, OpenedSong } from '../song-file'
 import { Lyrics } from './lyrics.component'
 
 afterEach(() => {
@@ -14,17 +14,20 @@ interface SongOptions {
   countdownLines?: number[]
   lyrics?: OpenedSong['lyrics']
   layOut?: OpenedSong['layOut']
+  rows?: () => LyricsRows
 }
 
 // A song whose lyrics are by default "Mưa\trơi  nhẹ", laid out as one display
-// line with no countdown. Its sweep position is whatever `position` returns, and
-// its total of countdown dots changed is whatever `total` returns.
+// line with no countdown. Its sweep position is whatever `position` returns, its
+// total of countdown dots changed is whatever `total` returns, and its rows are
+// whatever `rows` returns: by default the first two display lines.
 function song({
   position = () => 0,
   total = () => 0,
   countdownLines = [],
   lyrics,
   layOut = () => [{ lyricLine: 0, start: 0, end: 3 }],
+  rows = () => ({ top: 0, bottom: 1 }),
 }: SongOptions = {}): OpenedSong {
   const timing = { lyricLine: 0, startMs: 0, endMs: 0 }
   return {
@@ -42,15 +45,20 @@ function song({
     sweepPosition: position,
     countdownLines,
     dotsChanged: total,
-    lyricsRows: () => ({ top: undefined, bottom: undefined }),
+    lyricsRows: rows,
     read: () => Promise.reject(new Error('not read in these tests')),
     close: () => undefined,
   }
 }
 
-// Renders the lyrics of `opened` and waits for its `paragraphs` display lines to
-// be laid out. jsdom has no ResizeObserver, so it gets one that does nothing.
-async function render(opened: OpenedSong, paragraphs = 1): Promise<HTMLElement> {
+// Renders the lyrics of `opened` and waits for its two rows to show the texts in
+// `expected`. jsdom has no ResizeObserver, so it gets one that does nothing.
+// The text of each row.
+function texts(element: HTMLElement): (string | null)[] {
+  return [...element.querySelectorAll('p')].map((p) => p.textContent)
+}
+
+async function render(opened: OpenedSong, expected: string[] = ['Mưa\trơi  nhẹ', '']): Promise<HTMLElement> {
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -65,7 +73,7 @@ async function render(opened: OpenedSong, paragraphs = 1): Promise<HTMLElement> 
   const element = fixture.nativeElement as HTMLElement
   await vi.waitFor(async () => {
     await fixture.whenStable()
-    expect(element.querySelectorAll('p')).toHaveLength(paragraphs)
+    expect(texts(element)).toEqual(expected)
   })
   return element
 }
@@ -113,7 +121,7 @@ test('the countdown dots changed follow the core count, and the lines stay exact
         { lyricLine: 1, start: 2, end: 3 },
       ],
     }),
-    2,
+    ['Mưa\trơi', 'nhẹ'],
   )
   const countdowns = () => [...element.querySelectorAll('[role=progressbar]')]
   const values = () => countdowns().map((countdown) => countdown.getAttribute('aria-valuenow'))
@@ -135,7 +143,7 @@ test('the countdown dots changed follow the core count, and the lines stay exact
     await vi.waitFor(() => expect(values()).toEqual(expected.map(String)))
     expect(changed()).toEqual(expected.map(dots))
   }
-  expect([...element.querySelectorAll('p')].map((p) => p.textContent)).toEqual(['Mưa\trơi', 'nhẹ'])
+  expect(texts(element)).toEqual(['Mưa\trơi', 'nhẹ'])
 })
 
 test('only the first display line of a lyric line with a countdown shows it', async () => {
@@ -143,12 +151,44 @@ test('only the first display line of a lyric line with a countdown shows it', as
     { lyricLine: 0, start: 0, end: 2 },
     { lyricLine: 0, start: 2, end: 3 },
   ]
-  const withCountdown = await render(song({ countdownLines: [0], layOut }), 2)
+  const withCountdown = await render(song({ countdownLines: [0], layOut }), ['Mưa\trơi', 'nhẹ'])
   expect(withCountdown.querySelectorAll('[role=progressbar]')).toHaveLength(1)
   expect(withCountdown.querySelectorAll('p')[0].querySelectorAll('[role=progressbar]')).toHaveLength(1)
-  expect([...withCountdown.querySelectorAll('p')].map((p) => p.textContent)).toEqual(['Mưa\trơi', 'nhẹ'])
   TestBed.resetTestingModule()
 
-  const without = await render(song({ countdownLines: [], layOut }), 2)
+  const without = await render(song({ countdownLines: [], layOut }), ['Mưa\trơi', 'nhẹ'])
   expect(without.querySelectorAll('[role=progressbar]')).toHaveLength(0)
+})
+
+test('the rows show the display lines the core picks, and follow when it picks others', async () => {
+  const timing = { startMs: 0, endMs: 0 }
+  let rows: LyricsRows = { top: 0, bottom: 1 }
+  const element = await render(
+    song({
+      lyrics: [
+        { ...timing, lyricLine: 0, text: 'Mưa', separator: '' },
+        { ...timing, lyricLine: 0, text: 'rơi', separator: '\t' },
+        { ...timing, lyricLine: 0, text: 'nhẹ', separator: '  ' },
+        { ...timing, lyricLine: 1, text: 'Em', separator: '\n' },
+      ],
+      layOut: () => [
+        { lyricLine: 0, start: 0, end: 2 },
+        { lyricLine: 0, start: 2, end: 3 },
+        { lyricLine: 1, start: 3, end: 4 },
+      ],
+      rows: () => rows,
+    }),
+    ['Mưa\trơi', 'nhẹ'],
+  )
+  expect(element.querySelectorAll('p')[1].classList.contains('bottom')).toBe(true)
+
+  rows = { top: 2, bottom: undefined }
+  await vi.waitFor(() => expect(texts(element)).toEqual(['Em', '']))
+
+  // A position outside the list shows an empty row.
+  rows = { top: undefined, bottom: 7 }
+  await vi.waitFor(() => expect(texts(element)).toEqual(['', '']))
+
+  rows = { top: 1, bottom: 0 }
+  await vi.waitFor(() => expect(texts(element)).toEqual(['nhẹ', 'Mưa\trơi']))
 })
