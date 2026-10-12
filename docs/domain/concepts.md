@@ -21,7 +21,7 @@ See [the life of a milestone](../delivery.md#the-life-of-a-milestone).
 | **Song** | One karaoke song: its media, both tracks, lyrics, timing, details (title, artist, composer) and thumbnail. | M1 |
 | **Song file** | A song stored as one `.lyre` file (D1). Encrypted from M3. | M1 |
 | **Section** | A part of a source, between a start and an end time, that becomes its own song. Cut in the clip editor. | M6 |
-| **Vocal role** | Who sings a lyric line or clause, for example male, female or duet. It sets the line's colour. | M8 |
+| **Vocal role** | Who sings a lyric line or clause, for example male, female or duet. It sets the line's [colour](../ui-conventions.md#vocal-role-colours). | M8 |
 
 ## Processing
 

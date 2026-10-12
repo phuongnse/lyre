@@ -316,8 +316,9 @@ Replaces the web UI stack of D10, which named React and Vite.
 Material Web is in maintenance mode, and MUI still implements Material 2
 components.
 
-Open point: the seed colour, which the owner picks before the Angular rebuild
-is planned.
+The seed colour is `#6B5778`. The
+[vocal role colours](ui-conventions.md#vocal-role-colours) are fixed and do
+not come from the seed.
 
 ## D20. Non-commercial models are allowed, and M2 compares two aligners — Agreed
 

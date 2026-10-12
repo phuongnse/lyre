@@ -25,10 +25,11 @@ M1)*. The Android app follows them from M4.
   CSS variables. In Compose they are `MaterialTheme.colorScheme`,
   `typography` and `shapes`.
 - Put no hard-coded colours, font sizes, radii or spacing values in
-  components.
-- All tokens come from one seed colour.
-- Open point: the owner picks the seed colour before the Angular rebuild is
-  planned.
+  components. The one exception is the
+  [vocal role colours](#vocal-role-colours).
+- All tokens come from one seed colour, `#6B5778` (smoky purple). The one
+  exception is the [vocal role colours](#vocal-role-colours), which a seed
+  change never changes.
 - The same seed generates the Kotlin `ColorScheme`, `Typography` and `Shapes`
   *(planned for M4)*. `dynamicColor` is off.
 - The typeface must cover Vietnamese, including stacked diacritics.
@@ -65,6 +66,28 @@ M1)*. The Android app follows them from M4.
   the draw phase, so nothing recomposes per frame.
 - The highlight goes syllable by syllable. See
   [why](domain/knowledge.md#lyrics).
+
+## Vocal role colours
+
+- Lyrics are coloured by [vocal role](domain/concepts.md#songs): male blue,
+  female red, duet pink. This is a fixed rule *(planned for M8)*.
+- The colours do not come from the seed. They are the same on the web and on
+  Android.
+- The lyrics backdrop is the Material 3 `scrim` system token
+  (`--mat-sys-scrim`, or `MaterialTheme.colorScheme.scrim` in Compose) at 80%
+  opacity, behind the lyrics over the video. The scrim is black for every seed.
+- Contrast is measured against the backdrop's lightest case, `#333333`. This
+  is the scrim over pure white video. Each colour needs at least 4.5:1.
+  Ratios are rounded down to one decimal place.
+- How the Player's highlight uses these colours is decided later.
+
+| Vocal role | Token | Colour | Contrast against `#333333` |
+| --- | --- | --- | --- |
+| Male | `--lyre-vocal-male` | `#8AB4F8` (blue) | 5.9:1 |
+| Female | `--lyre-vocal-female` | `#FF8A80` (red) | 5.5:1 |
+| Duet | `--lyre-vocal-duet` | `#FF80AB` (pink) | 5.3:1 |
+
+Compose uses the same three values *(planned for M4)*.
 
 ## Check pages
 
