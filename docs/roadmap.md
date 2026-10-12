@@ -40,7 +40,7 @@
 | **M6** | Clip editor | Planned | The owner cuts several sections from one source, each with its own details and lyrics, and each becomes a song. |
 | **M7** | Google Drive | Planned | The user picks Drive files or folders; songs play from Drive before they finish downloading and stay playable offline once cached. |
 | **M8** | Vocal roles | Planned | Lyrics are coloured by vocal role, with duets only on proof and a clear failure on ambiguity. |
-| **M9** | Hardening and release | Planned | Fuzzing of every parser, an independent review of the crypto, model licences settled, the web client published on GitHub Pages and the Android app ready to install. |
+| **M9** | Hardening and release | Planned | Fuzzing of every parser, an independent review of the crypto, model licences settled, the web client released on GitHub Pages and the Android app ready to install. |
 
 Milestones after M3 may be reordered when the owner's needs change. M0–M3
 stay in this order.
