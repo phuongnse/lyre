@@ -279,8 +279,11 @@ avoids splitting a Vietnamese word (see
   never splits a listed word.
 - **Data source:** the Vietnamese entries of English Wiktionary, as extracted
   by Wiktextract and published on kaikki.org. Only entries of two or more
-  syllables are kept. The dump is pinned by date and SHA-256 hash. A small
-  list written for Lyre adds words Wiktionary lacks.
+  syllables are kept, where each syllable is Latin-script letters only.
+  Proverbs are left out, because a long proverb would make a long stretch of
+  a lyric line unsplittable. The dump is pinned by date and SHA-256 hash: the
+  current list comes from the dump extracted on 2026-10-03 and holds 22,293
+  entries. A small list written for Lyre adds words Wiktionary lacks.
 - **Licence:** the Wiktionary list is under CC BY-SA 4.0. It is kept as a
   separate data file with its own CC BY-SA 4.0 notice. The code's licence
   (MIT) does not cover it. Both clients show its attribution. The lists
@@ -288,10 +291,11 @@ avoids splitting a Vietnamese word (see
 - **Matching only:** lookup builds a key from the syllables in lowercase and
   Unicode NFC, and folds old and new tone placement ("hoà" and "hòa"). The
   lyric text itself is never changed (D5).
-- **Size:** an estimated 20,000–40,000 entries, about 150–300 KB of the
-  WebAssembly module when stored compactly. The limit is 500 KB added to the
-  uncompressed module. The issue that builds the list measures it. If it goes
-  over the limit, a newer decision replaces this one.
+- **Size:** the list is stored as plain text, one word per line. It adds
+  292,386 bytes to an uncompressed WebAssembly module that calls word lookup.
+  The limit is 500 KB (500,000 bytes) added to the uncompressed module, and
+  `scripts/build.sh` fails above it. If it goes over the limit, a newer
+  decision replaces this one.
 - **Same everywhere:** the list is compiled into `lyre-core`, so the web and
   Android clients use the same data. It needs no network.
 - **Not used:** the `underthesea` and VnCoreNLP segmenters, because their
