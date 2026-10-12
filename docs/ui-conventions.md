@@ -69,6 +69,11 @@ M4.
 
 - The Player is custom on both clients. It is not a Material component. It
   uses the same tokens.
+- The web Player opens a song file chunk by chunk through the core, never
+  reading the whole file at once. It plays the video and the karaoke track
+  through Media Source Extensions, with a Play/Pause button. A file the core
+  refuses shows one plain message, "not a song file" or "damaged or
+  incomplete", and nothing plays.
 - On the web, a `requestAnimationFrame` loop reads the media time. It sets a
   CSS variable, the sweep progress, on the active display line. It never
   causes a re-render or a signal update per frame.
