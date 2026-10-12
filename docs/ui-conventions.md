@@ -77,11 +77,11 @@ M4.
   the play position carry on. The original track is read only once the singer
   switches to it. A file the core refuses shows one plain message, "not a song
   file" or "damaged or incomplete", and nothing plays.
-- The web Player lists every display line of the lyrics in a Lyrics area
-  under the video. The core lays them out from the widths the client
-  measures, when the song opens and when the area's width changes. The
-  syllable being sung carries `aria-current`. Between lines, none does. The
-  [countdown dots](#countdown-dots) come before the lines that have them.
+- The web Player shows the lyrics in a Lyrics area under the video, in two
+  rows. See [Lyrics area](#lyrics-area). The core lays out the display lines
+  from the widths the client measures, when the song opens and when the
+  area's width changes. The syllable being sung carries `aria-current`.
+  Between lines, none does.
 - On the web, a `requestAnimationFrame` loop reads the media time. It sets a
   CSS variable, the sweep progress, on the active display line. It never
   causes a re-render or a signal update per frame.
@@ -158,6 +158,30 @@ from M1, except those marked *(planned for M8)*.
 
 Compose uses the same three values *(planned for M4)*.
 
+### Lyrics area
+
+- The Lyrics area has two rows. The top row's line is aligned left and the
+  bottom row's line is aligned right. A row shows one display line or nothing.
+- A group of display lines starts at the first display line of each lyric
+  line that has [countdown dots](#countdown-dots). It runs to the next such
+  line.
+- In a group, display lines take turns between the rows, starting in the top
+  row.
+- The first group shows from media time 0. A later group shows once the last
+  syllable of the group before it ends. Its first two display lines show
+  together.
+- When a display line's last syllable ends, its row shows the group's next
+  display line not shown yet. If the group has none, the row keeps the
+  finished line, fully sung, until the group's last line ends.
+- The countdown dots sit just left of the top row's line. The area keeps a
+  left margin as wide as the dots, so they stay inside it.
+- The core lays out the display lines to fit the area's width less the width
+  of the dots margin. A full-width line in the top row then never runs into
+  the dots.
+- The rows depend only on the media time, so they follow seeks.
+- The core works out which display line each row shows, so both clients
+  agree.
+
 ### Countdown dots
 
 - Four dots come before a lyric line at the start of the song and after a
@@ -177,9 +201,10 @@ Compose uses the same three values *(planned for M4)*.
 - Each dot changes all at once when its step ends.
 - The core works out which lyric lines have dots and how many have changed, so
   both clients agree.
-- The dots sit just left of the first display line of their lyric line. They
-  take no layout width and add no text, so the line stays exact
-  ([D5](decisions.md#d5-supplied-lyrics-are-authoritative--agreed)).
+- The dots sit just left of the top row's line, which is always the first
+  display line of their lyric line. They sit in the Lyrics area's left
+  margin, take no width from the line and add no text, so the line stays
+  exact ([D5](decisions.md#d5-supplied-lyrics-are-authoritative--agreed)).
 - Changed dots stay changed after their line starts. A seek back undoes only
   the steps that end after the new time.
 - On the web each set of dots is a progress indicator named "Countdown", from
