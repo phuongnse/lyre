@@ -85,6 +85,20 @@ M4.
 - The highlight goes syllable by syllable. See
   [why](domain/knowledge.md#lyrics).
 
+## Library
+
+- The web client keeps each song file that opens without error in the
+  browser's IndexedDB, one per song ID. Opening a song again replaces its
+  kept copy, so each song is listed once.
+- The library lists the kept songs under the Player, the most recently
+  opened first. Each shows its title, and its artist and composer when they
+  are known, exactly as the song file stores them. Choosing one plays it.
+- It asks the browser for persistent storage when a song is kept, not when the
+  page loads. When the browser refuses, the library says that the browser may
+  clear these songs. See [why](domain/knowledge.md#running-on-the-users-device).
+- Playback never depends on the library. If a song cannot be kept, it still
+  plays, and no error is shown.
+
 ## Lyrics in the Player
 
 How the Player draws [lyrics](domain/concepts.md#songs). These rules apply

@@ -37,7 +37,19 @@ export interface MediaTrack {
   segments: ChunkRef[]
 }
 
+// The song's title, artist and composer, exactly as the song file stores them.
+// An empty artist or composer means not known.
+export interface SongDetails {
+  title: string
+  artist: string
+  composer: string
+}
+
 export interface OpenedSong {
+  // The song ID from the header, as 32 lowercase hex digits. Two files of the
+  // same song share it.
+  songId: string
+  details: SongDetails
   durationMs: number
   video?: MediaTrack
   karaoke: MediaTrack
@@ -75,6 +87,10 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
         core(() => reader.readChunk(chunk.position, bytes))
       }
     }
+    const read = reader.details()
+    if (!read) throw new SongFileError('damaged')
+    const details = { title: read.title, artist: read.artist, composer: read.composer }
+    read.free()
     const track = (init: ChunkKind, segment: ChunkKind): MediaTrack | undefined => {
       const first = chunks.find((chunk) => chunk.kind === init)
       return first && { init: first, segments: chunks.filter((chunk) => chunk.kind === segment) }
@@ -84,6 +100,8 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
     if (!karaoke || !original) throw new SongFileError('damaged')
     let closed = false
     return {
+      songId: reader.songId,
+      details,
       durationMs: reader.durationMs,
       video: track(ChunkKind.VideoInit, ChunkKind.VideoSegment),
       karaoke,

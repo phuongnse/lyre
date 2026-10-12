@@ -44,7 +44,7 @@ fn fixture_song_reads_back_with_its_lyrics_and_timing() {
     assert_eq!(song.timing.syllables(), expected.as_slice());
     assert_eq!(song.details.title(), "Mưa rơi nhẹ");
     assert_eq!(song.details.artist(), "Lyre fixtures");
-    assert_eq!(song.details.composer(), "");
+    assert_eq!(song.details.composer(), "Lyre fixture composer");
     assert_eq!(song.thumbnail, Some(read("thumbnail.jpg")));
     assert_eq!(song.karaoke.init, read("karaoke/init.webm"));
     assert_eq!(song.original.init, read("original/init.webm"));
