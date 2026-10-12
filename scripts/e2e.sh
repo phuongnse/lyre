@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end journeys against the built web client, once tests/e2e exists.
-# Playwright serves web/dist with `vite preview`. The report and traces go to artifacts/e2e/.
+# Playwright serves web/dist with tests/e2e/serve.mjs, at / and at /lyre/. The report and traces go to artifacts/e2e/.
 # On a NexKit pull request it runs only when the change can affect the journeys (D16).
 set -euo pipefail
 cd "$(dirname "$0")/.."

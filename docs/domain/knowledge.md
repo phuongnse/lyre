@@ -134,7 +134,7 @@ What was learned:
 - **GitHub Pages sets no HTTP headers.** The web client is a static site on
   GitHub Pages ([D9](../decisions.md#d9-lyre-has-no-server--agreed)), which
   lets a site set none of its own headers. So its Content Security Policy is
-  a `<meta>` tag *(planned for M1)*, placed first in `<head>`, because it
+  a `<meta>` tag, placed first in `<head>`, because it
   covers only what comes after it. A `<meta>` policy cannot carry
   `frame-ancestors`, `sandbox`, `report-uri` or `report-to`. Another site can
   therefore frame the page, and policy violations are not reported.
