@@ -42,6 +42,7 @@ function song({
     sweepPosition: position,
     countdownLines,
     dotsChanged: total,
+    lyricsRows: () => ({ top: undefined, bottom: undefined }),
     read: () => Promise.reject(new Error('not read in these tests')),
     close: () => undefined,
   }

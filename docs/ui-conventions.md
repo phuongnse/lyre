@@ -170,9 +170,10 @@ Compose uses the same three values *(planned for M4)*.
 - The first group shows from media time 0. A later group shows once the last
   syllable of the group before it ends. Its first two display lines show
   together.
-- When a display line's last syllable ends, its row shows the group's next
-  display line not shown yet. If the group has none, the row keeps the
-  finished line, fully sung, until the group's last line ends.
+- When the display line in the other row starts, at its first syllable's
+  start, a row shows the group's next display line not shown yet. So the line
+  just sung stays during the gap between lines. If the group has none, the row
+  keeps the finished line, fully sung, until the group's last line ends.
 - The countdown dots sit just left of the top row's line. The area keeps a
   left margin as wide as the dots, so they stay inside it.
 - The core lays out the display lines to fit the area's width less the width

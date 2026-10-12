@@ -66,6 +66,13 @@ export interface DisplayLineSpan {
   end: number
 }
 
+// The display lines the two rows of the Lyrics area show: positions in the list
+// `layOut` returned last, or undefined for an empty row.
+export interface LyricsRows {
+  top: number | undefined
+  bottom: number | undefined
+}
+
 export interface OpenedSong {
   // The song ID from the header, as 32 lowercase hex digits. Two files of the
   // same song share it.
@@ -90,6 +97,10 @@ export interface OpenedSong {
   // countdown. Countdown k, counting from 0, shows clamp(total - 4k, 0, 4) dots
   // changed. It is 0 once closed.
   dotsChanged(ms: number): number
+  // The display lines the top and the bottom row show at media time `ms`, for the
+  // latest `layOut`. Both rows are empty before a layout, after the core refused
+  // one, and once closed.
+  lyricsRows(ms: number): LyricsRows
   // Reads one media chunk and returns its bytes as the core gives them back.
   read(chunk: ChunkRef): Promise<Uint8Array<ArrayBuffer>>
   // Frees the core's reader. Reading after this fails.
@@ -168,6 +179,13 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
       countdownLines: Array.from(reader.countdownLines()),
       dotsChanged(ms) {
         return closed ? 0 : reader.dotsChanged(ms)
+      },
+      lyricsRows(ms) {
+        if (closed) return { top: undefined, bottom: undefined }
+        const rows = reader.lyricsRows(ms)
+        const copy = { top: rows.top, bottom: rows.bottom }
+        rows.free()
+        return copy
       },
       async read(chunk) {
         const bytes = await readRange(source, chunk.offset, chunk.offset + chunk.length)

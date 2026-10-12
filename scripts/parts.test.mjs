@@ -42,8 +42,8 @@ describe('parts picked from changed paths', () => {
     assert.deepEqual(checkedParts(['scripts/lint.sh']), every)
   })
 
-  test('tests/fixtures picks the core and the Playwright journeys', () => {
-    assert.deepEqual(checkedParts(['tests/fixtures/song/lyrics.txt']), ['core', 'e2e'])
+  test('tests/fixtures picks the core, the web client and the Playwright journeys', () => {
+    assert.deepEqual(checkedParts(['tests/fixtures/song/lyrics.txt']), ['core', 'web', 'e2e'])
   })
 
   test('lyre-cli picks every part, as the rest of the core does', () => {
