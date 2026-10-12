@@ -1,8 +1,10 @@
 # Hand-written timing for lyrics.txt: start in ms, end in ms, syllable.
-0 300 Mưa
-300 600 rơi
-600 1200 nhẹ
-1500 1800 Em
-1800 2100 về
-2100 2400 bên
-2400 2900 sông
+2000 2300 Mưa
+2300 2600 rơi
+2600 3200 nhẹ
+3500 3800 Em
+3800 4100 về
+4100 4400 bên
+4400 4900 sông
+9900 10400 Trăng
+10400 11000 lên

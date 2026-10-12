@@ -9,25 +9,26 @@ cd "$(dirname "$0")"
 rm -rf video karaoke original
 mkdir video karaoke original
 
-# Video: a 3 s, 160x90 VP9 test pattern with a keyframe every second, cut
-# into an init segment and one-second media segments. The webm_chunk muxer
-# picks no stream by itself, so each command maps its stream.
+# Video: a 12 s, 160x90 VP9 test pattern at 15 frames per second with a
+# keyframe every two seconds, cut into an init segment and two-second media
+# segments. The low frame rate and bitrate keep the fixtures small. The
+# webm_chunk muxer picks no stream by itself, so each command maps its stream.
 ffmpeg -nostdin -hide_banner -loglevel error -y \
-  -f lavfi -i 'testsrc2=size=160x90:rate=30:duration=3' \
-  -map 0:v -c:v libvpx-vp9 -profile:v 0 -pix_fmt yuv420p -b:v 40k -g 30 -keyint_min 30 \
+  -f lavfi -i 'testsrc2=size=160x90:rate=15:duration=12' \
+  -map 0:v -c:v libvpx-vp9 -profile:v 0 -pix_fmt yuv420p -b:v 8k -g 30 -keyint_min 30 \
   -f webm_chunk -header video/init.webm -chunk_start_index 1 'video/segment-%d.webm'
 
-# Audio: a stereo Opus sine tone in one-second media segments. The karaoke
+# Audio: a stereo Opus sine tone in two-second media segments. The karaoke
 # track is 440 Hz and the original track 880 Hz, so a test can tell which one
-# plays. The tone lasts 2.99 s: with Opus's encoder delay, a full 3 s would
-# need one more 20 ms frame, and it would land in a fourth segment. A
+# plays. The tone lasts 11.99 s: with Opus's encoder delay, a full 12 s would
+# need one more 20 ms frame, and it would land in a seventh segment. A
 # constant bitrate keeps the size of the files predictable.
 audio() {
   local folder=$1 frequency=$2
   ffmpeg -nostdin -hide_banner -loglevel error -y \
-    -f lavfi -i "sine=frequency=${frequency}:sample_rate=48000:duration=2.99" \
-    -map 0:a -ac 2 -c:a libopus -b:a 24k -vbr off \
-    -f webm_chunk -audio_chunk_duration 1000 -header "${folder}/init.webm" \
+    -f lavfi -i "sine=frequency=${frequency}:sample_rate=48000:duration=11.99" \
+    -map 0:a -ac 2 -c:a libopus -b:a 6k -vbr off \
+    -f webm_chunk -audio_chunk_duration 2000 -header "${folder}/init.webm" \
     -chunk_start_index 1 "${folder}/segment-%d.webm"
 }
 audio karaoke 440

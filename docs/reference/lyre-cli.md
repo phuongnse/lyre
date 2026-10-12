@@ -99,18 +99,22 @@ end of the song.
 
 ## The fixture song
 
-`tests/fixtures/song/` holds a synthetic 3-second song. No file in it comes
+`tests/fixtures/song/` holds a synthetic 12-second song. No file in it comes
 from real media.
 
-- **Video.** A 160×90 VP9 test pattern at 30 frames per second, in three
-  one-second segments.
-- **Karaoke track.** A 440 Hz Opus tone, in three segments of about one
-  second.
+- **Video.** A 160×90 VP9 test pattern at 15 frames per second, in six
+  two-second segments.
+- **Karaoke track.** A 440 Hz Opus tone, in six segments of about two
+  seconds.
 - **Original track.** The same at 880 Hz, so a test can tell which track
   plays.
 - **Thumbnail.** A JPEG frame of the test pattern.
-- **Lyrics.** Two short made-up Vietnamese lines, not from any real song.
-- **Timing.** Written by hand for those lyrics.
+- **Lyrics.** Three short made-up Vietnamese lines, not from any real song.
+- **Timing.** Written by hand for those lyrics. The first lyric line starts
+  at 2,000 ms, after a lead-in. The second follows a 300 ms break. The third
+  starts 5,000 ms after the second ends. So the fixture has both gaps that
+  come before [countdown dots](../ui-conventions.md#countdown-dots): the start
+  of the song and a break of 5 s or longer.
 
 `make.sh` next to them holds the ffmpeg commands that made the media and the
 thumbnail. Running it again recreates them. It needs ffmpeg built with libvpx
@@ -118,5 +122,5 @@ and libopus. ffmpeg versions may give different bytes, and the tests do not
 depend on exact media bytes. If the segment times change, update the
 durations in `song.toml`.
 
-The files under `tests/fixtures/` total about 46 KB. A test fails when they
+The files under `tests/fixtures/` total about 58 KB. A test fails when they
 pass 64 KiB.

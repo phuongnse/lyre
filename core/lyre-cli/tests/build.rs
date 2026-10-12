@@ -32,13 +32,15 @@ fn fixture_song_reads_back_with_its_lyrics_and_timing() {
 
     assert_eq!(song.lyrics.as_bytes(), read("lyrics.txt").as_slice());
     let expected = [
-        (0, 300),
-        (300, 600),
-        (600, 1200),
-        (1500, 1800),
-        (1800, 2100),
-        (2100, 2400),
-        (2400, 2900),
+        (2000, 2300),
+        (2300, 2600),
+        (2600, 3200),
+        (3500, 3800),
+        (3800, 4100),
+        (4100, 4400),
+        (4400, 4900),
+        (9900, 10400),
+        (10400, 11000),
     ]
     .map(|(start_ms, end_ms)| SyllableTime { start_ms, end_ms });
     assert_eq!(song.timing.syllables(), expected.as_slice());
@@ -51,9 +53,9 @@ fn fixture_song_reads_back_with_its_lyrics_and_timing() {
 
     let video = song.video.expect("the fixture has a video");
     assert_eq!(video.init, read("video/init.webm"));
-    assert_eq!(video.segments.len(), 3);
-    assert_eq!(song.karaoke.segments.len(), 3);
-    assert_eq!(song.original.segments.len(), 3);
+    assert_eq!(video.segments.len(), 6);
+    assert_eq!(song.karaoke.segments.len(), 6);
+    assert_eq!(song.original.segments.len(), 6);
     for (index, (karaoke, original)) in song
         .karaoke
         .segments
@@ -89,7 +91,7 @@ fn command_rejects_bad_timing_and_writes_nothing() {
     let timing = dir.path().join("timing.txt");
     fs::write(
         &timing,
-        "# bad\n0 300 Mưa\n200 600 rơi\n600 1200 nhẹ\n1500 1800 Em\n1800 2100 về\n2100 2400 bên\n2400 2900 sông\n",
+        "# bad\n2000 2300 Mưa\n2200 2600 rơi\n2600 3200 nhẹ\n3500 3800 Em\n3800 4100 về\n4100 4400 bên\n4400 4900 sông\n9900 10400 Trăng\n10400 11000 lên\n",
     )
     .expect("timing is written");
     let manifest = dir.path().join("song.toml");
