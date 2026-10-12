@@ -105,8 +105,8 @@ What was learned:
 
 *(planned for M8)*
 
-- **Each role has a fixed colour,** the same on both clients and readable
-  over video. See the
+- **Each role has a fixed colour,** the same on both clients and kept
+  readable over video by the lyric outline and shadow. See the
   [vocal role colours](../ui-conventions.md#vocal-role-colours).
 - **A duet needs proof.** A line is a duet only when two distinct lead singers
   sing the same words at similar loudness. Overlapping voices, backing
