@@ -111,6 +111,14 @@ test('the sweep position follows the example timing', async () => {
   expect(song.sweepPosition(250)).toBe(0)
 })
 
+test('the example has a countdown before its first lyric line', async () => {
+  const song = await openSongFile(new Blob([example()]))
+  expect(song.countdownLines).toEqual([0])
+  expect(song.dotsChanged(0)).toBe(4)
+  song.close()
+  expect(song.dotsChanged(0)).toBe(0)
+})
+
 test('the karaoke track lists its chunks with their times', async () => {
   const song = await openSongFile(new Blob([example()]))
   const ref = (position: number, offset: number, startMs: number, durationMs: number): ChunkRef => ({
