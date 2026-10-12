@@ -1,18 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { expect, Page, test } from '@playwright/test'
-
-// scripts/e2e.sh builds the fixture song here with lyre-cli before the journeys run.
-const fixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture.lyre', import.meta.url))
-
-type Choice = string | { name: string; mimeType: string; buffer: Buffer }
-
-async function openSongFile(page: Page, file: Choice): Promise<void> {
-  await page.goto('/')
-  const chooser = page.waitForEvent('filechooser')
-  await page.getByRole('button', { name: 'Open a song file' }).click()
-  await (await chooser).setFiles(file)
-}
+import { expect, test } from '@playwright/test'
+import { Choice, fixture, openSongFile } from './song-file'
 
 function octets(name: string, buffer: Buffer): Choice {
   return { name, mimeType: 'application/octet-stream', buffer }

@@ -2,7 +2,7 @@
 
 use lyre_core::lyrics::Lyrics;
 use lyre_core::song_file::{
-    self, Chunk, ChunkType, Header, Index, IndexEntry, SongFileError, Timing,
+    self, Chunk, ChunkType, Header, Index, IndexEntry, SongDetails, SongFileError, Timing,
 };
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -108,13 +108,35 @@ impl TryFrom<&IndexEntry> for ChunkEntry {
     }
 }
 
+/// The song's title, artist and composer, exactly as the song file stores
+/// them. An empty artist or composer means not known.
+#[wasm_bindgen(getter_with_clone, js_name = SongDetails)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Details {
+    pub title: String,
+    pub artist: String,
+    pub composer: String,
+}
+
+impl From<&SongDetails> for Details {
+    fn from(details: &SongDetails) -> Details {
+        Details {
+            title: details.title().to_owned(),
+            artist: details.artist().to_owned(),
+            composer: details.composer().to_owned(),
+        }
+    }
+}
+
 /// Reads a song file the way the format's reading model says: the header,
 /// then the index with the file size, then one chunk at a time. The client
 /// passes the bytes. The reader never needs the whole file.
 #[wasm_bindgen]
 pub struct SongReader {
+    song_id: [u8; 16],
     index: Index,
     entries: Vec<ChunkEntry>,
+    details: Option<SongDetails>,
     lyrics: Option<Lyrics>,
     timing: Option<Timing>,
 }
@@ -141,8 +163,10 @@ impl SongReader {
             .map(ChunkEntry::try_from)
             .collect::<Result<_, _>>()?;
         Ok(SongReader {
+            song_id: header.song_id(),
             index,
             entries,
+            details: None,
             lyrics: None,
             timing: None,
         })
@@ -152,6 +176,20 @@ impl SongReader {
     #[wasm_bindgen(getter, js_name = durationMs)]
     pub fn duration_ms(&self) -> u32 {
         self.index.duration_ms()
+    }
+
+    /// The song ID from the header, as 32 lowercase hex digits.
+    #[wasm_bindgen(getter, js_name = songId)]
+    pub fn song_id(&self) -> String {
+        self.song_id
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
+    /// The song details, once their chunk is read.
+    pub fn details(&self) -> Option<Details> {
+        self.details.as_ref().map(Details::from)
     }
 
     /// The index entries, in the order the chunks are stored.
@@ -176,7 +214,8 @@ impl SongReader {
             Chunk::Media(bytes) => return Ok(Some(bytes)),
             Chunk::Lyrics(lyrics) => self.lyrics = Some(lyrics),
             Chunk::Timing(timing) => self.timing = Some(timing),
-            Chunk::SongDetails(_) | Chunk::Thumbnail(_) => {}
+            Chunk::SongDetails(details) => self.details = Some(details),
+            Chunk::Thumbnail(_) => {}
         }
         if let (Some(lyrics), Some(timing)) = (&self.lyrics, &self.timing) {
             song_file::check_timing(timing, lyrics, self.index.duration_ms())?;
@@ -218,6 +257,12 @@ mod tests {
     /// Reads `file` as a client does: the header, the index, then each chunk
     /// on its own. Returns the media chunks' bytes.
     fn read(file: &[u8]) -> Result<Vec<Vec<u8>>, SongFileFault> {
+        read_all(file).map(|(_, media)| media)
+    }
+
+    /// Reads `file` as `read` does. Returns the reader, then the media
+    /// chunks' bytes.
+    fn read_all(file: &[u8]) -> Result<(SongReader, Vec<Vec<u8>>), SongFileFault> {
         let header = file.get(..32).unwrap_or(file);
         let index_end = 32 + SongReader::index_length(header)? as usize;
         let index = file.get(32..index_end).ok_or(DAMAGED)?;
@@ -232,7 +277,7 @@ mod tests {
                 media.push(bytes);
             }
         }
-        Ok(media)
+        Ok((reader, media))
     }
 
     #[test]
@@ -268,6 +313,27 @@ mod tests {
                 b"os".to_vec()
             ])
         );
+    }
+
+    #[test]
+    fn reads_the_known_answer_example_song_id_and_details() {
+        let (reader, _) = read_all(&example()).expect("the example is valid");
+        assert_eq!(reader.song_id(), "000102030405060708090a0b0c0d0e0f");
+        assert_eq!(
+            reader.details(),
+            Some(Details {
+                title: "Mưa".to_owned(),
+                artist: String::new(),
+                composer: String::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn has_no_details_before_their_chunk_is_read() {
+        let file = example();
+        let reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
+        assert_eq!(reader.details(), None);
     }
 
     #[test]

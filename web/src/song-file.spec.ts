@@ -78,6 +78,13 @@ test('opening the example reads the header, the index and single chunks, never t
   for (const [start, end] of ranges) expect(end <= 244 || start >= 248).toBe(true)
 })
 
+test('the example gives its song ID and its details as stored', async () => {
+  const song = await openSongFile(new Blob([example()]))
+  expect(song.songId).toBe('000102030405060708090a0b0c0d0e0f')
+  expect(song.details).toEqual({ title: 'Mưa', artist: '', composer: '' })
+  song.close()
+})
+
 test('the karaoke track lists its chunks with their times', async () => {
   const song = await openSongFile(new Blob([example()]))
   const ref = (position: number, offset: number, startMs: number, durationMs: number): ChunkRef => ({
