@@ -103,3 +103,63 @@ test('sung syllables have the highlight fill and a white outline, unsung ones wh
     expect(shadow.endsWith(' 0px'), shadow).toBe(true)
   }
 })
+
+const countdownsIn = (region: Locator) => region.getByRole('progressbar', { name: 'Countdown' })
+const countdownsInParagraph = (region: Locator, i: number) =>
+  region.getByRole('paragraph').nth(i).getByRole('progressbar', { name: 'Countdown' })
+
+// The fixture's first line has countdown steps ending at 0.5, 1.0, 1.5 and 2.0 s.
+test('before the first line, the countdown counts one dot per step', async ({ page }) => {
+  const { region, video } = await openFixture(page)
+  const first = countdownsIn(region).first()
+  for (const [seconds, value] of [
+    [0.25, 0],
+    [0.75, 1],
+    [1.25, 2],
+    [1.75, 3],
+    [2.15, 4],
+  ]) {
+    await seek(video, seconds)
+    await expect(first).toHaveAttribute('aria-valuenow', String(value))
+  }
+})
+
+test('the line after the 5 s break has a countdown, and the line after the 300 ms break has none', async ({ page }) => {
+  const { region } = await openFixture(page)
+  await expect(region.getByRole('paragraph')).toHaveCount(3)
+  await expect(countdownsInParagraph(region, 0)).toHaveCount(1)
+  await expect(countdownsInParagraph(region, 1)).toHaveCount(0)
+  await expect(countdownsInParagraph(region, 2)).toHaveCount(1)
+})
+
+// The line after the 5 s break has countdown steps ending at 8.4, 8.9, 9.4 and 9.9 s.
+test('after a seek forward into a countdown and then back, each countdown matches the new time', async ({ page }) => {
+  const { region, video } = await openFixture(page)
+  const countdowns = countdownsIn(region)
+  await expect(countdowns).toHaveCount(2)
+  await seek(video, 9)
+  await expect(countdowns.nth(0)).toHaveAttribute('aria-valuenow', '4')
+  await expect(countdowns.nth(1)).toHaveAttribute('aria-valuenow', '2')
+  await seek(video, 1.25)
+  await expect(countdowns.nth(0)).toHaveAttribute('aria-valuenow', '2')
+  await expect(countdowns.nth(1)).toHaveAttribute('aria-valuenow', '0')
+})
+
+test('changed dots have the highlight fill and a white outline, the others white with a black outline', async ({
+  page,
+}) => {
+  const { region, video } = await openFixture(page)
+  const first = countdownsIn(region).first()
+  await seek(video, 1.25)
+  await expect(first).toHaveAttribute('aria-valuenow', '2')
+  const dots = await first.evaluate((element) =>
+    [...element.children].map((dot) => {
+      const computed = getComputedStyle(dot, '::before')
+      return { fill: computed.color, outline: computed.webkitTextStrokeColor }
+    }),
+  )
+  // #A100FB is the highlight colour from docs/ui-conventions.md#highlight-colour.
+  const changed = { fill: 'rgb(161, 0, 251)', outline: 'rgb(255, 255, 255)' }
+  const unchanged = { fill: 'rgb(255, 255, 255)', outline: 'rgb(0, 0, 0)' }
+  expect(dots).toEqual([changed, changed, unchanged, unchanged])
+})

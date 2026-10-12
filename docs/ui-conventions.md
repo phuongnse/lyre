@@ -80,7 +80,8 @@ M4.
 - The web Player lists every display line of the lyrics in a Lyrics area
   under the video. The core lays them out from the widths the client
   measures, when the song opens and when the area's width changes. The
-  syllable being sung carries `aria-current`. Between lines, none does.
+  syllable being sung carries `aria-current`. Between lines, none does. The
+  [countdown dots](#countdown-dots) come before the lines that have them.
 - On the web, a `requestAnimationFrame` loop reads the media time. It sets a
   CSS variable, the sweep progress, on the active display line. It never
   causes a re-render or a signal update per frame.
@@ -176,6 +177,15 @@ Compose uses the same three values *(planned for M4)*.
 - Each dot changes all at once when its step ends.
 - The core works out which lyric lines have dots and how many have changed, so
   both clients agree.
+- The dots sit just left of the first display line of their lyric line. They
+  take no layout width and add no text, so the line stays exact
+  ([D5](decisions.md#d5-supplied-lyrics-are-authoritative--agreed)).
+- Changed dots stay changed after their line starts. A seek back undoes only
+  the steps that end after the new time.
+- On the web each set of dots is a progress indicator named "Countdown", from
+  the strings catalogue, with a value from 0 to 4 for the dots changed. The
+  same `requestAnimationFrame` loop as the highlight updates them, with no
+  signal update per frame.
 
 ## Check pages
 
