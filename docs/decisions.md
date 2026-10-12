@@ -190,7 +190,8 @@ Replaces the bootstrap rule of D11.
   workflow, the check scripts, the rules on `main` and the agent credential.
 - **The check scripts start almost empty.** Each script runs the checks of
   the parts of the repository that exist and skips the parts not built yet.
-  The lint check already checks the Markdown links of the docs.
+  The lint check already checks the Markdown links of the docs. Narrowed by
+  [D16](#d16-pull-request-checks-skip-the-parts-a-change-cannot-affect--agreed).
 - **Through NexKit:** the core, the web client, the Playwright project and the
   Android app, one issue each. Each issue adds its part's checks to the
   scripts, so the checks grow with the code.
@@ -222,3 +223,28 @@ The owner delegated this choice.
 
 *Why:* both are mainstream, run in ONNX Runtime Web and on Android, and have
 the clearest licences among models that give good results.
+
+## D16. Pull request checks skip the parts a change cannot affect — Agreed
+
+Narrows D14.
+
+- **Changed paths pick the parts.** When `NEXKIT_BASE_SHA` is set, the
+  scripts list the paths changed since that commit, untracked files included.
+  The mapping from paths to parts is in `scripts/parts.mjs`, and all five
+  scripts read it.
+- **A change under `scripts/` runs every part.**
+- **Some checks always run.** These are the Markdown link check and the tests
+  of the scripts.
+- **A part that runs still builds what it needs.** The web client builds
+  `lyre-wasm` from the core even when only `web/` changed. The needed part is
+  set up and built, but its own lint and tests are skipped.
+- **Everything runs when the base is unknown.** This covers an unset
+  `NEXKIT_BASE_SHA` or one that is not a commit in the checkout. It also covers
+  CI on `main` and local runs.
+- **A new part, or a new dependency between parts,** updates the mapping in
+  the same issue.
+
+*Why:* one verify round for the Android app took 6 min 17 s, and about 4 min
+of it set up and built the Android app. Most work changes only one part. A
+wrong mapping can let a breaking change pass the pull request checks. CI on
+`main` runs everything and catches it after the merge.
