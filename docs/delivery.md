@@ -57,6 +57,11 @@ models, are not copied here. Look them up where they live.
   can still break `main` together. When CI on `main` fails, the local agent
   runs it once more if the failure looks flaky. Otherwise it tells the owner
   and opens a bug issue with the failure, which goes before other issues.
+- **CI on `main` deploys the web client to GitHub Pages.** When every check
+  passes on `main`, CI publishes the web client it built and tested to
+  <https://phuongnse.github.io/lyre/>. The check pages run there on real
+  devices, over HTTPS. It is a development build until the M9 release. The
+  build must work from that `/lyre/` path.
 - **NexKit restores caches, and only CI on `main` saves them.** NexKit's
   agent and checks jobs restore the caches in its `cache` setting before
   setup, so a round does not download every dependency again. They never save

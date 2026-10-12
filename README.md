@@ -14,6 +14,9 @@ devices its owner shared it with.
 Lyre is in early development. The [roadmap](docs/roadmap.md) says what each
 milestone delivers and its status.
 
+A development build of the web client runs at
+<https://phuongnse.github.io/lyre/>. It is updated after every change on `main`.
+
 ## Documentation
 
 | Document | Purpose |
