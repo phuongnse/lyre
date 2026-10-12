@@ -15,6 +15,15 @@ if [[ -f core/Cargo.toml ]] && needs core; then
     cd core
     cargo build --workspace --locked
     cargo build -p lyre-wasm --target wasm32-unknown-unknown --release --locked
+    # lyre_wasm does not call word lookup yet, so the linker would drop the word list from it.
+    # Measure the list on a small module that calls lookup, built with and without it (D18).
+    size_example=(-p lyre-core --example word_list_size --target wasm32-unknown-unknown --release --locked)
+    size_wasm=target/wasm32-unknown-unknown/release/examples/word_list_size.wasm
+    cargo build "${size_example[@]}"
+    cp "$size_wasm" target/word_list_size.with.wasm
+    cargo build "${size_example[@]}" --no-default-features
+    cp "$size_wasm" target/word_list_size.without.wasm
+    node ../scripts/word-list-size.mjs target/word_list_size.with.wasm target/word_list_size.without.wasm
   )
   built=1
 fi

@@ -18,6 +18,7 @@ function song(songId: string, title: string): OpenedSong {
     details: { title, artist: 'An artist', composer: '' },
     durationMs: 1000,
     karaoke: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
+    original: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
     read: () => Promise.reject(new Error('not read in these tests')),
     close: () => undefined,
   }

@@ -16,4 +16,7 @@ export const messages = {
   songArtist: (name: string) => `Artist: ${name}`,
   songComposer: (name: string) => `Composer: ${name}`,
   libraryMayBeCleared: 'Your browser did not allow lasting storage, so it may clear these songs.',
+  audioTrack: 'Track',
+  karaoke: 'Karaoke',
+  original: 'Original',
 } as const

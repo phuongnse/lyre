@@ -1,6 +1,6 @@
-import { ChunkRef, OpenedSong } from '../song-file'
+import { ChunkRef, MediaTrack, OpenedSong } from '../song-file'
 
-// Streams a song's video and karaoke track into a video element through Media
+// Streams a song's video and one audio track into a video element through Media
 // Source Extensions. docs/reference/song-file-format-v0.md#media sets the types.
 const VIDEO_TYPE = 'video/webm; codecs="vp09.00.40.08"'
 const AUDIO_TYPE = 'audio/webm; codecs="opus"'
@@ -9,12 +9,22 @@ const AUDIO_TYPE = 'audio/webm; codecs="opus"'
 // buffer at a size a long song would exceed, and memory stays bounded.
 const AHEAD_SECONDS = 30
 
-// Starts streaming `song` into `video`. Calls `onError` once if the media cannot
-// be read, appended or decoded. Returns a function that stops the streaming.
-export function playSong(video: HTMLVideoElement, song: OpenedSong, onError: () => void): () => void {
+export interface Playback {
+  // Replaces the streamed audio with `track` from the play position on. The
+  // video goes on and the play position does not move. Both tracks are cut at
+  // the same times, so the new audio fits where the old audio was.
+  switchAudio(track: MediaTrack): void
+  // Stops the streaming.
+  stop(): void
+}
+
+// Starts streaming `song`'s video and the `audio` track into `video`. Calls
+// `onError` once if the media cannot be read, appended or decoded.
+export function playSong(video: HTMLVideoElement, song: OpenedSong, audio: MediaTrack, onError: () => void): Playback {
   const mediaSource = new MediaSource()
   const url = URL.createObjectURL(mediaSource)
   const feeders: TrackFeeder[] = []
+  let audioFeeder: TrackFeeder | undefined
   let stopped = false
 
   const fail = () => {
@@ -27,21 +37,37 @@ export function playSong(video: HTMLVideoElement, song: OpenedSong, onError: () 
   const finish = () => {
     if (feeders.every((feeder) => feeder.done) && mediaSource.readyState === 'open') mediaSource.endOfStream()
   }
+  // The chunks of `track` that are still to be played: its init segment, then
+  // the segments from the one that holds the play position.
+  const remaining = (track: MediaTrack) => {
+    const position = video.currentTime * 1000
+    let from = 0
+    track.segments.forEach((segment, index) => {
+      if (segment.startMs <= position) from = index
+    })
+    return [track.init, ...track.segments.slice(from)]
+  }
   const open = () => {
     try {
       mediaSource.duration = song.durationMs / 1000
-      const tracks = [song.video && { track: song.video, type: VIDEO_TYPE }, { track: song.karaoke, type: AUDIO_TYPE }]
-      for (const entry of tracks) {
-        if (!entry) continue
-        const buffer = mediaSource.addSourceBuffer(entry.type)
-        const chunks = [entry.track.init, ...entry.track.segments]
-        feeders.push(new TrackFeeder(buffer, chunks, song, video, finish, fail))
+      if (song.video) {
+        const buffer = mediaSource.addSourceBuffer(VIDEO_TYPE)
+        feeders.push(new TrackFeeder(buffer, [song.video.init, ...song.video.segments], song, video, finish, fail))
       }
+      const buffer = mediaSource.addSourceBuffer(AUDIO_TYPE)
+      audioFeeder = new TrackFeeder(buffer, remaining(audio), song, video, finish, fail)
+      feeders.push(audioFeeder)
     } catch {
       fail()
       return
     }
     feed()
+  }
+  const switchAudio = (track: MediaTrack) => {
+    if (stopped) return
+    // Before the source opens, the track is the one to stream first.
+    if (audioFeeder) audioFeeder.replace(remaining(track))
+    else audio = track
   }
 
   function stop() {
@@ -60,8 +86,11 @@ export function playSong(video: HTMLVideoElement, song: OpenedSong, onError: () 
   video.addEventListener('timeupdate', feed)
   video.addEventListener('error', fail)
   video.src = url
-  return () => {
-    if (!stopped) stop()
+  return {
+    switchAudio,
+    stop() {
+      if (!stopped) stop()
+    },
   }
 }
 
@@ -72,10 +101,14 @@ class TrackFeeder {
   private next = 0
   private busy = false
   private stopped = false
+  // Set by replace, until the old audio is removed from the buffer.
+  private clearPending = false
+  // Counts replacements, so a read that began before one is dropped.
+  private generation = 0
 
   constructor(
     private readonly buffer: SourceBuffer,
-    private readonly chunks: ChunkRef[],
+    private chunks: ChunkRef[],
     private readonly song: OpenedSong,
     private readonly video: HTMLVideoElement,
     private readonly onDone: () => void,
@@ -86,7 +119,20 @@ class TrackFeeder {
   }
 
   feed(): void {
-    if (this.busy || this.done || this.stopped) return
+    if (this.busy || this.stopped) return
+    if (this.clearPending) {
+      // The buffer's updateend feeds again.
+      if (this.buffer.updating) return
+      this.clearPending = false
+      this.busy = true
+      try {
+        this.buffer.remove(0, Infinity)
+      } catch {
+        this.onError()
+      }
+      return
+    }
+    if (this.done) return
     if (this.next === this.chunks.length) {
       this.done = true
       this.onDone()
@@ -95,9 +141,15 @@ class TrackFeeder {
     const chunk = this.chunks[this.next]
     if (chunk.startMs / 1000 > this.video.currentTime + AHEAD_SECONDS) return
     this.busy = true
+    const generation = this.generation
     this.song.read(chunk).then(
       (bytes) => {
         if (this.stopped) return
+        if (generation !== this.generation) {
+          this.busy = false
+          this.feed()
+          return
+        }
         try {
           this.buffer.appendBuffer(bytes)
           this.next++
@@ -109,6 +161,16 @@ class TrackFeeder {
         if (!this.stopped) this.onError()
       },
     )
+  }
+
+  // Drops what is buffered and streams `chunks` instead, from the first.
+  replace(chunks: ChunkRef[]): void {
+    this.chunks = chunks
+    this.next = 0
+    this.done = false
+    this.clearPending = true
+    this.generation++
+    this.feed()
   }
 
   stop(): void {

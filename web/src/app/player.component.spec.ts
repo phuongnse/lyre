@@ -59,6 +59,7 @@ function openedSong(): OpenedSong {
     details: { title: 'Mưa rơi nhẹ', artist: 'Lyre fixtures', composer: '' },
     durationMs: 1000,
     karaoke: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
+    original: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
     read: () => Promise.reject(new Error('not read in these tests')),
     close: () => undefined,
   }

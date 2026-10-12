@@ -3,10 +3,19 @@ name = "lyre-core"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license = "MIT"
+license = "MIT AND CC-BY-SA-4.0"
 
 [dependencies]
 unicode-normalization = "0.1"
 
 [dev-dependencies]
 toml = "1"
+
+[features]
+default = ["wiktionary-words"]
+# Leaves out the Wiktionary word list. Only scripts/build.sh uses it, to measure the list's size (D18).
+wiktionary-words = []
+
+[[example]]
+name = "word_list_size"
+crate-type = ["cdylib"]

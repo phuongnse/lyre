@@ -100,6 +100,21 @@ test('the karaoke track lists its chunks with their times', async () => {
   song.close()
 })
 
+test('the original track lists its chunks with their times', async () => {
+  const song = await openSongFile(new Blob([example()]))
+  const ref = (position: number, offset: number, startMs: number, durationMs: number): ChunkRef => ({
+    position,
+    offset,
+    length: 2,
+    startMs,
+    durationMs,
+  })
+  expect(song.original.init).toMatchObject(ref(5, 244, 0, 0))
+  expect(song.original.segments).toHaveLength(1)
+  expect(song.original.segments[0]).toMatchObject(ref(6, 246, 0, 1000))
+  song.close()
+})
+
 test('a small text file is not a song file', async () => {
   expect(await problemOf(new Blob(['hello']))).toBe('not-a-song-file')
 })

@@ -50,7 +50,8 @@ The code in this repository is under the [MIT licence](LICENSE).
 Data and models that Lyre uses or downloads are not part of the code and keep
 their own licences. For example:
 
-- The Vietnamese word list is under CC BY-SA 4.0. See
+- The Vietnamese word list from Wiktionary is under CC BY-SA 4.0. See
+  [its notice](core/lyre-core/src/words/wiktionary_words.NOTICE.md) and
   [D18](docs/decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed).
 - The CC-BY-NC models that
   [D20](docs/decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
