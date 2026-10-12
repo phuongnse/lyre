@@ -248,3 +248,14 @@ Narrows D14.
 of it set up and built the Android app. Most work changes only one part. A
 wrong mapping can let a breaking change pass the pull request checks. CI on
 `main` runs everything and catches it after the merge.
+
+## D17. Display lines are laid out at play time — Agreed
+
+- **Not stored.** The song file holds the lyrics and the timing, but no
+  display lines.
+- **The core lays them out at play time,** from the lyrics, the timing and
+  the text widths the client measures. The rules for a good split are in
+  [design knowledge](domain/knowledge.md#lyrics).
+
+*Why:* the split depends on the width of the screen, which differs between
+the device that makes a song and the device that plays it.

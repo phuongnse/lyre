@@ -29,7 +29,8 @@ being followed blindly.
   song's lyrics; the owner's original file is never edited.
 - **Input limits.** UTF-8, one sung phrase per non-empty line, a bounded size
   (for example 1 MB), at least one word with letters, no NUL
-  characters. A leading byte-order mark is tolerated and dropped.
+  characters. A leading byte-order mark is kept in the stored bytes and
+  skipped when lyric lines are read.
 - **Pair lyrics by exact name.** A lyrics file belongs to a source only when
   both have exactly the same name stem: `Song.mp4` and `Song.txt`. Lyrics for
   a whole source are never assigned to a section cut from it, because the

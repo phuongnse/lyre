@@ -12,7 +12,7 @@ See [the life of a milestone](../delivery.md#the-life-of-a-milestone).
 | --- | --- | --- |
 | **Source** | The video or audio file a song is made from. Lyre reads it and never changes it. | M1 |
 | **Lyrics** | The exact UTF-8 text the owner supplied for a song, one sung phrase per line. Authoritative and never rewritten (D5). | M1 |
-| **Lyric line** | One line of the lyrics as the owner wrote it. | M1 |
+| **Lyric line** | One line of the lyrics as the owner wrote it, holding at least one syllable. Blank and whitespace-only lines stay in the lyrics but are not lyric lines. | M1 |
 | **Syllable** | The unit Lyre times. In Vietnamese, each space-separated token of a lyric line is one syllable. | M1 |
 | **Timing** | When each syllable starts and ends in the song, derived from the singing. Stored separately from the lyrics. | M1 |
 | **Display line** | A line as shown on screen. A long lyric line may be shown as several display lines; each one points back to its lyric line. | M1 |

@@ -82,8 +82,10 @@ A `.lyre` file holds one song:
 - a fixed header: a magic number, the format version and the song's ID;
 - the media in chunks: the video if there is one, the karaoke track and the
   original track;
-- the lyrics exactly as supplied, the timing, the display lines, the song's
-  details and its thumbnail.
+- the lyrics exactly as supplied, the timing, the song's details and its
+  thumbnail.
+
+Display lines are not stored. The core lays them out at play time (D17).
 
 From M3 every chunk is encrypted and authenticated with the song's content
 key, so a player can seek by decrypting only the chunks it needs, and a
@@ -91,7 +93,8 @@ changed or truncated file is rejected. Format version 0, used in M1 and M2, is
 unencrypted, for development only, and is no longer accepted from M3. No
 version-0 file is ever published.
 
-The format is specified in a reference doc before M1 implements it.
+The byte layout, limits and media codecs are specified in
+[song file format, version 0](reference/song-file-format-v0.md).
 
 ## Devices and access *(planned for M3)*
 
