@@ -12,7 +12,9 @@ lyre-core.workspace = true
 uniffi.workspace = true
 
 [features]
-# Builds the uniffi-bindgen tool. The Android build of the library leaves it out.
+# Builds the uniffi-bindgen tool with the host build of the core, so its dependencies compile once.
+# The Android build of the library leaves it out with --no-default-features.
+default = ["cli"]
 cli = ["uniffi/cli"]
 
 [[bin]]

@@ -31,12 +31,12 @@ if [[ -f android/settings.gradle.kts ]]; then
   ndk=$(sed -nE 's/^ndk = "([^"]+)"/\1/p' android/gradle/libs.versions.toml)
   export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$ndk"
   # The generated files are not committed: they are always rebuilt from the core.
-  # The core block above built the host liblyre_ffi.so that the bindings are read from.
+  # The core block above built the host liblyre_ffi.so that the bindings are read from,
+  # and the uniffi-bindgen tool that reads it.
   (
     cd core
-    cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build -p lyre-ffi --release --locked
-    cargo run -p lyre-ffi --features cli --bin uniffi-bindgen --locked -- \
-      generate --library target/debug/liblyre_ffi.so --language kotlin --no-format \
+    cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build -p lyre-ffi --release --locked --no-default-features
+    target/debug/uniffi-bindgen generate --library target/debug/liblyre_ffi.so --language kotlin --no-format \
       --out-dir ../android/app/src/main/java
   )
   (cd android && ./gradlew --console=plain assembleDebug)
