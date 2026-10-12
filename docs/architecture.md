@@ -74,9 +74,16 @@ and `scripts/`. M1 rebuilds `web/` on Angular *(planned for M1)*.
 - **Bounded input.** Every parser in the core has explicit size and count
   limits and rejects input beyond them. Song files come from other people, so
   every byte is untrusted until authenticated.
-- **Secrets stay out of the UI.** Content keys and private keys are handled
-  only inside the core and the platform key store. They never reach web UI
-  state, Compose state, logs or error messages.
+- **Lyrics are untrusted text.** Lyrics come from other people's song
+  files. Both clients render them as text, never as HTML or other markup.
+  The web client also turns on Trusted Types and sets a Content Security
+  Policy *(planned for M1)*. How it sets that policy without HTTP headers is
+  in [knowledge](domain/knowledge.md#running-on-the-users-device).
+- **Content keys and private keys never reach JavaScript or Kotlin.** They
+  are handled only inside the core and the platform key store. The core's
+  API never returns one to a client. It returns an opaque handle that the
+  client cannot read *(planned for M3)*. They never reach web UI state,
+  Compose state, logs or error messages.
 
 ## Song file *(planned for M1, encrypted from M3)*
 
@@ -104,6 +111,11 @@ The format is specified in a reference doc before M1 implements it.
   - Web: a device-bound passkey with the PRF extension. The PRF output,
     available only after the user unlocks the device, derives the device's
     key pair inside the core for the session.
+    - The browser hands the PRF output to JavaScript. This is the
+      only time a secret passes through JavaScript. The client passes it
+      straight to the core, then overwrites the buffer with zeros. It never
+      keeps the output in state, storage or logs. Clearing is best effort,
+      because the JavaScript engine may keep copies.
 - **Device code.** The device's public key, encoded as text and a QR code,
   with a short fingerprint for checking it by voice or by eye.
 - **Wrapping.** A song's content key is wrapped for a device with HPKE

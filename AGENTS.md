@@ -46,6 +46,7 @@ Vietnamese.
   storage, recognise or correct lyric text (D5).
 - Logic that both clients need lives in the Rust core, never in a client.
   Content keys and private keys never reach UI state, logs or error messages.
+  See the [core rules](docs/architecture.md#core-rules).
 - Never claim the protection is DRM or stops copying. See
   [what the protection does not do](docs/domain/knowledge.md#what-the-protection-does-not-do).
 - Never commit secrets, tokens, model weights, source media, song files made
