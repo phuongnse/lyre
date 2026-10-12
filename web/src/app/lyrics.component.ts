@@ -109,11 +109,14 @@ interface ShownLine {
       color: var(--lyre-highlight);
       -webkit-text-stroke-color: #fff;
     }
-    /* The sung part of the syllable being sung, drawn over it up to the sweep. */
+    /* The sung part of the syllable being sung, drawn over it up to the sweep.
+       The layer is a block box, so without the normal line height it takes the
+       section's taller one and its text sits lower than the syllable's. */
     .syllable[aria-current='true']::after {
       content: attr(data-text) / '';
       position: absolute;
       inset: 0;
+      line-height: normal;
       clip-path: inset(0 calc(100% - (var(--sweep) - var(--start))) 0 0);
     }
     /* The countdown dots take no width, so they sit just left of the line. */
