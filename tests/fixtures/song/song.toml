@@ -1,0 +1,38 @@
+# The fixture song: synthetic media from make.sh, made-up lyrics and
+# hand-written timing. Build it with lyre-cli (see docs/reference/lyre-cli.md).
+song_id = "00112233445566778899aabbccddeeff"
+lyrics = "lyrics.txt"
+timing = "timing.txt"
+thumbnail = "thumbnail.jpg"
+
+[details]
+title = "Mưa rơi nhẹ"
+artist = "Lyre fixtures"
+
+# A segment's duration runs from its first Cluster's timestamp to the next
+# segment's, so each segment starts where its media does. The video Clusters
+# start at 0, 1000 and 2000 ms. The audio Clusters start at 0, 981 and
+# 1981 ms, and the 150 Opus frames of 20 ms end at 3000 ms.
+[video]
+init = "video/init.webm"
+segments = [
+  { file = "video/segment-1.webm", duration_ms = 1000 },
+  { file = "video/segment-2.webm", duration_ms = 1000 },
+  { file = "video/segment-3.webm", duration_ms = 1000 },
+]
+
+[karaoke]
+init = "karaoke/init.webm"
+segments = [
+  { file = "karaoke/segment-1.webm", duration_ms = 981 },
+  { file = "karaoke/segment-2.webm", duration_ms = 1000 },
+  { file = "karaoke/segment-3.webm", duration_ms = 1019 },
+]
+
+[original]
+init = "original/init.webm"
+segments = [
+  { file = "original/segment-1.webm", duration_ms = 981 },
+  { file = "original/segment-2.webm", duration_ms = 1000 },
+  { file = "original/segment-3.webm", duration_ms = 1019 },
+]

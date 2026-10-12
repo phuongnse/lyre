@@ -61,7 +61,10 @@ scripts/              one script per check, shared by CI and NexKit
 
 Folders are created when the first issue needs them. M0 created `core/` with
 `lyre-core`, `lyre-wasm` and `lyre-ffi`, plus `web/`, `android/`, `tests/e2e`
-and `scripts/`. M1 rebuilds `web/` on Angular *(planned for M1)*.
+and `scripts/`. M1 added `core/lyre-cli` and `tests/fixtures`, and rebuilds
+`web/` on Angular *(planned for M1)*. The
+[lyre-cli reference](reference/lyre-cli.md) describes the tool and the
+fixtures.
 
 ## Core rules
 
