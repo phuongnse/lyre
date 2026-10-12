@@ -248,3 +248,46 @@ Narrows D14.
 of it set up and built the Android app. Most work changes only one part. A
 wrong mapping can let a breaking change pass the pull request checks. CI on
 `main` runs everything and catches it after the merge.
+
+## D18. Vietnamese word boundaries from a word list — Agreed
+
+The owner chose this approach. It settles how the display line layout in M1
+avoids splitting a Vietnamese word (see
+[knowledge](domain/knowledge.md#lyrics)).
+
+- **Approach:** the core rules out a display line split between two
+  syllables when any listed multi-syllable word covers both. When listed
+  words overlap, every split they cover is ruled out, so the core never
+  chooses between readings.
+- **Soft rules:** two short lists written for Lyre. One holds linking words a
+  display line should not end on ("và", "của", "những", "một"). The other
+  holds trailing modifiers it should not start with ("xưa", "này", "ấy").
+  These rules are weaker than the word rule: a split may break them, but
+  never splits a listed word.
+- **Data source:** the Vietnamese entries of English Wiktionary, as extracted
+  by Wiktextract and published on kaikki.org. Only entries of two or more
+  syllables are kept. The dump is pinned by date and SHA-256 hash. A small
+  list written for Lyre adds words Wiktionary lacks.
+- **Licence:** the Wiktionary list is under CC BY-SA 4.0. It is kept as a
+  separate data file with its own CC BY-SA 4.0 notice. The code's licence
+  (MIT) does not cover it. Both clients show its attribution. The lists
+  written for Lyre are part of the code.
+- **Matching only:** lookup builds a key from the syllables in lowercase and
+  Unicode NFC, and folds old and new tone placement ("hoà" and "hòa"). The
+  lyric text itself is never changed (D5).
+- **Size:** an estimated 20,000–40,000 entries, about 150–300 KB of the
+  WebAssembly module when stored compactly. The limit is 500 KB added to the
+  uncompressed module. The issue that builds the list measures it. If it goes
+  over the limit, a newer decision replaces this one.
+- **Same everywhere:** the list is compiled into `lyre-core`, so the web and
+  Android clients use the same data. It needs no network.
+- **Not used:** the `underthesea` and VnCoreNLP segmenters, because their
+  code is GPL-3.0 and their models are trained on the VLSP 2013 corpus, which
+  allows research use only. pyvi, because its code is MIT but it does not
+  state its training data. Word lists from Hồ Ngọc Đức's dictionary, because
+  their copies state no clear licence. A list written only for Lyre as the
+  sole source, because it would hold too few words.
+
+*Why:* joining two words by mistake only removes a split choice, while
+splitting a word reads badly. A word list errs the safe way, needs no model,
+stays small and has a clear licence.

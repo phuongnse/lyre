@@ -44,8 +44,10 @@ being followed blindly.
   syllables ("kỷ niệm", "nụ cười"). A display split inside one reads badly. A
   split should also avoid ending a line on a linking word ("và", "của",
   "những", "một") or starting one with a trailing modifier ("xưa", "này",
-  "ấy"). The `underthesea` word segmenter with a curated list does this in
-  Python. Lyre needs an equivalent that runs on the device.
+  "ấy"). The core finds word boundaries with a Wiktionary list of
+  multi-syllable words, plus short lists written for Lyre for linking words
+  and trailing modifiers. See
+  [D18](../decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed).
 
 ## Processing
 
