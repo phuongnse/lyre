@@ -89,7 +89,8 @@ Outline, broken into issues when M0 is nearly done:
 3. Song file version 0 in the core: write and read, with bounds; `lyre-cli`
    builds one from a source, lyrics and a timing file.
 4. Display line layout in the core: splits at punctuation, pauses and width,
-   never inside a Vietnamese word.
+   never inside a Vietnamese word
+   ([D18](decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed)).
 5. Rebuild the web client on Angular and Angular Material, with the Material 3
    theme, the string catalogue and the page showing the core's version (D19,
    [UI conventions](ui-conventions.md)).
@@ -98,9 +99,6 @@ Outline, broken into issues when M0 is nearly done:
 8. Web Player: switch between Karaoke and Original without losing position.
 9. A small library: the songs opened on this device, with their details.
 10. A passkey check page (see [early checks](#early-checks-on-real-devices)).
-
-Open point: how Vietnamese word boundaries are found on the device, which
-item 4 needs (see [knowledge](domain/knowledge.md#lyrics)).
 
 ## Early checks on real devices
 
@@ -133,4 +131,5 @@ must settle:
 - **M4:** split in two when broken down: Android playback and device keys
   first, then making songs on Android; the lowest Android version, and
   emulator tests in CI.
-- **M9:** licences for every model that is downloaded for other people.
+- **M9:** licences for every model that is downloaded for other people, and
+  the attribution D18 needs in both clients.
