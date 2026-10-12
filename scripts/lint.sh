@@ -14,4 +14,17 @@ if [[ -f core/Cargo.toml ]]; then
   )
 fi
 
+if [[ -f web/package.json ]]; then
+  if [[ ! -f web/src/lyre-wasm/lyre_wasm.js ]]; then
+    echo "web/src/lyre-wasm is missing: run scripts/build.sh first." >&2
+    exit 1
+  fi
+  (
+    cd web
+    npm run lint
+    npm run format:check
+    npm run typecheck
+  )
+fi
+
 node scripts/check-links.mjs

@@ -10,4 +10,12 @@ if [[ -f core/Cargo.toml ]]; then
   (cd core && cargo test --workspace --locked)
 fi
 
+if [[ -f web/package.json ]]; then
+  if [[ ! -f web/src/lyre-wasm/lyre_wasm.js ]]; then
+    echo "web/src/lyre-wasm is missing: run scripts/build.sh first." >&2
+    exit 1
+  fi
+  (cd web && npm test)
+fi
+
 node --test scripts/*.test.mjs

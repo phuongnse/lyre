@@ -12,8 +12,16 @@ if [[ -f core/Cargo.toml ]]; then
   (
     cd core
     cargo build --workspace --locked
-    cargo build -p lyre-wasm --target wasm32-unknown-unknown --locked
+    cargo build -p lyre-wasm --target wasm32-unknown-unknown --release --locked
   )
+  built=1
+fi
+
+if [[ -f web/package.json ]]; then
+  export PATH="$HOME/.cargo/bin:$PATH"
+  # The generated package is not committed: it is always rebuilt from the core.
+  wasm-bindgen --target web --out-dir web/src/lyre-wasm core/target/wasm32-unknown-unknown/release/lyre_wasm.wasm
+  (cd web && npm run build)
   built=1
 fi
 
