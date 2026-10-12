@@ -163,3 +163,73 @@ test('changed dots have the highlight fill and a white outline, the others white
   const unchanged = { fill: 'rgb(255, 255, 255)', outline: 'rgb(0, 0, 0)' }
   expect(dots).toEqual([changed, changed, unchanged, unchanged])
 })
+
+// Returns the fraction of pixels that differ between two PNG screenshots. A
+// pixel differs when any channel is off by more than 64 of 255, which leaves
+// out the slightly different blending at glyph edges.
+async function differentPixels(page: Page, a: Buffer, b: Buffer): Promise<number> {
+  return page.evaluate(
+    async ([first, second]) => {
+      const pixels = async (base64: string) => {
+        const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+        const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!
+        context.drawImage(bitmap, 0, 0)
+        return context.getImageData(0, 0, bitmap.width, bitmap.height)
+      }
+      const [one, two] = [await pixels(first), await pixels(second)]
+      if (one.width !== two.width || one.height !== two.height) return 1
+      let different = 0
+      for (let i = 0; i < one.data.length; i += 4) {
+        for (let channel = 0; channel < 4; channel++) {
+          if (Math.abs(one.data[i + channel] - two.data[i + channel]) > 64) {
+            different++
+            break
+          }
+        }
+      }
+      return different / (one.width * one.height)
+    },
+    [a.toString('base64'), b.toString('base64')],
+  )
+}
+
+// Screenshots the left 90% of `text` while it is current at `during`, then
+// the same region at `after`. Returns the fraction of pixels that differ.
+async function sungPartShift(
+  page: Page,
+  region: Locator,
+  video: Locator,
+  text: string,
+  during: number,
+  after: number,
+  nextIsDone: () => Promise<void>,
+): Promise<number> {
+  const target = syllableIn(region)(text)
+  await seek(video, during)
+  await expect(target).toHaveAttribute('aria-current', 'true')
+  await target.scrollIntoViewIfNeeded()
+  const box = (await target.boundingBox())!
+  const clip = { x: box.x, y: box.y, width: box.width * 0.9, height: box.height }
+  const before = await page.screenshot({ clip })
+  await seek(video, after)
+  await expect(target).not.toHaveAttribute('aria-current')
+  await nextIsDone()
+  return differentPixels(page, before, await page.screenshot({ clip }))
+}
+
+test('the sung part of "bên" lies over its text, and does not move when it is fully sung', async ({ page }) => {
+  const { region, video } = await openFixture(page)
+  const shift = await sungPartShift(page, region, video, 'bên', 4.385, 4.45, () =>
+    expect(syllableIn(region)('sông')).toHaveAttribute('aria-current', 'true'),
+  )
+  expect(shift).toBeLessThanOrEqual(0.01)
+})
+
+test('the sung part of "nhẹ" lies over its text, and does not move when it is fully sung', async ({ page }) => {
+  const { region, video } = await openFixture(page)
+  const shift = await sungPartShift(page, region, video, 'nhẹ', 3.17, 3.3, async () => {
+    for (const text of ['Mưa', 'rơi', 'nhẹ']) await expect(syllableIn(region)(text)).not.toHaveAttribute('aria-current')
+  })
+  expect(shift).toBeLessThanOrEqual(0.01)
+})
