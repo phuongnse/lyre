@@ -11,7 +11,7 @@ export const PARTS = [
   {
     name: 'e2e',
     label: 'the Playwright journeys',
-    paths: ['tests/e2e/', 'web/', 'core/'],
+    paths: ['tests/e2e/', 'tests/fixtures/', 'web/', 'core/'],
     needs: ['web'],
   },
   { name: 'android', label: 'the Android app', paths: ['android/', 'core/'], needs: ['core'] },

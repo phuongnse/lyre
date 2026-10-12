@@ -32,7 +32,8 @@ From the repository root, this builds the fixture song:
   the line. It never quotes lyric text.
 
 The built file is not committed. Tests build it from the fixtures when they
-run. The `inspect` command in the [repository
+run: `scripts/e2e.sh` builds it into `artifacts/e2e/fixture.lyre` for the
+Player journeys. The `inspect` command in the [repository
 layout](../architecture.md#repository-layout) is not built yet.
 
 ## Manifest

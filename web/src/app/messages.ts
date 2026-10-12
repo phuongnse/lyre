@@ -5,4 +5,11 @@ export const messages = {
   coreLoading: 'Loading the Lyre core…',
   coreVersion: (version: string) => `Lyre core ${version}`,
   coreFailed: 'Could not load the Lyre core.',
+  openSongFile: 'Open a song file',
+  songFileOpening: 'Opening the song file…',
+  songFileNotASongFile: 'This file is not a song file.',
+  songFileDamaged: 'This song file is damaged or incomplete.',
+  play: 'Play',
+  pause: 'Pause',
+  songVideo: 'Song video',
 } as const
