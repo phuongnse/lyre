@@ -1,6 +1,7 @@
 {
   "name": "lyre-web",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22 <25"
