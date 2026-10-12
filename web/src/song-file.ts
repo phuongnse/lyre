@@ -41,6 +41,7 @@ export interface OpenedSong {
   durationMs: number
   video?: MediaTrack
   karaoke: MediaTrack
+  original: MediaTrack
   // Reads one media chunk and returns its bytes as the core gives them back.
   read(chunk: ChunkRef): Promise<Uint8Array<ArrayBuffer>>
   // Frees the core's reader. Reading after this fails.
@@ -66,7 +67,8 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
       return chunk
     })
     // The song details, the lyrics and the timing are checked before anything
-    // plays. The thumbnail is not shown yet, and the original track is not played.
+    // plays. The thumbnail is not shown yet, and the original track is read only when the
+    // singer switches to it.
     for (const chunk of chunks) {
       if ([ChunkKind.SongDetails, ChunkKind.Lyrics, ChunkKind.Timing].includes(chunk.kind)) {
         const bytes = await readRange(source, chunk.offset, chunk.offset + chunk.length)
@@ -78,12 +80,14 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
       return first && { init: first, segments: chunks.filter((chunk) => chunk.kind === segment) }
     }
     const karaoke = track(ChunkKind.KaraokeInit, ChunkKind.KaraokeSegment)
-    if (!karaoke) throw new SongFileError('damaged')
+    const original = track(ChunkKind.OriginalInit, ChunkKind.OriginalSegment)
+    if (!karaoke || !original) throw new SongFileError('damaged')
     let closed = false
     return {
       durationMs: reader.durationMs,
       video: track(ChunkKind.VideoInit, ChunkKind.VideoSegment),
       karaoke,
+      original,
       async read(chunk) {
         const bytes = await readRange(source, chunk.offset, chunk.offset + chunk.length)
         if (closed) throw new Error('The song file is closed.')
