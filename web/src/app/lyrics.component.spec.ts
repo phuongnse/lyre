@@ -25,6 +25,8 @@ function song(position: () => number): OpenedSong {
     ],
     layOut: () => [{ lyricLine: 0, start: 0, end: 3 }],
     sweepPosition: position,
+    countdownLines: [],
+    dotsChanged: () => 0,
     read: () => Promise.reject(new Error('not read in these tests')),
     close: () => undefined,
   }
