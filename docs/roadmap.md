@@ -66,7 +66,7 @@ in `AGENTS.md`.
 1. Create the Rust workspace in `core/` with `lyre-core` exposing one trivial
    function, for example the core's version, plus `lyre-wasm` and `lyre-ffi`
    bindings for it. Rustfmt and Clippy with warnings as errors.
-2. Create `web/` with Vite, React and TypeScript, oxlint, Prettier and Vitest.
+2. Create `web/` with TypeScript, oxlint, Prettier and Vitest.
    The page shows the core's version through WebAssembly.
 3. Add a Playwright project in `tests/e2e` that serves the built web client
    and checks that the page shows the core's version.
@@ -91,11 +91,14 @@ Outline, broken into issues when M0 is nearly done:
 4. Display line layout in the core: splits at punctuation, pauses and width,
    never inside a Vietnamese word
    ([D18](decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed)).
-5. Web Player: open a song file and play the video with the karaoke track.
-6. Web Player: lyrics highlighted syllable by syllable, in sync with playback.
-7. Web Player: switch between Karaoke and Original without losing position.
-8. A small library: the songs opened on this device, with their details.
-9. A passkey check page (see [early checks](#early-checks-on-real-devices)).
+5. Rebuild the web client on Angular and Angular Material, with the Material 3
+   theme, the string catalogue and the page showing the core's version (D19,
+   [UI conventions](ui-conventions.md)).
+6. Web Player: open a song file and play the video with the karaoke track.
+7. Web Player: lyrics highlighted syllable by syllable, in sync with playback.
+8. Web Player: switch between Karaoke and Original without losing position.
+9. A small library: the songs opened on this device, with their details.
+10. A passkey check page (see [early checks](#early-checks-on-real-devices)).
 
 ## Early checks on real devices
 
