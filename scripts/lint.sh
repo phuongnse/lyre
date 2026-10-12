@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Formatting, linters and type checks for every part that exists, and the Markdown link check.
+# On a NexKit pull request it checks only the parts that the change can affect (D16).
+# The link check always runs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/parts.sh
 
 # Each part adds its linters here when it is created.
-if [[ -f core/Cargo.toml ]]; then
+if [[ -f core/Cargo.toml ]] && checks core; then
   export PATH="$HOME/.cargo/bin:$PATH"
   # Run cargo inside core/ so rustup picks up core/rust-toolchain.toml.
   (
@@ -14,7 +17,7 @@ if [[ -f core/Cargo.toml ]]; then
   )
 fi
 
-if [[ -f web/package.json ]]; then
+if [[ -f web/package.json ]] && checks web; then
   if [[ ! -f web/src/lyre-wasm/lyre_wasm.js ]]; then
     echo "web/src/lyre-wasm is missing: run scripts/build.sh first." >&2
     exit 1
@@ -27,11 +30,11 @@ if [[ -f web/package.json ]]; then
   )
 fi
 
-if [[ -f tests/e2e/package.json ]]; then
+if [[ -f tests/e2e/package.json ]] && checks e2e; then
   (cd tests/e2e && npm run typecheck)
 fi
 
-if [[ -f android/settings.gradle.kts ]]; then
+if [[ -f android/settings.gradle.kts ]] && checks android; then
   export PATH="$HOME/.local/bin:$PATH"
   # The generated bindings are not ours to format.
   (cd android && ktlint '**/*.kt' '**/*.kts' '!**/build/**' '!app/src/main/java/uniffi/**')
