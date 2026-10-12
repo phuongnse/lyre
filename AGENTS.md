@@ -1,0 +1,71 @@
+# Lyre agent instructions
+
+## Before you start
+
+- Read [docs/product-brief.md](docs/product-brief.md) and [docs/decisions.md](docs/decisions.md)
+  before any product or architecture work.
+- [docs/architecture.md](docs/architecture.md) is the target structure.
+- [docs/domain/concepts.md](docs/domain/concepts.md) defines the vocabulary. Use those
+  terms in code, file formats and UI.
+- [docs/domain/knowledge.md](docs/domain/knowledge.md) explains why the design rules exist.
+  Check it before changing lyrics, processing, the song file format or access behaviour.
+
+## Language
+
+Use English for source code, comments, configuration, commit messages,
+issues and repository documentation. The owner may discuss things in
+Vietnamese.
+
+## Working rules
+
+- Docs are the source of truth. An issue links to the relevant section; it
+  does not copy it. If a change alters agreed behaviour, update the doc in the
+  same change. When a change makes any statement in the docs false, including
+  summaries such as the README status, the roadmap or the concepts table, fix
+  it in the same change. See
+  [docs/delivery.md](docs/delivery.md#keeping-the-docs-current).
+- Keep the [decisions](docs/decisions.md) status words exact: **Agreed**
+  means agreed, and **Proposed** means still open. Never present a proposal as
+  agreed.
+- Each issue is one behaviour and fits in a single agent session. Aim for 2–5
+  acceptance criteria that a test or command can verify. More than five is a
+  signal to check whether the issue holds more than one behaviour. If it does,
+  split it. If every criterion checks the same behaviour, more are fine. A plan
+  is not revised only to cut the number of criteria. Split anything larger than
+  one session before starting. Its text names the concepts it touches, because
+  NexKit chooses the issue's [profile](docs/delivery.md#profiles) from the
+  issue text alone.
+- Build in vertical slices. Every milestone ends with something that runs
+  end to end and is covered by an automated test.
+- Every behaviour change needs a test. Use known-answer vectors for the song
+  file format and crypto. Use Playwright for web journeys. Test denied access
+  as well as allowed access.
+- Supplied lyrics are kept exactly. No code may change, normalise for
+  storage, recognise or correct lyric text (D5).
+- Logic that both clients need lives in the Rust core, never in a client.
+  Content keys and private keys never reach UI state, logs or error messages.
+- Never claim the protection is DRM or stops copying. See
+  [what the protection does not do](docs/domain/knowledge.md#what-the-protection-does-not-do).
+- Never commit secrets, tokens, model weights, source media, song files made
+  from real media, local logs or machine snapshots.
+
+## Working through NexKit
+
+- All work goes through NexKit, as described in
+  [docs/delivery.md](docs/delivery.md). The exception is changes in paths
+  NexKit may not change: those are hand-made pull requests.
+- NexKit merges its pull request once the checks pass and the AI review
+  approves, while its `merge.auto` setting is on. With it off, only the owner
+  merges.
+
+Writing on GitHub, for issues, plans, pull request descriptions and reviews:
+
+- Lead with the point. Use short sentences and one idea per bullet.
+- Say what changes in behaviour, and why, before naming types or files.
+- Put decisions and risks the owner must judge in their own short section.
+- Keep implementation detail out of the main text, or in a `<details>` block.
+
+## Commands
+
+The check scripts are written in M0 (see the [roadmap](docs/roadmap.md#m0--foundation)).
+Each script will also be a NexKit check and a CI step.
