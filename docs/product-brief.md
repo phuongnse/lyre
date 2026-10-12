@@ -43,8 +43,8 @@ songs at the same time.
 
 ## Out of scope for now
 
-- Commercial use and distribution of songs to the public. Some models Lyre
-  can use have non-commercial licences, see
+- Commercial use and distribution of songs to the public. Not every model
+  licence is settled yet, for example for the separation weights, see
   [knowledge](domain/knowledge.md#models-and-licences).
 - Recognising lyrics from the audio. Lyre always needs the owner's lyrics.
 - Revoking a share once it is given (D9).
