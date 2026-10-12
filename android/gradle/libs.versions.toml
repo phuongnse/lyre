@@ -1,0 +1,26 @@
+# Every Android version is pinned here. The scripts read compileSdk, ndk and ktlint from this file.
+[versions]
+agp = "9.4.1"
+kotlin = "2.4.21"
+composeBom = "2026.09.00"
+activityCompose = "1.13.0"
+jna = "5.19.1"
+junit = "4.13.2"
+# Compose 1.12 needs API 37. The SDK package for it is "platforms;android-37.0".
+compileSdk = "37"
+# A provisional value. The lowest supported Android version is still open in D10.
+minSdk = "26"
+# The NDK that the ubuntu-24.04 runner image already has.
+ndk = "27.3.13750724"
+ktlint = "1.8.0"
+
+[libraries]
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+junit = { module = "junit:junit", version.ref = "junit" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

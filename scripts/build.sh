@@ -25,6 +25,30 @@ if [[ -f web/package.json ]]; then
   built=1
 fi
 
+if [[ -f android/settings.gradle.kts ]]; then
+  export PATH="$HOME/.cargo/bin:$PATH"
+  export ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}"
+  ndk=$(sed -nE 's/^ndk = "([^"]+)"/\1/p' android/gradle/libs.versions.toml)
+  export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$ndk"
+  # The generated files are not committed: they are always rebuilt from the core.
+  # The core block above built the host liblyre_ffi.so that the bindings are read from.
+  (
+    cd core
+    cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build -p lyre-ffi --release --locked
+    cargo run -p lyre-ffi --features cli --bin uniffi-bindgen --locked -- \
+      generate --library target/debug/liblyre_ffi.so --language kotlin --no-format \
+      --out-dir ../android/app/src/main/java
+  )
+  (cd android && ./gradlew --console=plain assembleDebug)
+  # Read the whole listing first: grep -q would close the pipe early and fail the pipeline.
+  apk_files=$(unzip -l android/app/build/outputs/apk/debug/app-debug.apk)
+  if ! grep -q 'lib/arm64-v8a/liblyre_ffi.so' <<<"$apk_files"; then
+    echo "liblyre_ffi.so is missing from the APK." >&2
+    exit 1
+  fi
+  built=1
+fi
+
 if [[ "$built" == 0 ]]; then
   echo "Nothing to build yet."
 fi

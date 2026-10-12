@@ -18,4 +18,13 @@ if [[ -f web/package.json ]]; then
   (cd web && npm test)
 fi
 
+if [[ -f android/settings.gradle.kts ]]; then
+  if [[ ! -f android/app/src/main/java/uniffi/lyre_ffi/lyre_ffi.kt || ! -f core/target/debug/liblyre_ffi.so ]]; then
+    echo "The Kotlin bindings or the host core library are missing: run scripts/build.sh first." >&2
+    exit 1
+  fi
+  export ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}"
+  (cd android && ./gradlew --console=plain testDebugUnitTest)
+fi
+
 node --test scripts/*.test.mjs
