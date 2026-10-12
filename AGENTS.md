@@ -79,7 +79,10 @@ Run from the repository root. Each script is also a NexKit check and a CI step.
 
 A script runs the checks of the parts of the repository that exist and skips
 the parts not built yet (D14). An issue that creates a part adds that part's
-steps to the scripts and its commands to this table.
+steps to the scripts and its commands to this table. The caches of what its
+setup downloads come in a hand-made pull request, because NexKit may not
+change their files (see
+[delivery.md](docs/delivery.md#decisions)).
 
 On a NexKit pull request, `NEXKIT_BASE_SHA` is set, and the scripts also skip
 the parts that the changed paths cannot affect. A part that runs still builds

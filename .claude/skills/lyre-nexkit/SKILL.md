@@ -7,8 +7,8 @@ description: Runbook for the local agent session that drives NexKit for the Lyre
 
 The rules, the roles and the life of an issue are in
 [docs/delivery.md](../../../docs/delivery.md). Read it first. This file holds
-only the practical parts: where values live, the `gh` commands, two review
-checklists and what to do when something fails.
+only the practical parts: where values live, the `gh` commands, the review
+checklists, upgrading NexKit and what to do when something fails.
 
 You post every command yourself. Post `/nexkit go` only on the latest plan,
 after the check below that it holds every agreed change, and only when you
@@ -44,7 +44,7 @@ change with a NexKit release or a settings change.
   default, from its configuration doc at the pinned ref.
 
   ```bash
-  jq '{protected_paths, fix, merge, conflicts, usage_limit, close_parent_issues, notify}' .nexkit/config.json
+  python3 -c "import json; c = json.load(open('.nexkit/config.json')); print(json.dumps({k: c.get(k) for k in ['protected_paths', 'fix', 'merge', 'conflicts', 'usage_limit', 'close_parent_issues', 'notify']}, indent=2))"
   ```
 
 - **Profiles, their `when` texts and models:** `.nexkit/config.json`. A
@@ -53,7 +53,17 @@ change with a NexKit release or a settings change.
   [delivery.md](../../../docs/delivery.md#profiles).
 
   ```bash
-  jq '{default_profile, triage: .stages.triage, profiles}' .nexkit/config.json
+  python3 -c "import json; c = json.load(open('.nexkit/config.json')); print(json.dumps({'default_profile': c.get('default_profile'), 'triage': c.get('stages', {}).get('triage'), 'profiles': c.get('profiles')}, indent=2))"
+  ```
+
+- **Caches:** the `cache` entries in `.nexkit/config.json`, which NexKit
+  restores before setup, and the `actions/cache` steps in
+  `.github/workflows/ci.yml`, which save them on `main`. Each entry and its
+  step list the same paths and key files in the same order. The rule is in
+  [delivery.md](../../../docs/delivery.md#decisions).
+
+  ```bash
+  python3 -c "import json; print(json.dumps(json.load(open('.nexkit/config.json')).get('cache', []), indent=2))"
   ```
 
 - **Required checks on `main`:** the active rules for the branch.
@@ -173,6 +183,8 @@ returns 404, upgrade `gh` and try again.
   [concepts.md](../../../docs/domain/concepts.md) lists for the new
   milestone. Each risky concept must fall under `hard` by its consequence.
 - Check whether newer models make a profile's models out of date.
+- Check that the caches cover what the milestone's parts download in setup,
+  such as a new lock file or toolchain.
 - Propose any change to the owner as a hand-made pull request.
 
 ## Checklist: reviewing a pull request
@@ -182,9 +194,33 @@ returns 404, upgrade `gh` and try again.
 - Tests cover the change, including denied access where it applies, and lyrics kept byte for byte.
 - The required checks on `main` are green.
 - No edits in paths NexKit may not change, unless the pull request is hand-made.
+- When the change adds a lock file, a toolchain or another download to setup,
+  or moves a cache's key file, propose a hand-made pull request that updates
+  the cache entry and its CI step together.
 - While `merge.auto` is on, NexKit has merged by the time you look: review the
   merged pull request the same way, and raise problems with the owner. While it
   is off, NexKit mentions the owner when a pull request is ready.
+
+## Upgrading NexKit
+
+Do this when the owner says a new NexKit release is out, or asks to upgrade.
+An upgrade is a hand-made pull request, because it changes `.github/` and
+`.nexkit/`.
+
+1. Read the `CHANGELOG.md` entries between the pinned `nexkit_ref` and the new
+   tag. Note each **Upgrade:** step, each renamed key and each new setting.
+2. Compare `nexkit/templates/workflow.yml` at both tags. Apply the template's
+   changes to `.github/workflows/nexkit.yml`, then move both refs in it.
+3. For each new setting, decide whether Lyre should use it, and say why in the
+   pull request. Settings that need a matching change elsewhere, such as
+   caches and their CI steps, change together.
+4. Run `nexkit doctor` at the new tag, from a clone as for `status`. Every line
+   must pass.
+5. Update [delivery.md](../../../docs/delivery.md) and this file when the
+   release changes how work flows, and run `node scripts/check-links.mjs`.
+6. Open the pull request from a branch whose name does not start with
+   NexKit's branch prefix, so CI runs on it. The owner merges it with the
+   admin bypass after CI passes.
 
 ## When something fails
 
@@ -200,6 +236,7 @@ returns 404, upgrade `gh` and try again.
 | The review job errored | Comment `/nexkit review` to retry. |
 | The review requested changes | NexKit runs automatic fix rounds up to the configured limit. After that, ask the owner and post `/nexkit fix <instructions>`. |
 | NexKit's automatic merge was refused (`merge_refused`) | A conflict starts a conflict round by itself. Otherwise the round's comment says why, usually a rule on `main`. NexKit has mentioned the owner; tell them what you found. |
+| The *Restore caches* step misses an entry after CI on `main` saved it | Compare the entry in `.nexkit/config.json` with its CI step: name, paths and key files, in the same order. Check that the save ran on `main`, on `ubuntu-24.04`, and that its step comes before setup. Fix both files in a hand-made pull request. A miss never fails a round. |
 | CI on `main` fails after a merge | If the failure looks flaky, run it once more with `gh run rerun <id> --failed`. Otherwise tell the owner and open a bug issue with the failure and the run link, in the current milestone, and plan it before other issues. |
 
 For the mechanics behind each failure, read NexKit's troubleshooting doc at the

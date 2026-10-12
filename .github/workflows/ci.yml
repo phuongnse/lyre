@@ -25,6 +25,34 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      # NexKit only restores these caches; this workflow saves them when it runs on main.
+      # Each step must match its entry in .nexkit/config.json exactly: the paths and the key
+      # files in the same order. It runs before setup, so the key files are hashed as committed.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: nexkit-${{ runner.os }}-gradle-${{ hashFiles('android/gradle/libs.versions.toml', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: nexkit-${{ runner.os }}-gradle-
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: nexkit-${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.lock') }}
+          restore-keys: nexkit-${{ runner.os }}-cargo-
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: nexkit-${{ runner.os }}-npm-${{ hashFiles('web/package-lock.json', 'tests/e2e/package-lock.json') }}
+          restore-keys: nexkit-${{ runner.os }}-npm-
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: nexkit-${{ runner.os }}-playwright-${{ hashFiles('tests/e2e/package-lock.json') }}
+          restore-keys: nexkit-${{ runner.os }}-playwright-
       - name: Setup
         run: scripts/setup.sh
       - name: Build
