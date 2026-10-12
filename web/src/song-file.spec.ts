@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { initSync } from './lyre-wasm/lyre_wasm.js'
 import { ByteSource, ChunkRef, openSongFile, SongFileError, SongFileProblem } from './song-file'
@@ -100,6 +100,25 @@ test('the core lays out the example and refuses a wrong width count', async () =
   expect(song.layOut([10], 2, 100)).toEqual([])
   song.close()
   expect(song.layOut([10, 10], 2, 100)).toEqual([])
+})
+
+// scripts/test.sh builds the fixture song here with lyre-cli, because song files are never committed.
+function fixtureSong(): Uint8Array<ArrayBuffer> {
+  const url = new URL('../../artifacts/test/fixture.lyre', import.meta.url)
+  if (!existsSync(url)) {
+    throw new Error('artifacts/test/fixture.lyre is missing: run scripts/test.sh, which builds it.')
+  }
+  return new Uint8Array(readFileSync(url))
+}
+
+test('the rows of the fixture song follow the latest layout', async () => {
+  const song = await openSongFile(new Blob([fixtureSong()]))
+  expect(song.lyricsRows(1000)).toEqual({ top: undefined, bottom: undefined })
+  expect(song.layOut(Array(9).fill(10), 2, 1000)).toHaveLength(3)
+  expect(song.lyricsRows(1000)).toEqual({ top: 0, bottom: 1 })
+  expect(song.lyricsRows(5000)).toEqual({ top: 2, bottom: undefined })
+  song.close()
+  expect(song.lyricsRows(1000)).toEqual({ top: undefined, bottom: undefined })
 })
 
 test('the sweep position follows the example timing', async () => {

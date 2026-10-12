@@ -11,3 +11,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 lyre-core.workspace = true
 wasm-bindgen.workspace = true
+
+[dev-dependencies]
+lyre-cli = { path = "../lyre-cli" }

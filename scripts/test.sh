@@ -18,6 +18,9 @@ if [[ -f web/package.json ]] && checks web; then
     echo "web/src/lyre-wasm is missing: run scripts/build.sh first." >&2
     exit 1
   fi
+  # The web tests open the fixture song, which lyre-cli builds into artifacts/test/, because song files are never committed.
+  export PATH="$HOME/.cargo/bin:$PATH"
+  (cd core && cargo run --locked -q -p lyre-cli -- build ../tests/fixtures/song/song.toml ../artifacts/test/fixture.lyre)
   (cd web && npm test)
 fi
 

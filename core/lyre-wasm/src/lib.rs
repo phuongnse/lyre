@@ -1,9 +1,10 @@
 //! WebAssembly bindings of the Lyre core, for the web client.
 
 use lyre_core::countdown;
-use lyre_core::display_lines::{self, MeasuredSyllable};
+use lyre_core::display_lines::{self, DisplayLine, MeasuredSyllable};
 use lyre_core::highlight;
 use lyre_core::lyrics::Lyrics;
+use lyre_core::lyrics_rows;
 use lyre_core::song_file::{
     self, Chunk, ChunkType, Header, Index, IndexEntry, SongDetails, SongFileError, Timing,
 };
@@ -162,6 +163,16 @@ pub struct DisplayLineSpan {
     pub end: u32,
 }
 
+/// The display lines the two rows of the Lyrics area show. Each is a
+/// position in the list [`SongReader::lay_out`] returned, or nothing for an
+/// empty row.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LyricsRows {
+    pub top: Option<u32>,
+    pub bottom: Option<u32>,
+}
+
 /// Reads a song file the way the format's reading model says: the header,
 /// then the index with the file size, then one chunk at a time. The client
 /// passes the bytes. The reader never needs the whole file.
@@ -173,6 +184,9 @@ pub struct SongReader {
     details: Option<SongDetails>,
     lyrics: Option<Lyrics>,
     timing: Option<Timing>,
+    /// The display lines of the latest layout. Empty if there is none, or
+    /// the core refused it.
+    display_lines: Vec<DisplayLine>,
 }
 
 #[wasm_bindgen]
@@ -203,6 +217,7 @@ impl SongReader {
             details: None,
             lyrics: None,
             timing: None,
+            display_lines: Vec::new(),
         })
     }
 
@@ -269,13 +284,15 @@ impl SongReader {
     /// It returns no display lines while the lyrics or the timing are not
     /// read, and when the core refuses the layout: a width count that does
     /// not match the syllables, or a width that is negative or not finite.
+    /// The layout is kept for [`SongReader::lyrics_rows`].
     #[wasm_bindgen(js_name = layOut)]
     pub fn lay_out(
-        &self,
+        &mut self,
         widths: &[f64],
         space_width: f64,
         max_width: f64,
     ) -> Vec<DisplayLineSpan> {
+        self.display_lines.clear();
         let (Some(lyrics), Some(timing)) = (&self.lyrics, &self.timing) else {
             return Vec::new();
         };
@@ -295,6 +312,7 @@ impl SongReader {
         else {
             return Vec::new();
         };
+        self.display_lines = display_lines;
         // The index of each lyric line's first syllable.
         let mut first = Vec::with_capacity(lyrics.lines().len());
         let mut count = 0;
@@ -302,7 +320,7 @@ impl SongReader {
             first.push(count);
             count += line.syllables().len();
         }
-        display_lines
+        self.display_lines
             .iter()
             .map(|line| {
                 let offset = first[line.lyric_line];
@@ -352,6 +370,33 @@ impl SongReader {
         countdown::dots_changed(&countdown::countdowns(lyrics, timing.syllables()), ms)
     }
 
+    /// The display lines the top and the bottom row of the Lyrics area show
+    /// at media time `ms`, for the latest layout. Both rows are empty while
+    /// the lyrics and the timing are not both read, and when there is no
+    /// layout.
+    #[wasm_bindgen(js_name = lyricsRows)]
+    pub fn lyrics_rows(&self, ms: f64) -> LyricsRows {
+        let (Some(lyrics), Some(timing)) = (&self.lyrics, &self.timing) else {
+            return LyricsRows {
+                top: None,
+                bottom: None,
+            };
+        };
+        let countdowns = countdown::countdowns(lyrics, timing.syllables());
+        let rows = lyrics_rows::rows(
+            lyrics,
+            timing.syllables(),
+            &countdowns,
+            &self.display_lines,
+            ms,
+        );
+        // At most 65,536 display lines, so every index fits.
+        LyricsRows {
+            top: rows.top.map(|row| row as u32),
+            bottom: rows.bottom.map(|row| row as u32),
+        }
+    }
+
     /// Checks the `bytes` of the chunk at `position` in the index. Returns
     /// the bytes of a media chunk, and nothing for any other chunk. Once the
     /// lyrics and the timing are both read, it checks one against the other.
@@ -381,6 +426,8 @@ impl SongReader {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     const FORMAT_DOC: &str = include_str!("../../../docs/reference/song-file-format-v0.md");
@@ -517,7 +564,7 @@ mod tests {
 
     #[test]
     fn lays_out_the_known_answer_example() {
-        let (reader, _) = read_all(&example()).expect("the example is valid");
+        let (mut reader, _) = read_all(&example()).expect("the example is valid");
         assert_eq!(
             reader.lay_out(&[10.0, 10.0], 2.0, 100.0),
             vec![DisplayLineSpan {
@@ -530,7 +577,7 @@ mod tests {
 
     #[test]
     fn a_layout_the_core_refuses_has_no_display_lines() {
-        let (reader, _) = read_all(&example()).expect("the example is valid");
+        let (mut reader, _) = read_all(&example()).expect("the example is valid");
         assert_eq!(reader.lay_out(&[10.0], 2.0, 100.0), vec![]);
         assert_eq!(reader.lay_out(&[10.0, 10.0, 10.0], 2.0, 100.0), vec![]);
         assert_eq!(reader.lay_out(&[10.0, -1.0], 2.0, 100.0), vec![]);
@@ -554,12 +601,52 @@ mod tests {
     #[test]
     fn has_no_syllables_layout_sweep_or_countdown_before_the_lyrics_and_timing_are_read() {
         let file = example();
-        let reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
+        let mut reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
         assert_eq!(reader.syllables(), vec![]);
         assert_eq!(reader.lay_out(&[10.0, 10.0], 2.0, 100.0), vec![]);
         assert_eq!(reader.sweep_position(250.0), 0.0);
         assert_eq!(reader.countdown_lines(), vec![]);
         assert_eq!(reader.dots_changed(1_000.0), 0);
+        assert_eq!(
+            reader.lyrics_rows(1_000.0),
+            LyricsRows {
+                top: None,
+                bottom: None
+            }
+        );
+    }
+
+    #[test]
+    fn gives_the_rows_of_the_fixture_song_for_the_latest_layout() {
+        let manifest = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/song/song.toml"
+        ));
+        let file = lyre_cli::build(manifest).expect("the fixture song builds");
+        let (mut reader, _) = read_all(&file).expect("the fixture song is valid");
+        let none = LyricsRows {
+            top: None,
+            bottom: None,
+        };
+        assert_eq!(reader.lyrics_rows(1_000.0), none);
+        assert_eq!(reader.lay_out(&[10.0; 9], 2.0, 1_000.0).len(), 3);
+        assert_eq!(
+            reader.lyrics_rows(1_000.0),
+            LyricsRows {
+                top: Some(0),
+                bottom: Some(1)
+            }
+        );
+        assert_eq!(
+            reader.lyrics_rows(5_000.0),
+            LyricsRows {
+                top: Some(2),
+                bottom: None
+            }
+        );
+        // A refused layout leaves no display lines.
+        assert_eq!(reader.lay_out(&[10.0], 2.0, 1_000.0), vec![]);
+        assert_eq!(reader.lyrics_rows(1_000.0), none);
     }
 
     #[test]
