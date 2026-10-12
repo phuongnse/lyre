@@ -27,4 +27,8 @@ if [[ -f web/package.json ]]; then
   )
 fi
 
+if [[ -f tests/e2e/package.json ]]; then
+  (cd tests/e2e && npm run typecheck)
+fi
+
 node scripts/check-links.mjs
