@@ -126,9 +126,10 @@ keys or media could leak.
   lyric layout and timing logic are written once in Rust. The web client uses
   it compiled to WebAssembly. The Android app uses it as a native library
   through UniFFI.
-- **Web:** TypeScript, React and Vite. Media plays through Media Source
-  Extensions and WebCodecs. Models run in ONNX Runtime Web on WebGPU, with a
-  WebAssembly fallback.
+- **Web:** TypeScript, with the UI stack set by
+  [D19](#d19-web-client-on-angular-both-clients-on-material-3--agreed). Media
+  plays through Media Source Extensions and WebCodecs. Models run in ONNX
+  Runtime Web on WebGPU, with a WebAssembly fallback.
 - **Android:** Kotlin, Jetpack Compose and Media3 (ExoPlayer). Models run in
   ONNX Runtime for Android, on the GPU or NPU where the device has one.
 - **Models:** ONNX models with pinned versions and SHA-256 hashes, downloaded
@@ -141,8 +142,8 @@ platform's native media and UI stack for performance.
 Open points, each settled by a later decision:
 
 - the vocal separation and alignment models: settled by
-  [D15](#d15-models-for-separation-and-alignment--agreed), confirmed by the
-  M2 measurements;
+  [D15](#d15-models-for-separation-and-alignment--agreed) and
+  [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed), confirmed by the M2 measurements;
 - the lowest Android version and the browsers Lyre supports.
 
 ## D11. Delivery workflow — Agreed
@@ -201,6 +202,8 @@ else can be built and verified through it, issue by issue.
 
 ## D15. Models for separation and alignment — Agreed
 
+Partly replaced by [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
+
 The owner delegated this choice.
 
 - **Separation:** Demucs v4 `htdemucs`, one model (not `htdemucs_ft`), as an
@@ -211,10 +214,9 @@ The owner delegated this choice.
   365 MB. Code and models are under Apache-2.0. Lyre does forced alignment of
   the supplied syllables over the CTC output. It never transcribes (D5).
   Audio is aligned in windows under 40 s.
-- **Not used:** every Vietnamese wav2vec2 fine-tune, including
-  `nguyenvulebinh/lyric-alignment`, and MMS, because their weights are
-  CC-BY-NC-4.0. RoFormer separators, because they are heavy and their licences
-  are unclear or non-commercial.
+- **Not used:** RoFormer separators, because they are heavy and some licences
+  are unclear. The point that CC-BY-NC-4.0 models are not used is replaced by
+  [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
 - **Fallbacks if an M2 measurement fails:** UVR MDX-Net Inst HQ 4 for
   separation, once its licence is confirmed in writing. Whisper base
   multilingual (MIT) with forced decoding for alignment on weak devices.
@@ -259,3 +261,100 @@ wrong mapping can let a breaking change pass the pull request checks. CI on
 
 *Why:* the split depends on the width of the screen, which differs between
 the device that makes a song and the device that plays it.
+
+## D18. Vietnamese word boundaries from a word list — Agreed
+
+The owner chose this approach. It settles how the display line layout in M1
+avoids splitting a Vietnamese word (see
+[knowledge](domain/knowledge.md#lyrics)).
+
+- **Approach:** the core rules out a display line split between two
+  syllables when any listed multi-syllable word covers both. When listed
+  words overlap, every split they cover is ruled out, so the core never
+  chooses between readings.
+- **Soft rules:** two short lists written for Lyre. One holds linking words a
+  display line should not end on ("và", "của", "những", "một"). The other
+  holds trailing modifiers it should not start with ("xưa", "này", "ấy").
+  These rules are weaker than the word rule: a split may break them, but
+  never splits a listed word.
+- **Data source:** the Vietnamese entries of English Wiktionary, as extracted
+  by Wiktextract and published on kaikki.org. Only entries of two or more
+  syllables are kept. The dump is pinned by date and SHA-256 hash. A small
+  list written for Lyre adds words Wiktionary lacks.
+- **Licence:** the Wiktionary list is under CC BY-SA 4.0. It is kept as a
+  separate data file with its own CC BY-SA 4.0 notice. The code's licence
+  (MIT) does not cover it. Both clients show its attribution. The lists
+  written for Lyre are part of the code.
+- **Matching only:** lookup builds a key from the syllables in lowercase and
+  Unicode NFC, and folds old and new tone placement ("hoà" and "hòa"). The
+  lyric text itself is never changed (D5).
+- **Size:** an estimated 20,000–40,000 entries, about 150–300 KB of the
+  WebAssembly module when stored compactly. The limit is 500 KB added to the
+  uncompressed module. The issue that builds the list measures it. If it goes
+  over the limit, a newer decision replaces this one.
+- **Same everywhere:** the list is compiled into `lyre-core`, so the web and
+  Android clients use the same data. It needs no network.
+- **Not used:** the `underthesea` and VnCoreNLP segmenters, because their
+  code is GPL-3.0 and their models are trained on the VLSP 2013 corpus, which
+  allows research use only. pyvi, because its code is MIT but it does not
+  state its training data. Word lists from Hồ Ngọc Đức's dictionary, because
+  their copies state no clear licence. A list written only for Lyre as the
+  sole source, because it would hold too few words.
+
+*Why:* joining two words by mistake only removes a split choice, while
+splitting a word reads badly. A word list errs the safe way, needs no model,
+stays small and has a clear licence.
+
+## D19. Web client on Angular, both clients on Material 3 — Agreed
+
+Replaces the web UI stack of D10, which named React and Vite.
+
+- **Web:** TypeScript, Angular and Angular Material.
+- **Both clients use Material 3.** Angular Material on the web, Compose
+  Material 3 on Android.
+- **One set of design tokens** for colour scheme, typography and shape,
+  generated from one seed colour.
+- **Android's dynamic colour is off,** so Lyre has the same colours on both
+  clients.
+- **Strings:** every UI string lives in one typed runtime catalogue, not in
+  Angular's built-in i18n. One build then serves every language.
+- **Check pages:** lazy-loaded routes, so their code stays out of the main
+  app's initial load.
+
+[UI conventions](ui-conventions.md) says how this is applied.
+
+*Why:* Angular Material is the maintained, official Material 3 for the web.
+Material Web is in maintenance mode, and MUI still implements Material 2
+components.
+
+Open point: the seed colour, which the owner picks before the Angular rebuild
+is planned.
+
+## D20. Non-commercial models are allowed, and M2 compares two aligners — Agreed
+
+Replaces the CC-BY-NC part of the "Not used" point of
+[D15](#d15-models-for-separation-and-alignment--agreed), and adds a second
+aligner.
+
+- **Non-commercial licences are allowed.** Lyre is non-commercial
+  ([product brief](product-brief.md#out-of-scope-for-now)). A CC-BY-NC-4.0
+  model may be used, with the attribution its licence requires.
+- **Commercial use needs them replaced.** Every non-commercial model must be
+  replaced first.
+- **Unclear is still not permission.** This covers an unclear licence and one
+  that grants nothing for the weights.
+- **Two aligners are compared:** Meta Omnilingual ASR CTC-300M (D15) and
+  `nguyenvulebinh/lyric-alignment`, a wav2vec2 model built for Vietnamese
+  lyric alignment. Its model card states CC-BY-NC-4.0. Both do only forced
+  alignment of the supplied syllables. Neither transcribes (D5).
+- **The choice:** among the aligners that run on the target devices, the one
+  with the lower syllable onset error is chosen. The results are recorded in
+  the docs.
+- **The measurement page is built at the start of M2.** It needs the ONNX
+  files, their download and hash check, and alignment, which M2 builds anyway.
+  M1 keeps only the passkey check page.
+- **Separation stays** Demucs v4 `htdemucs`, as in D15.
+
+*Why:* `lyric-alignment` is trained on sung Vietnamese lyrics and may time
+syllables better. The non-commercial limit costs nothing while commercial use
+is out of scope.

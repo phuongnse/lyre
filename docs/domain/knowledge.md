@@ -27,10 +27,14 @@ being followed blindly.
   lines and whitespace, separately from the timing derived from it. Compare
   and hash the exact bytes. A lyric correction creates a new version of the
   song's lyrics; the owner's original file is never edited.
-- **Input limits.** UTF-8, one sung phrase per non-empty line, a bounded size
-  (for example 1 MB), at least one word with letters, no NUL
-  characters. A leading byte-order mark is kept in the stored bytes and
-  skipped when lyric lines are read.
+- **Input limits.** UTF-8, at most 1 MiB (1,048,576 bytes) as supplied, at
+  least one word with letters, no NUL characters. A leading byte-order mark
+  is kept with the bytes and skipped when reading lines and syllables.
+- **Lines and syllables.** LF, CRLF or a lone CR ends a line. Each line that
+  holds a syllable is a lyric line, one sung phrase. Blank and
+  whitespace-only lines stay in the bytes but are not lyric lines. Any
+  Unicode whitespace character, such as a tab or a no-break space, separates
+  syllables, and a run of whitespace never makes an empty syllable.
 - **Pair lyrics by exact name.** A lyrics file belongs to a source only when
   both have exactly the same name stem: `Song.mp4` and `Song.txt`. Lyrics for
   a whole source are never assigned to a section cut from it, because the
@@ -45,8 +49,10 @@ being followed blindly.
   syllables ("kỷ niệm", "nụ cười"). A display split inside one reads badly. A
   split should also avoid ending a line on a linking word ("và", "của",
   "những", "một") or starting one with a trailing modifier ("xưa", "này",
-  "ấy"). The `underthesea` word segmenter with a curated list does this in
-  Python. Lyre needs an equivalent that runs on the device.
+  "ấy"). The core finds word boundaries with a Wiktionary list of
+  multi-syllable words, plus short lists written for Lyre for linking words
+  and trailing modifiers. See
+  [D18](../decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed).
 
 ## Processing
 
@@ -67,7 +73,7 @@ What was learned:
 
 - **Alignment and role classification are the heaviest stages,** then
   separation. On a phone or in a browser they set what Lyre can do, so the
-  M2 measurements confirm the models chosen in D15.
+  M2 measurements choose the aligner and confirm the separator (D15, D20).
 - **Check separation by sum.** Vocals plus karaoke track should add back up to
   the original, without clipping and at plausible levels. A large difference
   means a broken run.
@@ -122,6 +128,18 @@ What was learned:
   slower than native code, and a browser tab has limited memory. Long songs
   are processed in chunks. An operation WebGPU cannot run falls back to the
   CPU, which is much slower.
+- **GitHub Pages sets no HTTP headers.** The web client is a static site on
+  GitHub Pages ([D9](../decisions.md#d9-lyre-has-no-server--agreed)), which
+  lets a site set none of its own headers. So its Content Security Policy is
+  a `<meta>` tag *(planned for M1)*, placed first in `<head>`, because it
+  covers only what comes after it. A `<meta>` policy cannot carry
+  `frame-ancestors`, `sandbox`, `report-uri` or `report-to`. Another site can
+  therefore frame the page, and policy violations are not reported.
+- **The page is not cross-origin isolated.** Without the COOP and COEP
+  headers, the page has no `SharedArrayBuffer`. The WebAssembly fallback of
+  ONNX Runtime Web then runs on one thread, much slower than WebGPU. The
+  [model measurement page](../roadmap.md#early-checks-on-real-devices)
+  measures that case *(planned for M2)*.
 - **Phones get hot.** Long processing on Android slows down as the device
   heats up. Processing runs as a foreground task the user can see and cancel.
 - **The browser may clear storage.** Songs, models and tasks kept by a web
@@ -130,24 +148,29 @@ What was learned:
 
 ## Models and licences
 
-[D15](../decisions.md#d15-models-for-separation-and-alignment--agreed) chose
-the models for separation and alignment:
+[D15](../decisions.md#d15-models-for-separation-and-alignment--agreed) and
+[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) chose the models for separation and alignment:
 
 | Purpose | Model | Status | Licence |
 | --- | --- | --- | --- |
 | Separation | Demucs v4 `htdemucs` (fp16 ONNX, about 81 MB) | chosen (D15) | code MIT, no separate grant stated for the weights |
-| Alignment | Meta Omnilingual ASR CTC-300M (int8 ONNX, about 365 MB) | chosen (D15) | Apache-2.0 for code and models |
+| Alignment | Meta Omnilingual ASR CTC-300M (int8 ONNX, about 365 MB) | candidate (D20) | Apache-2.0 for code and models |
 | Separation | UVR MDX-Net Inst HQ 4 | fallback | not yet confirmed in writing |
 | Alignment on weak devices | Whisper base multilingual with forced decoding | fallback | MIT |
-| Alignment | Vietnamese wav2vec2 fine-tunes, `nguyenvulebinh/lyric-alignment` and MMS | not used | CC-BY-NC-4.0 |
-| Separation | RoFormer separators | not used | unclear or non-commercial |
+| Alignment | `nguyenvulebinh/lyric-alignment` (wav2vec2, Vietnamese lyrics) | candidate (D20) | CC-BY-NC-4.0 |
+| Alignment | other Vietnamese wav2vec2 fine-tunes and MMS | not a candidate | CC-BY-NC-4.0 |
+| Separation | RoFormer separators | not used (heavy) | unclear for some |
 
+- **Non-commercial licences are allowed while Lyre is non-commercial.** A
+  CC-BY-NC-4.0 model may be used with the attribution its licence requires.
+  Commercial use would need every such model replaced first (D20).
 - **"Not stated" is not permission.** A model without a clear licence must
-  have one before Lyre distributes it or downloads it for other people. This
+  have one before Lyre distributes it or downloads it for other people. A
+  licence that grants nothing for the weights is not permission either. This
   applies to the Demucs weights, where the repository states no separate
   grant.
 - Every model needs an ONNX export that runs in ONNX Runtime Web and ONNX
-  Runtime for Android. M2 confirms that the D15 models run fast enough there.
+  Runtime for Android. M2 measures whether the separator and both candidate aligners run fast enough there.
 - The models for vocal roles and for the leftover check are chosen when M8 is
   broken down.
 

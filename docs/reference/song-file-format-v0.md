@@ -185,7 +185,7 @@ exactly these rules:
   syllables, the same as `str::split_whitespace`.
 - **Lyric lines.** A lyric line is a line with at least one syllable. Blank
   and whitespace-only lines stay in the stored bytes but are not lyric lines,
-  as in [one sung phrase per non-empty line](../domain/knowledge.md#lyrics).
+  as in [design knowledge](../domain/knowledge.md#lyrics).
 - **Timing order.** The timing lists the syllables of every lyric line in
   order, from the first lyric line to the last.
 

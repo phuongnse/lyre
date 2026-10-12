@@ -33,7 +33,7 @@
 | --- | --- | --- | --- |
 | **M0** | Foundation | Done | The core, the web client and the Android app build; CI runs build, lint, unit and Playwright E2E for real; NexKit is installed with those checks. |
 | **M1** | Karaoke playback | Next | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
-| **M2** | Making songs on the device | Planned | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. Measurements on real devices confirm the models chosen in D15. |
+| **M2** | Making songs on the device | Planned | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page compares the two aligners of D20 on real devices and confirms the separator. |
 | **M3** | Devices, encryption and sharing | Planned | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
 | **M4** | Android | Planned | The Android app plays, makes and shares songs like the web client, with its device key in Android Keystore. Songs move between web and Android both ways. |
 | **M5** | Library and queue | Planned | Library, queue in order or shuffled, search by title, artist, composer and lyrics that ignores Vietnamese diacritics, thumbnails, lyric corrections. |
@@ -66,7 +66,7 @@ in `AGENTS.md`.
 1. Create the Rust workspace in `core/` with `lyre-core` exposing one trivial
    function, for example the core's version, plus `lyre-wasm` and `lyre-ffi`
    bindings for it. Rustfmt and Clippy with warnings as errors.
-2. Create `web/` with Vite, React and TypeScript, oxlint, Prettier and Vitest.
+2. Create `web/` with TypeScript, oxlint, Prettier and Vitest.
    The page shows the core's version through WebAssembly.
 3. Add a Playwright project in `tests/e2e` that serves the built web client
    and checks that the page shows the core's version.
@@ -89,38 +89,47 @@ Outline, broken into issues when M0 is nearly done:
 3. Song file version 0 in the core: write and read, with bounds; `lyre-cli`
    builds one from a source, lyrics and a timing file.
 4. Display line layout in the core: splits at punctuation, pauses and width,
-   never inside a Vietnamese word.
-5. Web Player: open a song file and play the video with the karaoke track.
-6. Web Player: lyrics highlighted syllable by syllable, in sync with playback.
-7. Web Player: switch between Karaoke and Original without losing position.
-8. A small library: the songs opened on this device, with their details.
-9. A model measurement page (see [early checks](#early-checks-on-real-devices)).
+   never inside a Vietnamese word
+   ([D18](decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed)).
+5. Rebuild the web client on Angular and Angular Material, with the Material 3
+   theme, the string catalogue and the page showing the core's version (D19,
+   [UI conventions](ui-conventions.md)).
+6. Web Player: open a song file and play the video with the karaoke track.
+7. Web Player: lyrics highlighted syllable by syllable, in sync with playback.
+8. Web Player: switch between Karaoke and Original without losing position.
+9. A small library: the songs opened on this device, with their details.
 10. A passkey check page (see [early checks](#early-checks-on-real-devices)).
-
-Open point: how Vietnamese word boundaries are found on the device, which
-item 4 needs (see [knowledge](domain/knowledge.md#lyrics)).
 
 ## Early checks on real devices
 
-- Two checks are built as NexKit issues in M1. The owner runs them on real
-  devices, because the CI runners have no GPU, passkeys or phones.
-- The model measurement page runs the D15 models in the browser on WebGPU and
-  WASM. It reports time, peak memory and syllable onset error against a few
+- The owner runs both checks on real devices, because the CI runners have no
+  GPU, passkeys or phones.
+- The passkey check page is built in M1. It reports whether a device-bound
+  passkey with the PRF extension works in each target browser and OS (D8). Its
+  results are recorded in the docs before M3 is broken down.
+- The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
+  It runs the D15 separator and both candidate aligners, Omnilingual and
+  `lyric-alignment`, on WebGPU and on the one-thread WebAssembly fallback
+  (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
+  reports time, peak memory and syllable onset error against a few
   hand-timed Vietnamese songs.
-- The passkey check page reports whether a device-bound passkey with the PRF
-  extension works in each target browser and OS (D8).
-- Their results are recorded in the docs before M2 and M3 are broken down.
+- Its results choose the aligner. They are recorded in the docs before the
+  later M2 work relies on that choice.
 
 ## Later milestones
 
 Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
-- **M2:** confirm the D15 models with the measurement results. A newer
-  decision replaces D15 if a model misses its target.
+- **M2:** the measurement page comes first. It compares Omnilingual and
+  `lyric-alignment`. The aligner with the lower syllable onset error, among
+  those that run on the target devices, is chosen
+  ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)). A newer decision replaces D15 if the separator
+  misses its target.
 - **M3:** the passkey check results (D8); the reference doc for the encrypted
   format, access files and recovery, reviewed before implementation.
 - **M4:** split in two when broken down: Android playback and device keys
   first, then making songs on Android; the lowest Android version, and
   emulator tests in CI.
-- **M9:** licences for every model that is downloaded for other people.
+- **M9:** licences for every model that is downloaded for other people, and
+  the attribution D18 needs in both clients.

@@ -22,6 +22,7 @@ milestone delivers and its status.
 | [Decisions](docs/decisions.md) | Decisions agreed or proposed, with reasons |
 | [Architecture](docs/architecture.md) | The core, the clients, the song file, devices and access, testing |
 | [Song file format v0](docs/reference/song-file-format-v0.md) | The byte layout of development song files |
+| [UI conventions](docs/ui-conventions.md) | How both clients build their UI: Material 3 tokens, strings, accessibility, the Player |
 | [Concepts](docs/domain/concepts.md) | The Lyre vocabulary |
 | [Design knowledge](docs/domain/knowledge.md) | What makes a good karaoke song and the pitfalls to avoid |
 | [Roadmap](docs/roadmap.md) | Milestones, what each delivers and its status |
@@ -31,8 +32,9 @@ Contributors and agents start with [AGENTS.md](AGENTS.md).
 
 ## Technology
 
-See [D10](docs/decisions.md#d10-technology-stack--agreed):
+See [D10](docs/decisions.md#d10-technology-stack--agreed) and
+[D19](docs/decisions.md#d19-web-client-on-angular-both-clients-on-material-3--agreed):
 
 - Shared core: Rust, compiled to WebAssembly and to a native Android library.
-- Web: TypeScript, React, Vite, ONNX Runtime Web on WebGPU.
+- Web: TypeScript, Angular, Angular Material, ONNX Runtime Web on WebGPU.
 - Android: Kotlin, Jetpack Compose, Media3, ONNX Runtime for Android.

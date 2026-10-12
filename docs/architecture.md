@@ -10,7 +10,7 @@ Dn are in [decisions.md](decisions.md).
 ```mermaid
 flowchart LR
     subgraph Web["Web client (browser)"]
-        WebUI[React UI] --> WasmCore[Lyre core, WebAssembly]
+        WebUI[Angular UI] --> WasmCore[Lyre core, WebAssembly]
         WebUI --> OrtWeb[ONNX Runtime Web, WebGPU]
         WasmCore --> Passkey[Device-bound passkey, PRF]
     end
@@ -30,7 +30,10 @@ flowchart LR
   codes, lyric parsing, display line layout and timing. Both clients call it;
   neither has its own copy of this logic.
 - **The web client** is a static site (D9). Its UI, media playback and model
-  runs are in TypeScript. It calls the core compiled to WebAssembly.
+  runs are in TypeScript. The UI is Angular with Angular Material (D19)
+  *(planned for M1)*, built by the rules in
+  [UI conventions](ui-conventions.md). It calls the core compiled to
+  WebAssembly.
 - **The Android app** is native Kotlin. Its UI, media playback and model runs
   use the Android stack. It calls the core as a native library through
   UniFFI.
@@ -48,7 +51,7 @@ core/                 Rust workspace
   lyre-wasm/          WebAssembly bindings for the web client
   lyre-ffi/           UniFFI bindings for the Android app
   lyre-cli/           developer tool: build and inspect song files, used by tests
-web/                  web client: TypeScript, React, Vite
+web/                  web client: TypeScript, Angular, Angular Material
 android/              Android app: Kotlin, Jetpack Compose, Media3
 tests/
   e2e/                Playwright journeys against the built web client
@@ -58,7 +61,7 @@ scripts/              one script per check, shared by CI and NexKit
 
 Folders are created when the first issue needs them. M0 created `core/` with
 `lyre-core`, `lyre-wasm` and `lyre-ffi`, plus `web/`, `android/`, `tests/e2e`
-and `scripts/`.
+and `scripts/`. M1 rebuilds `web/` on Angular *(planned for M1)*.
 
 ## Core rules
 
@@ -71,9 +74,16 @@ and `scripts/`.
 - **Bounded input.** Every parser in the core has explicit size and count
   limits and rejects input beyond them. Song files come from other people, so
   every byte is untrusted until authenticated.
-- **Secrets stay out of the UI.** Content keys and private keys are handled
-  only inside the core and the platform key store. They never reach React
-  state, Compose state, logs or error messages.
+- **Lyrics are untrusted text.** Lyrics come from other people's song
+  files. Both clients render them as text, never as HTML or other markup.
+  The web client also turns on Trusted Types and sets a Content Security
+  Policy *(planned for M1)*. How it sets that policy without HTTP headers is
+  in [knowledge](domain/knowledge.md#running-on-the-users-device).
+- **Content keys and private keys never reach JavaScript or Kotlin.** They
+  are handled only inside the core and the platform key store. The core's
+  API never returns one to a client. It returns an opaque handle that the
+  client cannot read *(planned for M3)*. They never reach web UI state,
+  Compose state, logs or error messages.
 
 ## Song file *(planned for M1, encrypted from M3)*
 
@@ -104,6 +114,11 @@ The byte layout, limits and media codecs are specified in
   - Web: a device-bound passkey with the PRF extension. The PRF output,
     available only after the user unlocks the device, derives the device's
     key pair inside the core for the session.
+    - The browser hands the PRF output to JavaScript. This is the
+      only time a secret passes through JavaScript. The client passes it
+      straight to the core, then overwrites the buffer with zeros. It never
+      keeps the output in state, storage or logs. Clearing is best effort,
+      because the JavaScript engine may keep copies.
 - **Device code.** The device's public key, encoded as text and a QR code,
   with a short fingerprint for checking it by voice or by eye.
 - **Wrapping.** A song's content key is wrapped for a device with HPKE
