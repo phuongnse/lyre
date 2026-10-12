@@ -10,7 +10,7 @@ Dn are in [decisions.md](decisions.md).
 ```mermaid
 flowchart LR
     subgraph Web["Web client (browser)"]
-        WebUI[React UI] --> WasmCore[Lyre core, WebAssembly]
+        WebUI[Angular UI] --> WasmCore[Lyre core, WebAssembly]
         WebUI --> OrtWeb[ONNX Runtime Web, WebGPU]
         WasmCore --> Passkey[Device-bound passkey, PRF]
     end
@@ -30,7 +30,10 @@ flowchart LR
   codes, lyric parsing, display line layout and timing. Both clients call it;
   neither has its own copy of this logic.
 - **The web client** is a static site (D9). Its UI, media playback and model
-  runs are in TypeScript. It calls the core compiled to WebAssembly.
+  runs are in TypeScript. The UI is Angular with Angular Material (D19)
+  *(planned for M1)*, built by the rules in
+  [UI conventions](ui-conventions.md). It calls the core compiled to
+  WebAssembly.
 - **The Android app** is native Kotlin. Its UI, media playback and model runs
   use the Android stack. It calls the core as a native library through
   UniFFI.
@@ -48,7 +51,7 @@ core/                 Rust workspace
   lyre-wasm/          WebAssembly bindings for the web client
   lyre-ffi/           UniFFI bindings for the Android app
   lyre-cli/           developer tool: build and inspect song files, used by tests
-web/                  web client: TypeScript, React, Vite
+web/                  web client: TypeScript, Angular, Angular Material
 android/              Android app: Kotlin, Jetpack Compose, Media3
 tests/
   e2e/                Playwright journeys against the built web client
@@ -58,7 +61,7 @@ scripts/              one script per check, shared by CI and NexKit
 
 Folders are created when the first issue needs them. M0 created `core/` with
 `lyre-core`, `lyre-wasm` and `lyre-ffi`, plus `web/`, `android/`, `tests/e2e`
-and `scripts/`.
+and `scripts/`. M1 rebuilds `web/` on Angular *(planned for M1)*.
 
 ## Core rules
 
@@ -72,7 +75,7 @@ and `scripts/`.
   limits and rejects input beyond them. Song files come from other people, so
   every byte is untrusted until authenticated.
 - **Secrets stay out of the UI.** Content keys and private keys are handled
-  only inside the core and the platform key store. They never reach React
+  only inside the core and the platform key store. They never reach web UI
   state, Compose state, logs or error messages.
 
 ## Song file *(planned for M1, encrypted from M3)*

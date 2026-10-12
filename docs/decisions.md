@@ -126,9 +126,10 @@ keys or media could leak.
   lyric layout and timing logic are written once in Rust. The web client uses
   it compiled to WebAssembly. The Android app uses it as a native library
   through UniFFI.
-- **Web:** TypeScript, React and Vite. Media plays through Media Source
-  Extensions and WebCodecs. Models run in ONNX Runtime Web on WebGPU, with a
-  WebAssembly fallback.
+- **Web:** TypeScript, with the UI stack set by
+  [D19](#d19-web-client-on-angular-both-clients-on-material-3--agreed). Media
+  plays through Media Source Extensions and WebCodecs. Models run in ONNX
+  Runtime Web on WebGPU, with a WebAssembly fallback.
 - **Android:** Kotlin, Jetpack Compose and Media3 (ExoPlayer). Models run in
   ONNX Runtime for Android, on the GPU or NPU where the device has one.
 - **Models:** ONNX models with pinned versions and SHA-256 hashes, downloaded
@@ -248,3 +249,28 @@ Narrows D14.
 of it set up and built the Android app. Most work changes only one part. A
 wrong mapping can let a breaking change pass the pull request checks. CI on
 `main` runs everything and catches it after the merge.
+
+## D19. Web client on Angular, both clients on Material 3 — Agreed
+
+Replaces the web UI stack of D10, which named React and Vite.
+
+- **Web:** TypeScript, Angular and Angular Material.
+- **Both clients use Material 3.** Angular Material on the web, Compose
+  Material 3 on Android.
+- **One set of design tokens** for colour scheme, typography and shape,
+  generated from one seed colour.
+- **Android's dynamic colour is off,** so Lyre has the same colours on both
+  clients.
+- **Strings:** every UI string lives in one typed runtime catalogue, not in
+  Angular's built-in i18n. One build then serves every language.
+- **Check pages:** lazy-loaded routes, so their code stays out of the main
+  app's initial load.
+
+[UI conventions](ui-conventions.md) says how this is applied.
+
+*Why:* Angular Material is the maintained, official Material 3 for the web.
+Material Web is in maintenance mode, and MUI still implements Material 2
+components.
+
+Open point: the seed colour, which the owner picks before the Angular rebuild
+is planned.
