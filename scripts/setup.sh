@@ -13,4 +13,13 @@ if [[ -f core/Cargo.toml ]]; then
   export PATH="$HOME/.cargo/bin:$PATH"
   # rustup reads core/rust-toolchain.toml: toolchain, components and targets.
   (cd core && rustup toolchain install && cargo --version)
+  # The command-line tool must match the wasm-bindgen crate version exactly.
+  wbg_version=$(sed -nE 's/^wasm-bindgen = "=([^"]+)"/\1/p' core/Cargo.toml)
+  if [[ "$(wasm-bindgen --version 2>/dev/null)" != "wasm-bindgen $wbg_version" ]]; then
+    (cd core && cargo install wasm-bindgen-cli --version "$wbg_version" --locked)
+  fi
+fi
+
+if [[ -f web/package.json ]]; then
+  (cd web && npm ci)
 fi

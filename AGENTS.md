@@ -71,10 +71,10 @@ Run from the repository root. Each script is also a NexKit check and a CI step.
 
 | Script | What it does |
 | --- | --- |
-| `scripts/setup.sh` | Installs what the checks need, including the Rust toolchain pinned in `core/rust-toolchain.toml` with rustfmt, Clippy and the WebAssembly target. Safe to run repeatedly. |
-| `scripts/build.sh` | Builds every part that exists: the core workspace, and `lyre-wasm` for `wasm32-unknown-unknown` |
-| `scripts/lint.sh` | Linters and format checks for every part that exists (`cargo fmt --check` and Clippy with warnings as errors for the core), and the Markdown link and anchor check |
-| `scripts/test.sh` | Unit tests for every part that exists (`cargo test` for the core workspace), and the tests of the scripts |
+| `scripts/setup.sh` | Installs what the checks need, including the Rust toolchain pinned in `core/rust-toolchain.toml` with rustfmt, Clippy and the WebAssembly target, `wasm-bindgen-cli` at the version the core pins, and the web client's packages with `npm ci`. Safe to run repeatedly. |
+| `scripts/build.sh` | Builds every part that exists: the core workspace, `lyre-wasm` for `wasm32-unknown-unknown`, the `lyre-wasm` JavaScript package in `web/src/lyre-wasm`, and the web client with `vite build`. Run it before `scripts/lint.sh` and `scripts/test.sh`, which need the generated package. |
+| `scripts/lint.sh` | Linters and format checks for every part that exists (`cargo fmt --check` and Clippy with warnings as errors for the core; oxlint, the Prettier check and `tsc --noEmit` for `web/`), and the Markdown link and anchor check |
+| `scripts/test.sh` | Unit tests for every part that exists (`cargo test` for the core workspace, Vitest for `web/`), and the tests of the scripts |
 | `scripts/e2e.sh` | Playwright journeys against the built web client, once `tests/e2e` exists |
 
 A script runs the checks of the parts of the repository that exist and skips
