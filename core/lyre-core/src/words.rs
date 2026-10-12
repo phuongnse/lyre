@@ -216,10 +216,14 @@ struct Entry {
     syllables: usize,
 }
 
-/// The entries of a list file: one per line, blank lines ignored.
+/// The entries of a list file: one per line. Blank lines and comment lines,
+/// which start with `#`, are ignored.
 fn entries(data: &str) -> Vec<Entry> {
     data.lines()
-        .filter(|line| !line.trim().is_empty())
+        .filter(|line| {
+            let line = line.trim();
+            !line.is_empty() && !line.starts_with('#')
+        })
         .map(|line| {
             let keys: Vec<String> = line.split_whitespace().map(syllable_key).collect();
             Entry {
@@ -232,6 +236,8 @@ fn entries(data: &str) -> Vec<Entry> {
 
 #[cfg(test)]
 mod tests {
+    use unicode_normalization::is_nfc;
+
     use super::*;
 
     /// The gaps of `line`, split on spaces, that lie inside a word.
@@ -345,11 +351,75 @@ mod tests {
     }
 
     #[test]
-    fn linking_and_trailing_entries_have_one_syllable() {
+    fn linking_and_trailing_entries_are_clean_single_syllables() {
         for data in [LINKING_WORDS, TRAILING_MODIFIERS] {
-            for entry in entries(data) {
-                assert_eq!(entry.syllables, 1, "{:?}", entry.key);
+            for line in data.lines().filter(|line| !line.starts_with('#')) {
+                if line.is_empty() {
+                    continue;
+                }
+                assert_eq!(line.split_whitespace().count(), 1, "{line:?}");
+                assert!(is_nfc(line), "{line:?} is not NFC");
+                assert_eq!(line, line.to_lowercase(), "{line:?} is not lowercase");
+                assert_eq!(line, line.trim(), "{line:?} has outer spaces");
             }
+        }
+    }
+
+    #[test]
+    fn linking_and_trailing_lists_do_not_overlap() {
+        let keys = |data| -> HashSet<String> {
+            entries(data).into_iter().map(|entry| entry.key).collect()
+        };
+        let shared: Vec<String> = keys(LINKING_WORDS)
+            .intersection(&keys(TRAILING_MODIFIERS))
+            .cloned()
+            .collect();
+        assert!(shared.is_empty(), "in both lists: {shared:?}");
+    }
+
+    #[test]
+    fn entries_skip_comments_and_blank_lines() {
+        let found = entries("# header\n\n# Kind\nvà\n  # indented\n");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].key, syllable_key("và"));
+    }
+
+    /// For each word, whether it is a linking word and whether it is a
+    /// trailing modifier.
+    fn kinds(words: &[&str]) -> Vec<(bool, bool)> {
+        let found = LineWords::find(words);
+        (0..words.len())
+            .map(|i| (found.is_linking_word(i), found.is_trailing_modifier(i)))
+            .collect()
+    }
+
+    #[test]
+    fn lists_cover_the_common_linking_words() {
+        let words = [
+            "và", "của", "những", "một", "với", "cho", "mà", "thì", "là", "các", "để", "khi",
+            "nếu", "như", "vì", "nhưng", "hay", "hoặc", "trong", "trên", "từ", "đến", "về", "ở",
+            "mỗi", "chiếc",
+        ];
+        for (word, kind) in words.iter().zip(kinds(&words)) {
+            assert_eq!(kind, (true, false), "{word}");
+        }
+    }
+
+    #[test]
+    fn lists_cover_the_common_trailing_modifiers() {
+        let words = [
+            "xưa", "này", "ấy", "kia", "đó", "nọ", "rồi", "thôi", "nhé", "nhỉ", "nữa", "mãi",
+            "hoài", "kìa", "chăng",
+        ];
+        for (word, kind) in words.iter().zip(kinds(&words)) {
+            assert_eq!(kind, (false, true), "{word}");
+        }
+    }
+
+    #[test]
+    fn content_words_are_in_neither_list() {
+        for kind in kinds(&["em", "yêu", "con"]) {
+            assert_eq!(kind, (false, false));
         }
     }
 
