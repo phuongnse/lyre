@@ -28,8 +28,8 @@ type State =
 type AudioTrackChoice = 'karaoke' | 'original'
 
 // The Player: opens a song file, or a song from the library, and plays its
-// video with the karaoke track or the original track, with its lyrics under the
-// video. A song file that opens is kept in the library.
+// video with the karaoke track or the original track, with its lyrics over the
+// bottom of the video. A song file that opens is kept in the library.
 @Component({
   selector: 'lyre-player',
   imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, LibraryList, Lyrics],
@@ -51,14 +51,16 @@ type AudioTrackChoice = 'karaoke' | 'original'
         </p>
       }
       @case ('ready') {
-        <video
-          #video
-          [attr.aria-label]="messages.songVideo"
-          (play)="playing.set(true)"
-          (pause)="playing.set(false)"
-          (ended)="playing.set(false)"
-        ></video>
-        <lyre-lyrics [song]="current.song" [video]="video" />
+        <div class="stage">
+          <video
+            #video
+            [attr.aria-label]="messages.songVideo"
+            (play)="playing.set(true)"
+            (pause)="playing.set(false)"
+            (ended)="playing.set(false)"
+          ></video>
+          <lyre-lyrics [song]="current.song" [video]="video" />
+        </div>
         <button matButton="tonal" type="button" (click)="togglePlay()">
           {{ playing() ? messages.pause : messages.play }}
         </button>
@@ -77,9 +79,18 @@ type AudioTrackChoice = 'karaoke' | 'original'
     :host {
       display: block;
     }
+    .stage {
+      position: relative;
+    }
     video {
       display: block;
       width: 100%;
+    }
+    lyre-lyrics {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
     }
   `,
 })

@@ -15,6 +15,12 @@ import {
 import { LyricsRows, OpenedSong } from '../song-file'
 import { messages } from './messages'
 
+// The lyric font size for a video `height` CSS pixels tall:
+// docs/ui-conventions.md#lyrics-area.
+export function lyricFontSize(height: number): number {
+  return Math.max(height / 14, 16)
+}
+
 // One syllable as shown in a display line. `separator` is the exact text before
 // it in the lyrics, or empty at the start of a display line. `start` is where it
 // starts in its display line, in CSS pixels.
@@ -92,6 +98,10 @@ interface ShownLine {
     section {
       position: relative;
       font: var(--mat-sys-headline-small);
+      /* The font size is set from the video's height, so the line height and the
+         gap below the rows follow it. */
+      line-height: 1.25;
+      padding-bottom: 0.25em;
     }
     .measure {
       position: absolute;
@@ -182,8 +192,9 @@ export class Lyrics {
   private readonly dotsMeasure = viewChild.required<ElementRef<HTMLElement>>('dotsMeasure')
   private readonly syllables = viewChildren<ElementRef<HTMLElement>>('syllable')
   private readonly countdowns = viewChildren<ElementRef<HTMLElement>>('countdown')
-  // The width of the lyrics area, once it is drawn.
-  private readonly width = signal<number | undefined>(undefined)
+  // The width of the lyrics area and the lyric font size in CSS pixels, once they
+  // are measured.
+  private readonly size = signal<{ width: number; fontSize: number } | undefined>(undefined)
   // Counts the layouts asked for, so only the latest one is shown.
   private layouts = 0
   // Each syllable's start in its display line and its width, in lyric order.
@@ -202,17 +213,17 @@ export class Lyrics {
   constructor() {
     effect(() => {
       const song = this.song()
-      const width = this.width()
-      if (width !== undefined) void this.layOut(song, width)
+      const size = this.size()
+      if (size) void this.layOut(song, size.width)
     })
     let frame = 0
     let observer: ResizeObserver | undefined
     afterNextRender(() => {
-      const section = this.section().nativeElement
-      this.width.set(section.clientWidth)
-      // Lays the lines out again when the area's width changes.
-      observer = new ResizeObserver(() => this.width.set(section.clientWidth))
-      observer.observe(section)
+      this.measureSize()
+      // Lays the lines out again when the area's width or the video's size changes.
+      observer = new ResizeObserver(() => this.measureSize())
+      observer.observe(this.section().nativeElement)
+      observer.observe(this.video())
       const draw = () => {
         frame = requestAnimationFrame(draw)
         this.draw()
@@ -223,6 +234,18 @@ export class Lyrics {
       cancelAnimationFrame(frame)
       observer?.disconnect()
     })
+  }
+
+  // Sets the lyric font size from the video's displayed height, and measures the
+  // area's width with it. It writes the signal only when either changed.
+  private measureSize(): void {
+    const section = this.section().nativeElement
+    const fontSize = lyricFontSize(this.video().clientHeight)
+    // Set on the element itself, so the measuring that follows sees the new size.
+    section.style.fontSize = `${fontSize}px`
+    const width = section.clientWidth
+    const current = this.size()
+    if (current?.width !== width || current.fontSize !== fontSize) this.size.set({ width, fontSize })
   }
 
   // Measures every syllable, a space and the countdown dots, and has the core lay
