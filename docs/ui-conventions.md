@@ -173,6 +173,9 @@ Compose uses the same three values *(planned for M4)*.
 - Each step takes 0.5 s. The fourth step ends as the line's first syllable
   starts.
 - When the gap is shorter than 2 s, the four steps share it evenly.
+- Each dot changes all at once when its step ends.
+- The core works out which lyric lines have dots and how many have changed, so
+  both clients agree.
 
 ## Check pages
 

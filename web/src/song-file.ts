@@ -84,6 +84,12 @@ export interface OpenedSong {
   // How far the highlight has swept at media time `ms`: the syllables already
   // sung, plus the fraction of the one being sung. It is 0 once closed.
   sweepPosition(ms: number): number
+  // The lyric lines that have countdown dots, in order.
+  countdownLines: number[]
+  // The total number of countdown dots changed at media time `ms`, across every
+  // countdown. Countdown k, counting from 0, shows clamp(total - 4k, 0, 4) dots
+  // changed. It is 0 once closed.
+  dotsChanged(ms: number): number
   // Reads one media chunk and returns its bytes as the core gives them back.
   read(chunk: ChunkRef): Promise<Uint8Array<ArrayBuffer>>
   // Frees the core's reader. Reading after this fails.
@@ -158,6 +164,10 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
       },
       sweepPosition(ms) {
         return closed ? 0 : reader.sweepPosition(ms)
+      },
+      countdownLines: Array.from(reader.countdownLines()),
+      dotsChanged(ms) {
+        return closed ? 0 : reader.dotsChanged(ms)
       },
       async read(chunk) {
         const bytes = await readRange(source, chunk.offset, chunk.offset + chunk.length)

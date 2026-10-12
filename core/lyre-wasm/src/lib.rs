@@ -1,5 +1,6 @@
 //! WebAssembly bindings of the Lyre core, for the web client.
 
+use lyre_core::countdown;
 use lyre_core::display_lines::{self, MeasuredSyllable};
 use lyre_core::highlight;
 use lyre_core::lyrics::Lyrics;
@@ -325,6 +326,32 @@ impl SongReader {
         })
     }
 
+    /// The lyric lines that have countdown dots, in order. It is empty while
+    /// the lyrics and the timing are not both read.
+    #[wasm_bindgen(js_name = countdownLines)]
+    pub fn countdown_lines(&self) -> Vec<u32> {
+        let (Some(lyrics), Some(timing)) = (&self.lyrics, &self.timing) else {
+            return Vec::new();
+        };
+        countdown::countdowns(lyrics, timing.syllables())
+            .iter()
+            // At most 65,536 syllables, so every index fits.
+            .map(|countdown| countdown.lyric_line as u32)
+            .collect()
+    }
+
+    /// The total number of countdown dots changed at media time `ms`, across
+    /// every countdown. Countdown `k`, counting from 0, shows
+    /// `clamp(total - 4k, 0, 4)` dots changed. It is 0 while the lyrics and
+    /// the timing are not both read.
+    #[wasm_bindgen(js_name = dotsChanged)]
+    pub fn dots_changed(&self, ms: f64) -> u32 {
+        let (Some(lyrics), Some(timing)) = (&self.lyrics, &self.timing) else {
+            return 0;
+        };
+        countdown::dots_changed(&countdown::countdowns(lyrics, timing.syllables()), ms)
+    }
+
     /// Checks the `bytes` of the chunk at `position` in the index. Returns
     /// the bytes of a media chunk, and nothing for any other chunk. Once the
     /// lyrics and the timing are both read, it checks one against the other.
@@ -518,12 +545,21 @@ mod tests {
     }
 
     #[test]
-    fn has_no_syllables_layout_or_sweep_before_the_lyrics_and_timing_are_read() {
+    fn counts_down_to_the_first_line_of_the_known_answer_example() {
+        let (reader, _) = read_all(&example()).expect("the example is valid");
+        assert_eq!(reader.countdown_lines(), vec![0]);
+        assert_eq!(reader.dots_changed(0.0), 4);
+    }
+
+    #[test]
+    fn has_no_syllables_layout_sweep_or_countdown_before_the_lyrics_and_timing_are_read() {
         let file = example();
         let reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
         assert_eq!(reader.syllables(), vec![]);
         assert_eq!(reader.lay_out(&[10.0, 10.0], 2.0, 100.0), vec![]);
         assert_eq!(reader.sweep_position(250.0), 0.0);
+        assert_eq!(reader.countdown_lines(), vec![]);
+        assert_eq!(reader.dots_changed(1_000.0), 0);
     }
 
     #[test]
