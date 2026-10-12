@@ -27,9 +27,14 @@ being followed blindly.
   lines and whitespace, separately from the timing derived from it. Compare
   and hash the exact bytes. A lyric correction creates a new version of the
   song's lyrics; the owner's original file is never edited.
-- **Input limits.** UTF-8, one sung phrase per non-empty line, a bounded size
-  (for example 1 MB), at least one word with letters, no NUL
-  characters. A leading byte-order mark is tolerated and dropped.
+- **Input limits.** UTF-8, at most 1 MiB (1,048,576 bytes) as supplied, at
+  least one word with letters, no NUL characters. A leading byte-order mark
+  is kept with the bytes and skipped when reading lines and syllables.
+- **Lines and syllables.** LF, CRLF or a lone CR ends a line. Each line that
+  holds a syllable is a lyric line, one sung phrase. Blank and
+  whitespace-only lines stay in the bytes but are not lyric lines. Any
+  Unicode whitespace character, such as a tab or a no-break space, separates
+  syllables, and a run of whitespace never makes an empty syllable.
 - **Pair lyrics by exact name.** A lyrics file belongs to a source only when
   both have exactly the same name stem: `Song.mp4` and `Song.txt`. Lyrics for
   a whole source are never assigned to a section cut from it, because the
