@@ -21,6 +21,7 @@ milestone delivers and its status.
 | [Product brief](docs/product-brief.md) | What Lyre is, who uses it, the first journey |
 | [Decisions](docs/decisions.md) | Decisions agreed or proposed, with reasons |
 | [Architecture](docs/architecture.md) | The core, the clients, the song file, devices and access, testing |
+| [Song file format v0](docs/reference/song-file-format-v0.md) | The byte layout of development song files |
 | [UI conventions](docs/ui-conventions.md) | How both clients build their UI: Material 3 tokens, strings, accessibility, the Player |
 | [Concepts](docs/domain/concepts.md) | The Lyre vocabulary |
 | [Design knowledge](docs/domain/knowledge.md) | What makes a good karaoke song and the pitfalls to avoid |
