@@ -19,4 +19,5 @@ export const messages = {
   audioTrack: 'Track',
   karaoke: 'Karaoke',
   original: 'Original',
+  lyrics: 'Lyrics',
 } as const

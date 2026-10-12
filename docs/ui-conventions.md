@@ -77,6 +77,10 @@ M4.
   the play position carry on. The original track is read only once the singer
   switches to it. A file the core refuses shows one plain message, "not a song
   file" or "damaged or incomplete", and nothing plays.
+- The web Player lists every display line of the lyrics in a Lyrics area
+  under the video. The core lays them out from the widths the client
+  measures, when the song opens and when the area's width changes. The
+  syllable being sung carries `aria-current`. Between lines, none does.
 - On the web, a `requestAnimationFrame` loop reads the media time. It sets a
   CSS variable, the sweep progress, on the active display line. It never
   causes a re-render or a signal update per frame.

@@ -44,9 +44,17 @@ async function chooseFileIn(
   return fixture
 }
 
-// A song that opens but plays nothing. jsdom has no Media Source Extensions and
-// no media playback, so the Player gets stand-ins that do nothing.
+// A song that opens but plays nothing. jsdom has no Media Source Extensions,
+// no media playback and no ResizeObserver, so the Player gets stand-ins that do
+// nothing.
 function openedSong(): OpenedSong {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  )
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined)
   vi.stubGlobal('MediaSource', class extends EventTarget {})
@@ -60,6 +68,9 @@ function openedSong(): OpenedSong {
     durationMs: 1000,
     karaoke: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
     original: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
+    lyrics: [],
+    layOut: () => [],
+    sweepPosition: () => 0,
     read: () => Promise.reject(new Error('not read in these tests')),
     close: () => undefined,
   }

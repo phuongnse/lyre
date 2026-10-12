@@ -1,5 +1,7 @@
 //! WebAssembly bindings of the Lyre core, for the web client.
 
+use lyre_core::display_lines::{self, MeasuredSyllable};
+use lyre_core::highlight;
 use lyre_core::lyrics::Lyrics;
 use lyre_core::song_file::{
     self, Chunk, ChunkType, Header, Index, IndexEntry, SongDetails, SongFileError, Timing,
@@ -128,6 +130,37 @@ impl From<&SongDetails> for Details {
     }
 }
 
+/// One syllable of the lyrics, with its timing. The text is exactly as the
+/// lyrics store it (D5).
+#[wasm_bindgen]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LyricSyllable {
+    #[wasm_bindgen(getter_with_clone)]
+    pub text: String,
+    /// The exact text between the previous syllable of the same lyric line
+    /// and this one. It is empty for a lyric line's first syllable.
+    #[wasm_bindgen(getter_with_clone)]
+    pub separator: String,
+    /// The index of the syllable's lyric line.
+    #[wasm_bindgen(js_name = lyricLine)]
+    pub lyric_line: u32,
+    #[wasm_bindgen(js_name = startMs)]
+    pub start_ms: u32,
+    #[wasm_bindgen(js_name = endMs)]
+    pub end_ms: u32,
+}
+
+/// A display line: the syllables `start..end` of one lyric line. The
+/// indices count every syllable of the lyrics, in order.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DisplayLineSpan {
+    #[wasm_bindgen(js_name = lyricLine)]
+    pub lyric_line: u32,
+    pub start: u32,
+    pub end: u32,
+}
+
 /// Reads a song file the way the format's reading model says: the header,
 /// then the index with the file size, then one chunk at a time. The client
 /// passes the bytes. The reader never needs the whole file.
@@ -195,6 +228,101 @@ impl SongReader {
     /// The index entries, in the order the chunks are stored.
     pub fn entries(&self) -> Vec<ChunkEntry> {
         self.entries.clone()
+    }
+
+    /// Every syllable of the lyrics, in lyric order, with its timing. It is
+    /// empty until the lyrics and the timing are both read.
+    pub fn syllables(&self) -> Vec<LyricSyllable> {
+        let (Some(lyrics), Some(timing)) = (&self.lyrics, &self.timing) else {
+            return Vec::new();
+        };
+        let text = lyrics.as_str();
+        let mut times = timing.syllables().iter();
+        let mut syllables = Vec::new();
+        for (index, line) in lyrics.lines().iter().enumerate() {
+            let mut previous_end = None;
+            for syllable in line.syllables() {
+                let Some(time) = times.next() else {
+                    return syllables;
+                };
+                let range = syllable.range();
+                let separator = previous_end.map_or("", |end| &text[end..range.start]);
+                previous_end = Some(range.end);
+                syllables.push(LyricSyllable {
+                    text: text[range].to_owned(),
+                    separator: separator.to_owned(),
+                    // At most 65,536 syllables, so every index fits.
+                    lyric_line: index as u32,
+                    start_ms: time.start_ms,
+                    end_ms: time.end_ms,
+                });
+            }
+        }
+        syllables
+    }
+
+    /// Lays out the lyrics as display lines that fit `max_width`. `widths`
+    /// holds the measured width of every syllable, in lyric order, and
+    /// `space_width` the width of the space between two syllables.
+    ///
+    /// It returns no display lines while the lyrics or the timing are not
+    /// read, and when the core refuses the layout: a width count that does
+    /// not match the syllables, or a width that is negative or not finite.
+    #[wasm_bindgen(js_name = layOut)]
+    pub fn lay_out(
+        &self,
+        widths: &[f64],
+        space_width: f64,
+        max_width: f64,
+    ) -> Vec<DisplayLineSpan> {
+        let (Some(lyrics), Some(timing)) = (&self.lyrics, &self.timing) else {
+            return Vec::new();
+        };
+        if widths.len() != timing.syllables().len() {
+            return Vec::new();
+        }
+        let measured: Vec<MeasuredSyllable> = widths
+            .iter()
+            .zip(timing.syllables())
+            .map(|(&width, time)| MeasuredSyllable {
+                width,
+                start_ms: time.start_ms,
+                end_ms: time.end_ms,
+            })
+            .collect();
+        let Ok(display_lines) = display_lines::lay_out(lyrics, &measured, space_width, max_width)
+        else {
+            return Vec::new();
+        };
+        // The index of each lyric line's first syllable.
+        let mut first = Vec::with_capacity(lyrics.lines().len());
+        let mut count = 0;
+        for line in lyrics.lines() {
+            first.push(count);
+            count += line.syllables().len();
+        }
+        display_lines
+            .iter()
+            .map(|line| {
+                let offset = first[line.lyric_line];
+                // At most 65,536 syllables, so every index fits.
+                DisplayLineSpan {
+                    lyric_line: line.lyric_line as u32,
+                    start: (offset + line.syllables.start) as u32,
+                    end: (offset + line.syllables.end) as u32,
+                }
+            })
+            .collect()
+    }
+
+    /// How far the highlight has swept at media time `ms`: the syllables
+    /// already sung, plus the fraction of the one being sung. It is 0 while
+    /// the timing is not read.
+    #[wasm_bindgen(js_name = sweepPosition)]
+    pub fn sweep_position(&self, ms: f64) -> f64 {
+        self.timing.as_ref().map_or(0.0, |timing| {
+            highlight::sweep_position(timing.syllables(), ms)
+        })
     }
 
     /// Checks the `bytes` of the chunk at `position` in the index. Returns
@@ -334,6 +462,68 @@ mod tests {
         let file = example();
         let reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
         assert_eq!(reader.details(), None);
+    }
+
+    #[test]
+    fn gives_the_known_answer_example_syllables_with_their_separators() {
+        let (reader, _) = read_all(&example()).expect("the example is valid");
+        assert_eq!(
+            reader.syllables(),
+            vec![
+                LyricSyllable {
+                    text: "Mưa".to_owned(),
+                    separator: String::new(),
+                    lyric_line: 0,
+                    start_ms: 0,
+                    end_ms: 500,
+                },
+                LyricSyllable {
+                    text: "rơi".to_owned(),
+                    separator: " ".to_owned(),
+                    lyric_line: 0,
+                    start_ms: 500,
+                    end_ms: 1_000,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn lays_out_the_known_answer_example() {
+        let (reader, _) = read_all(&example()).expect("the example is valid");
+        assert_eq!(
+            reader.lay_out(&[10.0, 10.0], 2.0, 100.0),
+            vec![DisplayLineSpan {
+                lyric_line: 0,
+                start: 0,
+                end: 2,
+            }]
+        );
+    }
+
+    #[test]
+    fn a_layout_the_core_refuses_has_no_display_lines() {
+        let (reader, _) = read_all(&example()).expect("the example is valid");
+        assert_eq!(reader.lay_out(&[10.0], 2.0, 100.0), vec![]);
+        assert_eq!(reader.lay_out(&[10.0, 10.0, 10.0], 2.0, 100.0), vec![]);
+        assert_eq!(reader.lay_out(&[10.0, -1.0], 2.0, 100.0), vec![]);
+    }
+
+    #[test]
+    fn sweeps_the_known_answer_example() {
+        let (reader, _) = read_all(&example()).expect("the example is valid");
+        assert_eq!(reader.sweep_position(0.0), 0.0);
+        assert_eq!(reader.sweep_position(250.0), 0.5);
+        assert_eq!(reader.sweep_position(1_000.0), 2.0);
+    }
+
+    #[test]
+    fn has_no_syllables_layout_or_sweep_before_the_lyrics_and_timing_are_read() {
+        let file = example();
+        let reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
+        assert_eq!(reader.syllables(), vec![]);
+        assert_eq!(reader.lay_out(&[10.0, 10.0], 2.0, 100.0), vec![]);
+        assert_eq!(reader.sweep_position(250.0), 0.0);
     }
 
     #[test]
