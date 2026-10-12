@@ -1,4 +1,69 @@
+# Linking words a display line should not end on, one syllable per line.
+# Write each word in lowercase and NFC, under the heading for its kind.
+# Lines starting with # are comments.
+# A word must not also be in trailing_modifiers.txt.
+# To add a word, add a known-answer case in the tests of words.rs.
+
+# Conjunctions
 và
+với
+cùng
+mà
+thì
+là
+nhưng
+hay
+hoặc
+nên
+vì
+bởi
+tuy
+dù
+dẫu
+nếu
+hễ
+khi
+như
+để
+rằng
+
+# Prepositions
 của
+cho
+trong
+trên
+dưới
+ngoài
+giữa
+từ
+đến
+về
+ở
+tại
+bằng
+
+# Determiners
 những
+các
 một
+mỗi
+mọi
+từng
+vài
+mấy
+
+# Classifiers
+cái
+chiếc
+bức
+cuốn
+quyển
+tấm
+ngôi
+cơn
+làn
+giọt
+ngọn
+vầng
+áng
+đóa

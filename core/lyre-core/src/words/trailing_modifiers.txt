@@ -1,3 +1,32 @@
-xưa
+# Trailing modifiers a display line should not start with, one syllable per line.
+# Write each word in lowercase and NFC, under the heading for its kind.
+# Lines starting with # are comments.
+# A word must not also be in linking_words.txt.
+# To add a word, add a known-answer case in the tests of words.rs.
+
+# Demonstratives
 này
 ấy
+kia
+đó
+nọ
+đấy
+kìa
+
+# Time and degree words
+xưa
+rồi
+nữa
+mãi
+hoài
+
+# Sentence-final particles
+thôi
+nhé
+nhỉ
+nha
+à
+ạ
+ư
+hả
+chăng
