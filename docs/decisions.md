@@ -100,9 +100,11 @@ made on it would be lost with it.
     copied browser profile would carry to another machine.
   - The user confirms with the device's unlock (PIN, fingerprint or face)
     once per session.
-- M3 starts with a spike that checks PRF on device-bound passkeys in the
-  browsers and OSes Lyre targets. Where it is missing, the web client offers
-  no device code there.
+- A passkey check page, built in M1 and run on real devices before M3 is
+  broken down, checks PRF on device-bound passkeys in the browsers and OSes
+  Lyre targets (see the
+  [roadmap](roadmap.md#early-checks-on-real-devices)). Where it is missing,
+  the web client offers no device code there.
 
 *Why:* a web device is the machine, not one browser profile on it. Passkeys
 are the only way a web page can use a key held by the OS and its hardware.
@@ -138,8 +140,9 @@ platform's native media and UI stack for performance.
 
 Open points, each settled by a later decision:
 
-- the vocal separation and alignment models, after the M2 measurements (see
-  the [roadmap](roadmap.md));
+- the vocal separation and alignment models: settled by
+  [D15](#d15-models-for-separation-and-alignment--agreed), confirmed by the
+  M2 measurements;
 - the lowest Android version and the browsers Lyre supports.
 
 ## D11. Delivery workflow — Agreed
@@ -194,3 +197,28 @@ Replaces the bootstrap rule of D11.
 
 *Why:* only `.github/` and `.nexkit/` are out of NexKit's reach. Everything
 else can be built and verified through it, issue by issue.
+
+## D15. Models for separation and alignment — Agreed
+
+The owner delegated this choice.
+
+- **Separation:** Demucs v4 `htdemucs`, one model (not `htdemucs_ft`), as an
+  fp16 ONNX file of about 81 MB. The karaoke track is the sum of its three
+  non-vocal stems. The code is under MIT. The repository states no separate
+  grant for the weights.
+- **Alignment:** Meta Omnilingual ASR CTC-300M, as an int8 ONNX file of about
+  365 MB. Code and models are under Apache-2.0. Lyre does forced alignment of
+  the supplied syllables over the CTC output. It never transcribes (D5).
+  Audio is aligned in windows under 40 s.
+- **Not used:** every Vietnamese wav2vec2 fine-tune, including
+  `nguyenvulebinh/lyric-alignment`, and MMS, because their weights are
+  CC-BY-NC-4.0. RoFormer separators, because they are heavy and their licences
+  are unclear or non-commercial.
+- **Fallbacks if an M2 measurement fails:** UVR MDX-Net Inst HQ 4 for
+  separation, once its licence is confirmed in writing. Whisper base
+  multilingual (MIT) with forced decoding for alignment on weak devices.
+- **Confirmation:** the M2 measurements confirm both choices on real devices.
+  If a model misses its target, a newer decision replaces this one.
+
+*Why:* both are mainstream, run in ONNX Runtime Web and on Android, and have
+the clearest licences among models that give good results.

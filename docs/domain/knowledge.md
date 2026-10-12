@@ -56,7 +56,7 @@ The stages, in order:
 2. **Extract the audio** of the song, or of the section, at full quality.
 3. **Separate** vocals from the karaoke track.
 4. **Align** the supplied syllables against the vocals.
-5. **Clean up** vocals left in the karaoke track.
+5. **Clean up** vocals left in the karaoke track *(planned for M8)*.
 6. **Classify vocal roles** *(planned for M8)*.
 7. **Lay out the display lines** and their timing.
 8. **Build the playback media** and the thumbnail.
@@ -66,7 +66,7 @@ What was learned:
 
 - **Alignment and role classification are the heaviest stages,** then
   separation. On a phone or in a browser they set what Lyre can do, so the
-  M2 measurements decide the models.
+  M2 measurements confirm the models chosen in D15.
 - **Check separation by sum.** Vocals plus karaoke track should add back up to
   the original, without clipping and at plausible levels. A large difference
   means a broken run.
@@ -75,7 +75,8 @@ What was learned:
   into the karaoke track.
 - **Remove a leftover only when a second separator agrees.** Separators
   sometimes put a shared instrument in both outputs. Removing on the word of
-  one separator damages the music.
+  one separator damages the music. D15 has one separator, so the clean-up
+  waits for M8, with the vocal roles.
 - **Distrust very long word spans.** The aligner can stretch the first word
   over a long instrumental intro and still report high confidence. Check long
   spans against the nearest sung onsets.
@@ -113,8 +114,8 @@ What was learned:
 
 ## Running on the user's device
 
-- **Models are large.** Separation and alignment models are hundreds of
-  megabytes each. They are downloaded once, checked against their pinned
+- **Models are large.** Separation and alignment models are tens to hundreds
+  of megabytes each (about 81 MB and 365 MB in D15). They are downloaded once, checked against their pinned
   SHA-256 hash, and kept. A model that fails the check is deleted, never run.
 - **The web has hard limits.** WebGPU runs on the machine's real GPU, but
   slower than native code, and a browser tab has limited memory. Long songs
@@ -128,24 +129,26 @@ What was learned:
 
 ## Models and licences
 
-Candidate models for M2:
+[D15](../decisions.md#d15-models-for-separation-and-alignment--agreed) chose
+the models for separation and alignment:
 
-| Purpose | Model | Licence |
-| --- | --- | --- |
-| Vocal separation | `bs_roformer_instrumental_resurrection_unwa` | not stated |
-| Leftover check (second separator) | `melband_roformer_inst_v2` | not stated |
-| Vietnamese lyric alignment | `nguyenvulebinh/lyric-alignment` | CC-BY-NC-4.0 |
-| Lead and backing vocals | `mel_band_roformer_karaoke_aufr33_viperx` | not stated |
-| Male and female voices | `model_chorus_bs_roformer_ep_267` | not stated |
-| Voice identity | `microsoft/wavlm-base-plus-sv` | MIT |
+| Purpose | Model | Status | Licence |
+| --- | --- | --- | --- |
+| Separation | Demucs v4 `htdemucs` (fp16 ONNX, about 81 MB) | chosen (D15) | code MIT, no separate grant stated for the weights |
+| Alignment | Meta Omnilingual ASR CTC-300M (int8 ONNX, about 365 MB) | chosen (D15) | Apache-2.0 for code and models |
+| Separation | UVR MDX-Net Inst HQ 4 | fallback | not yet confirmed in writing |
+| Alignment on weak devices | Whisper base multilingual with forced decoding | fallback | MIT |
+| Alignment | Vietnamese wav2vec2 fine-tunes, `nguyenvulebinh/lyric-alignment` and MMS | not used | CC-BY-NC-4.0 |
+| Separation | RoFormer separators | not used | unclear or non-commercial |
 
-- **CC-BY-NC-4.0 forbids commercial use.** Lyre can use that aligner only
-  while it is a personal, non-commercial product.
 - **"Not stated" is not permission.** A model without a clear licence must
-  have one before Lyre distributes it or downloads it for other people.
+  have one before Lyre distributes it or downloads it for other people. This
+  applies to the Demucs weights, where the repository states no separate
+  grant.
 - Every model needs an ONNX export that runs in ONNX Runtime Web and ONNX
-  Runtime for Android. Whether these models export and run fast enough there
-  is what M2 measures.
+  Runtime for Android. M2 confirms that the D15 models run fast enough there.
+- The models for vocal roles and for the leftover check are chosen when M8 is
+  broken down.
 
 ## What the protection does and does not do
 
