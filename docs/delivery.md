@@ -57,6 +57,15 @@ models, are not copied here. Look them up where they live.
   can still break `main` together. When CI on `main` fails, the local agent
   runs it once more if the failure looks flaky. Otherwise it tells the owner
   and opens a bug issue with the failure, which goes before other issues.
+- **NexKit restores caches, and only CI on `main` saves them.** NexKit's
+  agent and checks jobs restore the caches in its `cache` setting before
+  setup, so a round does not download every dependency again. They never save
+  one, because they run code the agent wrote. The CI workflow saves each cache
+  when it runs on `main`. Each entry in `.nexkit/config.json` and its step in
+  the CI workflow list the same paths and key files in the same order, or
+  NexKit does not find the cache. Both files are out of NexKit's reach, so a
+  part that adds a dependency cache gets its entries in a hand-made pull
+  request.
 - **Everything goes through NexKit, except changes in paths NexKit may not
   change.** Those paths are set by NexKit's
   [`protected_paths` setting][nexkit-config].

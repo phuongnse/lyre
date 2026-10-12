@@ -5,6 +5,49 @@
   "setup": [
     "scripts/setup.sh"
   ],
+  "cache": [
+    {
+      "name": "gradle",
+      "paths": [
+        "~/.gradle/caches",
+        "~/.gradle/wrapper"
+      ],
+      "key_files": [
+        "android/gradle/libs.versions.toml",
+        "android/gradle/wrapper/gradle-wrapper.properties"
+      ]
+    },
+    {
+      "name": "cargo",
+      "paths": [
+        "~/.cargo/registry/index",
+        "~/.cargo/registry/cache",
+        "~/.cargo/git/db"
+      ],
+      "key_files": [
+        "core/Cargo.lock"
+      ]
+    },
+    {
+      "name": "npm",
+      "paths": [
+        "~/.npm"
+      ],
+      "key_files": [
+        "web/package-lock.json",
+        "tests/e2e/package-lock.json"
+      ]
+    },
+    {
+      "name": "playwright",
+      "paths": [
+        "~/.cache/ms-playwright"
+      ],
+      "key_files": [
+        "tests/e2e/package-lock.json"
+      ]
+    }
+  ],
   "checks": [
     {
       "name": "build",
