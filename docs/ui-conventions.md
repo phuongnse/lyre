@@ -4,8 +4,8 @@ Both clients share one design language. The screens are not identical, but
 colour, type, shape and behaviour feel the same. This follows
 [D19](decisions.md#d19-web-client-on-angular-both-clients-on-material-3--agreed).
 
-The web client follows these rules from its Angular rebuild *(planned for
-M1)*. The Android app follows them from M4.
+The web client follows these rules now. The Android app follows them from
+M4.
 
 ## Angular
 
@@ -18,6 +18,9 @@ M1)*. The Android app follows them from M4.
 - Change detection is zoneless (`provideZonelessChangeDetection()`). Every
   component also sets `ChangeDetectionStrategy.OnPush`.
 - Use no decorator inputs and no other older patterns.
+- Routes use hash URLs, such as `/lyre/#/route`. GitHub Pages cannot send a
+  deep link to `index.html`. The build uses relative asset paths, so the same
+  build works at the site root and under `/lyre/`.
 
 ## Theming
 
@@ -43,6 +46,8 @@ M1)*. The Android app follows them from M4.
   maps message IDs to Vietnamese text. This is agreed in D19.
 - *Why:* one build serves GitHub Pages, and the language can change without a
   reload. Angular's built-in i18n needs one build per language.
+- The catalogue is `web/src/app/messages.ts`. Its text is still English.
+  The Vietnamese text comes in a later issue.
 - Lyrics are never strings in the catalogue. They are shown exactly as
   supplied
   ([D5](decisions.md#d5-supplied-lyrics-are-authoritative--agreed)).

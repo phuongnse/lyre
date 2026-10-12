@@ -16,8 +16,8 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: `npx vite preview --host 127.0.0.1 --port ${port} --strictPort`,
-    cwd: '../../web',
+    command: `node serve.mjs ${port}`,
+    cwd: '.',
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env.CI,
   },

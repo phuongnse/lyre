@@ -30,10 +30,9 @@ flowchart LR
   codes, lyric parsing, display line layout and timing. Both clients call it;
   neither has its own copy of this logic.
 - **The web client** is a static site (D9). Its UI, media playback and model
-  runs are in TypeScript. The UI is Angular with Angular Material (D19)
-  *(planned for M1)*, built by the rules in
-  [UI conventions](ui-conventions.md). It calls the core compiled to
-  WebAssembly.
+  runs are in TypeScript. The UI is Angular with Angular Material (D19),
+  built by the rules in [UI conventions](ui-conventions.md). It calls the
+  core compiled to WebAssembly.
 - **The Android app** is native Kotlin. Its UI, media playback and model runs
   use the Android stack. It calls the core as a native library through
   UniFFI.
@@ -61,7 +60,7 @@ scripts/              one script per check, shared by CI and NexKit
 
 Folders are created when the first issue needs them. M0 created `core/` with
 `lyre-core`, `lyre-wasm` and `lyre-ffi`, plus `web/`, `android/`, `tests/e2e`
-and `scripts/`. M1 rebuilds `web/` on Angular *(planned for M1)*.
+and `scripts/`. M1 rebuilt `web/` on Angular.
 
 ## Core rules
 
@@ -77,7 +76,7 @@ and `scripts/`. M1 rebuilds `web/` on Angular *(planned for M1)*.
 - **Lyrics are untrusted text.** Lyrics come from other people's song
   files. Both clients render them as text, never as HTML or other markup.
   The web client also turns on Trusted Types and sets a Content Security
-  Policy *(planned for M1)*. How it sets that policy without HTTP headers is
+  Policy. How it sets that policy without HTTP headers is
   in [knowledge](domain/knowledge.md#running-on-the-users-device).
 - **Content keys and private keys never reach JavaScript or Kotlin.** They
   are handled only inside the core and the platform key store. The core's

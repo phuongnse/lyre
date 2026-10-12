@@ -1,0 +1,54 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": { "analytics": false, "packageManager": "npm" },
+  "newProjectRoot": "projects",
+  "projects": {
+    "lyre": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "src",
+      "prefix": "lyre",
+      "schematics": {
+        "@schematics/angular:component": { "style": "scss", "changeDetection": "OnPush" }
+      },
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "browser": "src/main.ts",
+            "index": "src/index.html",
+            "tsConfig": "tsconfig.app.json",
+            "inlineStyleLanguage": "scss",
+            "styles": ["src/styles.scss"],
+            "assets": [{ "glob": "lyre_wasm_bg.wasm", "input": "src/lyre-wasm", "output": "lyre-wasm" }],
+            "outputPath": { "base": "dist", "browser": "" }
+          },
+          "configurations": {
+            "production": {
+              "optimization": {
+                "scripts": true,
+                "styles": { "minify": true, "inlineCritical": false },
+                "fonts": true
+              },
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "runner": "vitest",
+            "tsConfig": "tsconfig.spec.json"
+          }
+        }
+      }
+    }
+  }
+}

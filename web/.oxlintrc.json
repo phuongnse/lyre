@@ -1,3 +1,0 @@
-{
-  "ignorePatterns": ["src/lyre-wasm", "dist"]
-}
