@@ -261,6 +261,9 @@ async function sungPartShift(
   nextIsDone: () => Promise<void>,
 ): Promise<number> {
   const target = syllableIn(region)(text)
+  // The lyrics lie over the video, whose test pattern moves. Hiding the video
+  // keeps its pixels out of the comparison and leaves the layout as it is.
+  await video.evaluate((element) => (element.style.visibility = 'hidden'))
   await seek(video, during)
   await expect(target).toHaveAttribute('aria-current', 'true')
   await target.scrollIntoViewIfNeeded()

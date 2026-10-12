@@ -2,7 +2,7 @@ import { provideZonelessChangeDetection } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { afterEach, expect, test, vi } from 'vitest'
 import { LyricsRows, OpenedSong } from '../song-file'
-import { Lyrics } from './lyrics.component'
+import { Lyrics, lyricFontSize } from './lyrics.component'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -191,4 +191,8 @@ test('the rows show the display lines the core picks, and follow when it picks o
 
   rows = { top: 1, bottom: 0 }
   await vi.waitFor(() => expect(texts(element)).toEqual(['nhẹ', 'Mưa\trơi']))
+})
+
+test('the lyric font size is 1/14 of the video height, never under 16 px', () => {
+  expect([0, 140, 224, 720].map(lyricFontSize)).toEqual([16, 16, 16, 720 / 14])
 })

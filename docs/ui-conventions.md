@@ -31,8 +31,9 @@ M4.
   [Lyrics in the Player](#lyrics-in-the-player).
 - Put no hard-coded colours, font sizes, radii or spacing values in
   components. The exceptions are the white and black of the
-  [lyric text style](#text-style), its em-based outline and shadow sizes, and
-  the [vocal role colours](#vocal-role-colours).
+  [lyric text style](#text-style), its em-based outline and shadow sizes, the
+  [vocal role colours](#vocal-role-colours), and the lyric font size with its
+  16 px floor (see [Lyrics area](#lyrics-area)).
 - All tokens come from one seed colour, `#6B5778` (smoky purple), including the
   [highlight colour](#highlight-colour). Two sets of colours do not come from
   the seed, and a seed change never changes them: the white and black of the
@@ -77,10 +78,10 @@ M4.
   the play position carry on. The original track is read only once the singer
   switches to it. A file the core refuses shows one plain message, "not a song
   file" or "damaged or incomplete", and nothing plays.
-- The web Player shows the lyrics in a Lyrics area under the video, in two
-  rows. See [Lyrics area](#lyrics-area). The core lays out the display lines
-  from the widths the client measures, when the song opens and when the
-  area's width changes. The syllable being sung carries `aria-current`.
+- The web Player shows the lyrics in a Lyrics area over the bottom of the
+  video, in two rows. See [Lyrics area](#lyrics-area). The core lays out the
+  display lines from the widths the client measures, when the song opens and
+  when the area's width or the video's size changes. The syllable being sung carries `aria-current`.
   Between lines, none does.
 - On the web, a `requestAnimationFrame` loop reads the media time. It sets a
   CSS variable, the sweep progress, on the active display line. It also asks
@@ -161,6 +162,15 @@ Compose uses the same three values *(planned for M4)*.
 
 ### Lyrics area
 
+- The Lyrics area lies over the bottom of the video, inside the video's box,
+  with no backdrop. Nothing else on the page moves into that space.
+- The lyric font size is 1/14 of the video's displayed height, and never under
+  16 px. When the video's size changes, the display lines are laid out again
+  for the new size. The rule is a starting point to adjust after trying it on a
+  phone.
+- The two rows, with their countdown dots, stay inside the video's box. The
+  rows have a gap below them of a quarter of the font size, and a line height
+  of 1.25 times it.
 - The Lyrics area has two rows. The top row's line is aligned left and the
   bottom row's line is aligned right. A row shows one display line or nothing.
 - A group of display lines starts at the first display line of each lyric
