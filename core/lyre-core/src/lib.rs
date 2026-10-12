@@ -1,6 +1,7 @@
 //! The shared Lyre core. The web client and the Android app both call it.
 
 pub mod lyrics;
+pub mod song_file;
 
 /// The version of the Lyre core, from the workspace package version.
 pub fn version() -> &'static str {

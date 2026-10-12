@@ -143,6 +143,8 @@ leading byte-order mark is kept.
 
 - 1 to 1,048,576 bytes.
 - Valid UTF-8 with no NUL character.
+- At least one word with letters, as in
+  [design knowledge](../domain/knowledge.md#lyrics).
 
 How the core reads lyric lines and syllables from these bytes is set out in
 [lyric lines and syllables](#lyric-lines-and-syllables).
