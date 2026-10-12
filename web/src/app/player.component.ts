@@ -6,12 +6,14 @@ import {
   effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core'
 import { MatButton } from '@angular/material/button'
+import { MatButtonToggle, MatButtonToggleGroup } from '@angular/material/button-toggle'
 import { SONG_FILE_OPENER } from '../core'
 import { OpenedSong, SongFileError, SongFileProblem } from '../song-file'
-import { playSong } from './media-source-playback'
+import { Playback, playSong } from './media-source-playback'
 import { messages } from './messages'
 
 type State =
@@ -20,10 +22,13 @@ type State =
   | { status: 'ready'; song: OpenedSong }
   | { status: 'failed'; problem: SongFileProblem }
 
-// The Player: opens a song file and plays its video with the karaoke track.
+type AudioTrackChoice = 'karaoke' | 'original'
+
+// The Player: opens a song file and plays its video with the karaoke track or
+// the original track.
 @Component({
   selector: 'lyre-player',
-  imports: [MatButton],
+  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
@@ -51,6 +56,14 @@ type State =
         <button matButton="tonal" type="button" (click)="togglePlay()">
           {{ playing() ? messages.pause : messages.play }}
         </button>
+        <mat-button-toggle-group
+          [attr.aria-label]="messages.audioTrack"
+          [value]="track()"
+          (change)="chooseTrack($event.value)"
+        >
+          <mat-button-toggle value="karaoke">{{ messages.karaoke }}</mat-button-toggle>
+          <mat-button-toggle value="original">{{ messages.original }}</mat-button-toggle>
+        </mat-button-toggle-group>
       }
     }
   `,
@@ -68,8 +81,10 @@ export class Player {
   protected readonly messages = messages
   protected readonly state = signal<State>({ status: 'empty' })
   protected readonly playing = signal(false)
+  protected readonly track = signal<AudioTrackChoice>('karaoke')
   private readonly openSongFile = inject(SONG_FILE_OPENER)
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video')
+  private playback?: Playback
 
   constructor() {
     // Streams the song once its video element exists, and stops when either goes.
@@ -77,7 +92,14 @@ export class Player {
       const current = this.state()
       const video = this.video()?.nativeElement
       if (current.status !== 'ready' || !video) return
-      onCleanup(playSong(video, current.song, () => this.fail(current.song)))
+      // The track is read untracked, so a switch does not stream the song again.
+      const track = current.song[untracked(this.track)]
+      const playback = playSong(video, current.song, track, () => this.fail(current.song))
+      this.playback = playback
+      onCleanup(() => {
+        playback.stop()
+        if (this.playback === playback) this.playback = undefined
+      })
     })
     inject(DestroyRef).onDestroy(() => this.leave())
   }
@@ -110,6 +132,12 @@ export class Player {
     }
   }
 
+  protected chooseTrack(choice: AudioTrackChoice): void {
+    this.track.set(choice)
+    const current = this.state()
+    if (current.status === 'ready') this.playback?.switchAudio(current.song[choice])
+  }
+
   // Shows the damaged message when `song` is still the one playing.
   private fail(song: OpenedSong): void {
     const current = this.state()
@@ -121,6 +149,7 @@ export class Player {
     const current = this.state()
     if (current.status === 'ready') current.song.close()
     this.playing.set(false)
+    this.track.set('karaoke')
     if (next) this.state.set(next)
   }
 }

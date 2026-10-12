@@ -12,4 +12,7 @@ export const messages = {
   play: 'Play',
   pause: 'Pause',
   songVideo: 'Song video',
+  audioTrack: 'Track',
+  karaoke: 'Karaoke',
+  original: 'Original',
 } as const
