@@ -141,8 +141,8 @@ platform's native media and UI stack for performance.
 Open points, each settled by a later decision:
 
 - the vocal separation and alignment models: settled by
-  [D15](#d15-models-for-separation-and-alignment--agreed), confirmed by the
-  M2 measurements;
+  [D15](#d15-models-for-separation-and-alignment--agreed) and
+  [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed), confirmed by the M2 measurements;
 - the lowest Android version and the browsers Lyre supports.
 
 ## D11. Delivery workflow — Agreed
@@ -201,6 +201,8 @@ else can be built and verified through it, issue by issue.
 
 ## D15. Models for separation and alignment — Agreed
 
+Partly replaced by [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
+
 The owner delegated this choice.
 
 - **Separation:** Demucs v4 `htdemucs`, one model (not `htdemucs_ft`), as an
@@ -211,10 +213,9 @@ The owner delegated this choice.
   365 MB. Code and models are under Apache-2.0. Lyre does forced alignment of
   the supplied syllables over the CTC output. It never transcribes (D5).
   Audio is aligned in windows under 40 s.
-- **Not used:** every Vietnamese wav2vec2 fine-tune, including
-  `nguyenvulebinh/lyric-alignment`, and MMS, because their weights are
-  CC-BY-NC-4.0. RoFormer separators, because they are heavy and their licences
-  are unclear or non-commercial.
+- **Not used:** RoFormer separators, because they are heavy and some licences
+  are unclear. The point that CC-BY-NC-4.0 models are not used is replaced by
+  [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
 - **Fallbacks if an M2 measurement fails:** UVR MDX-Net Inst HQ 4 for
   separation, once its licence is confirmed in writing. Whisper base
   multilingual (MIT) with forced decoding for alignment on weak devices.
@@ -248,3 +249,32 @@ Narrows D14.
 of it set up and built the Android app. Most work changes only one part. A
 wrong mapping can let a breaking change pass the pull request checks. CI on
 `main` runs everything and catches it after the merge.
+
+## D20. Non-commercial models are allowed, and M2 compares two aligners — Agreed
+
+Replaces the CC-BY-NC part of the "Not used" point of
+[D15](#d15-models-for-separation-and-alignment--agreed), and adds a second
+aligner.
+
+- **Non-commercial licences are allowed.** Lyre is non-commercial
+  ([product brief](product-brief.md#out-of-scope-for-now)). A CC-BY-NC-4.0
+  model may be used, with the attribution its licence requires.
+- **Commercial use needs them replaced.** Every non-commercial model must be
+  replaced first.
+- **Unclear is still not permission.** This covers an unclear licence and one
+  that grants nothing for the weights.
+- **Two aligners are compared:** Meta Omnilingual ASR CTC-300M (D15) and
+  `nguyenvulebinh/lyric-alignment`, a wav2vec2 model built for Vietnamese
+  lyric alignment. Its model card states CC-BY-NC-4.0. Both do only forced
+  alignment of the supplied syllables. Neither transcribes (D5).
+- **The choice:** among the aligners that run on the target devices, the one
+  with the lower syllable onset error is chosen. The results are recorded in
+  the docs.
+- **The measurement page is built at the start of M2.** It needs the ONNX
+  files, their download and hash check, and alignment, which M2 builds anyway.
+  M1 keeps only the passkey check page.
+- **Separation stays** Demucs v4 `htdemucs`, as in D15.
+
+*Why:* `lyric-alignment` is trained on sung Vietnamese lyrics and may time
+syllables better. The non-commercial limit costs nothing while commercial use
+is out of scope.
