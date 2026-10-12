@@ -45,6 +45,27 @@ export interface SongDetails {
   composer: string
 }
 
+// One syllable of the lyrics, exactly as the song file stores it (D5), with its
+// timing.
+export interface LyricSyllable {
+  text: string
+  // The exact text between the previous syllable of the same lyric line and
+  // this one. It is empty for a lyric line's first syllable.
+  separator: string
+  // The index of the syllable's lyric line.
+  lyricLine: number
+  startMs: number
+  endMs: number
+}
+
+// A display line: the syllables [start, end) of one lyric line. The indices
+// count every syllable of the lyrics, in order.
+export interface DisplayLineSpan {
+  lyricLine: number
+  start: number
+  end: number
+}
+
 export interface OpenedSong {
   // The song ID from the header, as 32 lowercase hex digits. Two files of the
   // same song share it.
@@ -54,6 +75,15 @@ export interface OpenedSong {
   video?: MediaTrack
   karaoke: MediaTrack
   original: MediaTrack
+  // Every syllable of the lyrics, in lyric order.
+  lyrics: LyricSyllable[]
+  // Lays out the lyrics as display lines that fit `maxWidth`, through the
+  // core. `widths` holds the measured width of every syllable, in order. It
+  // gives no display lines when the core refuses the widths.
+  layOut(widths: number[], spaceWidth: number, maxWidth: number): DisplayLineSpan[]
+  // How far the highlight has swept at media time `ms`: the syllables already
+  // sung, plus the fraction of the one being sung. It is 0 once closed.
+  sweepPosition(ms: number): number
   // Reads one media chunk and returns its bytes as the core gives them back.
   read(chunk: ChunkRef): Promise<Uint8Array<ArrayBuffer>>
   // Frees the core's reader. Reading after this fails.
@@ -98,6 +128,17 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
     const karaoke = track(ChunkKind.KaraokeInit, ChunkKind.KaraokeSegment)
     const original = track(ChunkKind.OriginalInit, ChunkKind.OriginalSegment)
     if (!karaoke || !original) throw new SongFileError('damaged')
+    const lyrics = reader.syllables().map((syllable) => {
+      const copy = {
+        text: syllable.text,
+        separator: syllable.separator,
+        lyricLine: syllable.lyricLine,
+        startMs: syllable.startMs,
+        endMs: syllable.endMs,
+      }
+      syllable.free()
+      return copy
+    })
     let closed = false
     return {
       songId: reader.songId,
@@ -106,6 +147,18 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
       video: track(ChunkKind.VideoInit, ChunkKind.VideoSegment),
       karaoke,
       original,
+      lyrics,
+      layOut(widths, spaceWidth, maxWidth) {
+        if (closed) return []
+        return reader.layOut(Float64Array.from(widths), spaceWidth, maxWidth).map((span) => {
+          const copy = { lyricLine: span.lyricLine, start: span.start, end: span.end }
+          span.free()
+          return copy
+        })
+      },
+      sweepPosition(ms) {
+        return closed ? 0 : reader.sweepPosition(ms)
+      },
       async read(chunk) {
         const bytes = await readRange(source, chunk.offset, chunk.offset + chunk.length)
         if (closed) throw new Error('The song file is closed.')

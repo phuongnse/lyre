@@ -85,6 +85,32 @@ test('the example gives its song ID and its details as stored', async () => {
   song.close()
 })
 
+test('the example gives its lyrics as stored, with the timing of each syllable', async () => {
+  const song = await openSongFile(new Blob([example()]))
+  expect(song.lyrics).toEqual([
+    { text: 'Mưa', separator: '', lyricLine: 0, startMs: 0, endMs: 500 },
+    { text: 'rơi', separator: ' ', lyricLine: 0, startMs: 500, endMs: 1000 },
+  ])
+  song.close()
+})
+
+test('the core lays out the example and refuses a wrong width count', async () => {
+  const song = await openSongFile(new Blob([example()]))
+  expect(song.layOut([10, 10], 2, 100)).toEqual([{ lyricLine: 0, start: 0, end: 2 }])
+  expect(song.layOut([10], 2, 100)).toEqual([])
+  song.close()
+  expect(song.layOut([10, 10], 2, 100)).toEqual([])
+})
+
+test('the sweep position follows the example timing', async () => {
+  const song = await openSongFile(new Blob([example()]))
+  expect(song.sweepPosition(0)).toBe(0)
+  expect(song.sweepPosition(250)).toBe(0.5)
+  expect(song.sweepPosition(1000)).toBe(2)
+  song.close()
+  expect(song.sweepPosition(250)).toBe(0)
+})
+
 test('the karaoke track lists its chunks with their times', async () => {
   const song = await openSongFile(new Blob([example()]))
   const ref = (position: number, offset: number, startMs: number, durationMs: number): ChunkRef => ({

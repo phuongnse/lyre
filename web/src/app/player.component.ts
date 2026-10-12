@@ -15,6 +15,7 @@ import { SONG_FILE_OPENER } from '../core'
 import { ByteSource, OpenedSong, SongFileError, SongFileProblem } from '../song-file'
 import { Library } from './library'
 import { LibraryList } from './library.component'
+import { Lyrics } from './lyrics.component'
 import { Playback, playSong } from './media-source-playback'
 import { messages } from './messages'
 
@@ -27,11 +28,11 @@ type State =
 type AudioTrackChoice = 'karaoke' | 'original'
 
 // The Player: opens a song file, or a song from the library, and plays its
-// video with the karaoke track or the original track. A song file that opens
-// is kept in the library.
+// video with the karaoke track or the original track, with its lyrics under the
+// video. A song file that opens is kept in the library.
 @Component({
   selector: 'lyre-player',
-  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, LibraryList],
+  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, LibraryList, Lyrics],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
@@ -57,6 +58,7 @@ type AudioTrackChoice = 'karaoke' | 'original'
           (pause)="playing.set(false)"
           (ended)="playing.set(false)"
         ></video>
+        <lyre-lyrics [song]="current.song" [video]="video" />
         <button matButton="tonal" type="button" (click)="togglePlay()">
           {{ playing() ? messages.pause : messages.play }}
         </button>

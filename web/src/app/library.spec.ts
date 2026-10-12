@@ -19,6 +19,9 @@ function song(songId: string, title: string): OpenedSong {
     durationMs: 1000,
     karaoke: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
     original: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
+    lyrics: [],
+    layOut: () => [],
+    sweepPosition: () => 0,
     read: () => Promise.reject(new Error('not read in these tests')),
     close: () => undefined,
   }

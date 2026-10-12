@@ -19,6 +19,7 @@ export const messages = {
   audioTrack: 'Track',
   karaoke: 'Karaoke',
   original: 'Original',
+  lyrics: 'Lyrics',
   passkeyCheckTitle: 'Passkey check',
   browserAndOs: 'Browser and OS',
   userAgentPlatform: (platform: string) => `Platform: ${platform}`,
