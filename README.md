@@ -11,8 +11,8 @@ devices its owner shared it with.
 
 ## Status
 
-Lyre is being designed. The current milestone is **M0, Foundation**. The
-[roadmap](docs/roadmap.md) says what each milestone delivers and its status.
+Lyre is in early development. The [roadmap](docs/roadmap.md) says what each
+milestone delivers and its status.
 
 ## Documentation
 

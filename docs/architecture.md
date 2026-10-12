@@ -56,7 +56,7 @@ tests/
 scripts/              one script per check, shared by CI and NexKit
 ```
 
-Folders are created when the first issue needs them. M0 creates `core/` with
+Folders are created when the first issue needs them. M0 created `core/` with
 `lyre-core`, `lyre-wasm` and `lyre-ffi`, plus `web/`, `android/`, `tests/e2e`
 and `scripts/`.
 
@@ -145,4 +145,4 @@ reference doc and reviewed before M3 implements them.
   optional check runs the real models.
 - Access tests check denied access as well as allowed access: a device
   without an access file, an access file for another device, a changed file.
-- The exact commands are fixed in M0 and listed in [AGENTS.md](../AGENTS.md).
+- The exact commands were fixed in M0 and listed in [AGENTS.md](../AGENTS.md).

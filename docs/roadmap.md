@@ -31,8 +31,8 @@
 
 | | Milestone | Status | Done when |
 | --- | --- | --- | --- |
-| **M0** | Foundation | Next | The core, the web client and the Android app build; CI runs build, lint, unit and Playwright E2E for real; NexKit is installed with those checks. |
-| **M1** | Karaoke playback | Planned | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
+| **M0** | Foundation | Done | The core, the web client and the Android app build; CI runs build, lint, unit and Playwright E2E for real; NexKit is installed with those checks. |
+| **M1** | Karaoke playback | Next | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
 | **M2** | Making songs on the device | Planned | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. Measurements on real devices confirm the models chosen in D15. |
 | **M3** | Devices, encryption and sharing | Planned | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
 | **M4** | Android | Planned | The Android app plays, makes and shares songs like the web client, with its device key in Android Keystore. Songs move between web and Android both ways. |
