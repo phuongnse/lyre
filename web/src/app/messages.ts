@@ -19,4 +19,18 @@ export const messages = {
   audioTrack: 'Track',
   karaoke: 'Karaoke',
   original: 'Original',
+  passkeyCheckTitle: 'Passkey check',
+  browserAndOs: 'Browser and OS',
+  userAgentPlatform: (platform: string) => `Platform: ${platform}`,
+  userAgentBrands: (brands: string) => `Brands: ${brands}`,
+  runPasskeyCheck: 'Run the check',
+  passkeyChecking: 'Checking…',
+  passkeyWorks: 'Works: this device-bound passkey returned a PRF output.',
+  passkeyRefusedSync: 'Refused: this passkey can sync to other devices.',
+  passkeyPrfMissing: 'PRF missing: this passkey returned no PRF output.',
+  passkeyFailed: (name: string) => `The check could not finish: ${name}.`,
+  backupEligible: (yes: boolean) => `Backup eligible: ${yes ? 'yes' : 'no'}`,
+  backedUp: (yes: boolean) => `Backed up: ${yes ? 'yes' : 'no'}`,
+  passkeyLeftBehind:
+    'The check leaves a passkey named "Lyre passkey check" on this device. Delete it in the device\'s passkey settings.',
 } as const

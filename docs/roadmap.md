@@ -107,6 +107,9 @@ Outline, broken into issues when M0 is nearly done:
 - The passkey check page is built in M1. It reports whether a device-bound
   passkey with the PRF extension works in each target browser and OS (D8). Its
   results are recorded in the docs before M3 is broken down.
+- The passkey check page is served at `#/passkey-check` of the web client, for
+  example <https://phuongnse.github.io/lyre/#/passkey-check>. The main page
+  does not link to it.
 - The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
   It runs the D15 separator and both candidate aligners, Omnilingual and
   `lyric-alignment`, on WebGPU and on the one-thread WebAssembly fallback
