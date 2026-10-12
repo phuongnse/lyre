@@ -66,7 +66,7 @@ What was learned:
 
 - **Alignment and role classification are the heaviest stages,** then
   separation. On a phone or in a browser they set what Lyre can do, so the
-  M2 measurements confirm the models chosen in D15.
+  M2 measurements choose the aligner and confirm the separator (D15, D20).
 - **Check separation by sum.** Vocals plus karaoke track should add back up to
   the original, without clipping and at plausible levels. A large difference
   means a broken run.
@@ -129,24 +129,29 @@ What was learned:
 
 ## Models and licences
 
-[D15](../decisions.md#d15-models-for-separation-and-alignment--agreed) chose
-the models for separation and alignment:
+[D15](../decisions.md#d15-models-for-separation-and-alignment--agreed) and
+[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) chose the models for separation and alignment:
 
 | Purpose | Model | Status | Licence |
 | --- | --- | --- | --- |
 | Separation | Demucs v4 `htdemucs` (fp16 ONNX, about 81 MB) | chosen (D15) | code MIT, no separate grant stated for the weights |
-| Alignment | Meta Omnilingual ASR CTC-300M (int8 ONNX, about 365 MB) | chosen (D15) | Apache-2.0 for code and models |
+| Alignment | Meta Omnilingual ASR CTC-300M (int8 ONNX, about 365 MB) | candidate (D20) | Apache-2.0 for code and models |
 | Separation | UVR MDX-Net Inst HQ 4 | fallback | not yet confirmed in writing |
 | Alignment on weak devices | Whisper base multilingual with forced decoding | fallback | MIT |
-| Alignment | Vietnamese wav2vec2 fine-tunes, `nguyenvulebinh/lyric-alignment` and MMS | not used | CC-BY-NC-4.0 |
-| Separation | RoFormer separators | not used | unclear or non-commercial |
+| Alignment | `nguyenvulebinh/lyric-alignment` (wav2vec2, Vietnamese lyrics) | candidate (D20) | CC-BY-NC-4.0 |
+| Alignment | other Vietnamese wav2vec2 fine-tunes and MMS | not a candidate | CC-BY-NC-4.0 |
+| Separation | RoFormer separators | not used (heavy) | unclear for some |
 
+- **Non-commercial licences are allowed while Lyre is non-commercial.** A
+  CC-BY-NC-4.0 model may be used with the attribution its licence requires.
+  Commercial use would need every such model replaced first (D20).
 - **"Not stated" is not permission.** A model without a clear licence must
-  have one before Lyre distributes it or downloads it for other people. This
+  have one before Lyre distributes it or downloads it for other people. A
+  licence that grants nothing for the weights is not permission either. This
   applies to the Demucs weights, where the repository states no separate
   grant.
 - Every model needs an ONNX export that runs in ONNX Runtime Web and ONNX
-  Runtime for Android. M2 confirms that the D15 models run fast enough there.
+  Runtime for Android. M2 measures whether the separator and both candidate aligners run fast enough there.
 - The models for vocal roles and for the leftover check are chosen when M8 is
   broken down.
 
