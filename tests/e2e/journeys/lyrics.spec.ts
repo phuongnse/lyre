@@ -5,13 +5,15 @@ import { fixture, openSongFile } from './song-file'
 // The fixture's syllables, with their times in seconds from
 // tests/fixtures/song/timing.txt.
 const timing: [string, number, number][] = [
-  ['Mưa', 0, 0.3],
-  ['rơi', 0.3, 0.6],
-  ['nhẹ', 0.6, 1.2],
-  ['Em', 1.5, 1.8],
-  ['về', 1.8, 2.1],
-  ['bên', 2.1, 2.4],
-  ['sông', 2.4, 2.9],
+  ['Mưa', 2, 2.3],
+  ['rơi', 2.3, 2.6],
+  ['nhẹ', 2.6, 3.2],
+  ['Em', 3.5, 3.8],
+  ['về', 3.8, 4.1],
+  ['bên', 4.1, 4.4],
+  ['sông', 4.4, 4.9],
+  ['Trăng', 9.9, 10.4],
+  ['lên', 10.4, 11],
 ]
 
 // Opens the fixture song and waits until its video can seek. Returns the
@@ -36,7 +38,7 @@ async function seek(video: Locator, seconds: number): Promise<void> {
 test('at each chosen time, only the syllable whose timing covers it is current', async ({ page }) => {
   const { region, video } = await openFixture(page)
   const syllable = syllableIn(region)
-  for (const seconds of [0.15, 0.9, 1.95, 2.6]) {
+  for (const seconds of [2.15, 2.9, 3.95, 4.6]) {
     await seek(video, seconds)
     for (const [text, start, end] of timing) {
       if (start <= seconds && seconds < end) {
@@ -55,9 +57,9 @@ test('after a seek back, the highlight moves to the syllable at the new time', a
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(0.3)
   await page.getByRole('button', { name: 'Pause' }).click()
 
-  await seek(video, 2.6)
+  await seek(video, 4.6)
   await expect(syllable('sông')).toHaveAttribute('aria-current', 'true')
-  await seek(video, 0.45)
+  await seek(video, 2.45)
   await expect(syllable('rơi')).toHaveAttribute('aria-current', 'true')
   await expect(syllable('sông')).not.toHaveAttribute('aria-current')
   // White is the unsung fill. The sung fill is the highlight colour.
@@ -81,7 +83,7 @@ test('sung syllables have the highlight fill and a white outline, unsung ones wh
 }) => {
   const { region, video } = await openFixture(page)
   const syllable = syllableIn(region)
-  await seek(video, 0.9)
+  await seek(video, 2.9)
   await expect(syllable('nhẹ')).toHaveAttribute('aria-current', 'true')
   const style = (text: string) =>
     syllable(text).evaluate((element) => {
