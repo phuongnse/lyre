@@ -40,7 +40,8 @@ test('at each chosen time, only the syllable whose timing covers it is current',
   const syllable = syllableIn(region)
   for (const seconds of [2.15, 2.9, 3.95, 4.6]) {
     await seek(video, seconds)
-    for (const [text, start, end] of timing) {
+    // Only the first group's lines show at these times.
+    for (const [text, start, end] of timing.slice(0, 7)) {
       if (start <= seconds && seconds < end) {
         await expect(syllable(text)).toHaveAttribute('aria-current', 'true')
       } else {
@@ -66,16 +67,68 @@ test('after a seek back, the highlight moves to the syllable at the new time', a
   await expect(syllable('sông')).toHaveCSS('color', 'rgb(255, 255, 255)')
 })
 
-test('each display line holds its lyric line byte for byte', async ({ page }) => {
-  const { region } = await openFixture(page)
+// The two rows of the Lyrics area, top first.
+const rowsIn = (region: Locator) => [region.getByRole('paragraph').nth(0), region.getByRole('paragraph').nth(1)]
+
+// toHaveText would normalise the whitespace, so the bytes are compared.
+async function expectRows(region: Locator, expected: string[]): Promise<void> {
+  const rows = rowsIn(region)
+  await expect(region.getByRole('paragraph')).toHaveCount(2)
+  await expect
+    .poll(async () => [await rows[0].textContent(), await rows[1].textContent()].map((text) => Buffer.from(text ?? '').toString('hex')))
+    .toEqual(expected.map((text) => Buffer.from(text).toString('hex')))
+}
+
+test('each row holds its display line byte for byte', async ({ page }) => {
+  const { region, video } = await openFixture(page)
   const lyrics = readFileSync(new URL('../../fixtures/song/lyrics.txt', import.meta.url), 'utf8')
-  const expected = lyrics.split(/\r\n|\n|\r/).filter((line) => /\S/.test(line))
-  const paragraphs = region.getByRole('paragraph')
-  await expect(paragraphs).toHaveCount(expected.length)
-  // toHaveText would normalise the whitespace, so the bytes are compared.
-  const shown = await paragraphs.allTextContents()
-  expect(shown).toHaveLength(expected.length)
-  shown.forEach((text, i) => expect(Buffer.from(text).equals(Buffer.from(expected[i])), text).toBe(true))
+  const lines = lyrics.split(/\r\n|\n|\r/).filter((line) => /\S/.test(line))
+  await seek(video, 1)
+  await expectRows(region, [lines[0], lines[1]])
+  await seek(video, 5)
+  await expectRows(region, [lines[2], ''])
+})
+
+const near = (actual: number, expected: number) => expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1)
+
+test('at 1.0 s the top row starts after the Countdown, which sits at the left edge', async ({ page }) => {
+  const { region, video } = await openFixture(page)
+  await seek(video, 1)
+  await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
+  const box = (await region.boundingBox())!
+  const countdown = (await countdownsIn(region).boundingBox())!
+  const first = (await syllableIn(region)('Mưa').boundingBox())!
+  near(countdown.x, box.x)
+  near(first.x, countdown.x + countdown.width)
+})
+
+test('at 1.0 s the bottom row ends at the right edge of the Lyrics area', async ({ page }) => {
+  const { region, video } = await openFixture(page)
+  await seek(video, 1)
+  await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
+  const box = (await region.boundingBox())!
+  const last = (await syllableIn(region)('sông').boundingBox())!
+  near(last.x + last.width, box.x + box.width)
+})
+
+test('at 5.0 s only "Trăng lên" shows, in the top row, with its Countdown inside the Lyrics area', async ({ page }) => {
+  const { region, video } = await openFixture(page)
+  await seek(video, 5)
+  await expectRows(region, ['Trăng lên', ''])
+  const box = (await region.boundingBox())!
+  const countdown = (await countdownsIn(region).boundingBox())!
+  expect(countdown.x).toBeGreaterThanOrEqual(box.x - 1)
+  expect(countdown.y).toBeGreaterThanOrEqual(box.y - 1)
+  expect(countdown.x + countdown.width).toBeLessThanOrEqual(box.x + box.width + 1)
+  expect(countdown.y + countdown.height).toBeLessThanOrEqual(box.y + box.height + 1)
+})
+
+test('after a seek from 5.0 s back to 1.0 s, the first two lines show in their rows again', async ({ page }) => {
+  const { region, video } = await openFixture(page)
+  await seek(video, 5)
+  await expectRows(region, ['Trăng lên', ''])
+  await seek(video, 1)
+  await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
 })
 
 test('sung syllables have the highlight fill and a white outline, unsung ones white with a black outline', async ({
@@ -125,24 +178,26 @@ test('before the first line, the countdown counts one dot per step', async ({ pa
 })
 
 test('the line after the 5 s break has a countdown, and the line after the 300 ms break has none', async ({ page }) => {
-  const { region } = await openFixture(page)
-  await expect(region.getByRole('paragraph')).toHaveCount(3)
+  const { region, video } = await openFixture(page)
+  await seek(video, 1)
+  await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
   await expect(countdownsInParagraph(region, 0)).toHaveCount(1)
   await expect(countdownsInParagraph(region, 1)).toHaveCount(0)
-  await expect(countdownsInParagraph(region, 2)).toHaveCount(1)
+  await seek(video, 5)
+  await expectRows(region, ['Trăng lên', ''])
+  await expect(countdownsInParagraph(region, 0)).toHaveCount(1)
 })
 
 // The line after the 5 s break has countdown steps ending at 8.4, 8.9, 9.4 and 9.9 s.
 test('after a seek forward into a countdown and then back, each countdown matches the new time', async ({ page }) => {
   const { region, video } = await openFixture(page)
   const countdowns = countdownsIn(region)
-  await expect(countdowns).toHaveCount(2)
   await seek(video, 9)
-  await expect(countdowns.nth(0)).toHaveAttribute('aria-valuenow', '4')
-  await expect(countdowns.nth(1)).toHaveAttribute('aria-valuenow', '2')
-  await seek(video, 1.25)
-  await expect(countdowns.nth(0)).toHaveAttribute('aria-valuenow', '2')
-  await expect(countdowns.nth(1)).toHaveAttribute('aria-valuenow', '0')
+  await expect(countdowns).toHaveCount(1)
+  await expect(countdowns).toHaveAttribute('aria-valuenow', '2')
+  await seek(video, 0.75)
+  await expect(countdowns).toHaveCount(1)
+  await expect(countdowns).toHaveAttribute('aria-valuenow', '1')
 })
 
 test('changed dots have the highlight fill and a white outline, the others white with a black outline', async ({
