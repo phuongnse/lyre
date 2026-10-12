@@ -23,3 +23,16 @@ fi
 if [[ -f web/package.json ]]; then
   (cd web && npm ci)
 fi
+
+if [[ -f tests/e2e/package.json ]]; then
+  (
+    cd tests/e2e
+    npm ci
+    # CI runners also need Chromium's system libraries. A developer machine keeps its own.
+    if [[ -n "${CI:-}" ]]; then
+      npx playwright install --with-deps chromium
+    else
+      npx playwright install chromium
+    fi
+  )
+fi

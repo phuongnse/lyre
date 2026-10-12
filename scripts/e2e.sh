@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end journeys against the built web client, once tests/e2e exists.
+# Playwright serves web/dist with `vite preview`. The report and traces go to artifacts/e2e/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -7,6 +8,8 @@ if [[ ! -d tests/e2e ]]; then
   echo "No end-to-end tests yet."
   exit 0
 fi
-# The Playwright project adds its run here when it is created.
-echo "tests/e2e exists but scripts/e2e.sh does not run it yet." >&2
-exit 1
+if [[ ! -f web/dist/index.html ]]; then
+  echo "web/dist is missing: run scripts/build.sh first." >&2
+  exit 1
+fi
+(cd tests/e2e && npx playwright test)
