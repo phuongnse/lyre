@@ -33,7 +33,7 @@
 | --- | --- | --- | --- |
 | **M0** | Foundation | Done | The core, the web client and the Android app build; CI runs build, lint, unit and Playwright E2E for real; NexKit is installed with those checks. |
 | **M1** | Karaoke playback | Next | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
-| **M2** | Making songs on the device | Planned | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. Measurements on real devices confirm the models chosen in D15. |
+| **M2** | Making songs on the device | Planned | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page compares the two aligners of D20 on real devices and confirms the separator. |
 | **M3** | Devices, encryption and sharing | Planned | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
 | **M4** | Android | Planned | The Android app plays, makes and shares songs like the web client, with its device key in Android Keystore. Songs move between web and Android both ways. |
 | **M5** | Library and queue | Planned | Library, queue in order or shuffled, search by title, artist, composer and lyrics that ignores Vietnamese diacritics, thumbnails, lyric corrections. |
@@ -95,27 +95,32 @@ Outline, broken into issues when M0 is nearly done:
 6. Web Player: lyrics highlighted syllable by syllable, in sync with playback.
 7. Web Player: switch between Karaoke and Original without losing position.
 8. A small library: the songs opened on this device, with their details.
-9. A model measurement page (see [early checks](#early-checks-on-real-devices)).
-10. A passkey check page (see [early checks](#early-checks-on-real-devices)).
+9. A passkey check page (see [early checks](#early-checks-on-real-devices)).
 
 ## Early checks on real devices
 
-- Two checks are built as NexKit issues in M1. The owner runs them on real
-  devices, because the CI runners have no GPU, passkeys or phones.
-- The model measurement page runs the D15 models in the browser on WebGPU and
-  WASM. It reports time, peak memory and syllable onset error against a few
-  hand-timed Vietnamese songs.
-- The passkey check page reports whether a device-bound passkey with the PRF
-  extension works in each target browser and OS (D8).
-- Their results are recorded in the docs before M2 and M3 are broken down.
+- The owner runs both checks on real devices, because the CI runners have no
+  GPU, passkeys or phones.
+- The passkey check page is built in M1. It reports whether a device-bound
+  passkey with the PRF extension works in each target browser and OS (D8). Its
+  results are recorded in the docs before M3 is broken down.
+- The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
+  It runs the D15 separator and both candidate aligners, Omnilingual and
+  `lyric-alignment`, on WebGPU and WASM. It reports time, peak memory and
+  syllable onset error against a few hand-timed Vietnamese songs.
+- Its results choose the aligner. They are recorded in the docs before the
+  later M2 work relies on that choice.
 
 ## Later milestones
 
 Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
-- **M2:** confirm the D15 models with the measurement results. A newer
-  decision replaces D15 if a model misses its target.
+- **M2:** the measurement page comes first. It compares Omnilingual and
+  `lyric-alignment`. The aligner with the lower syllable onset error, among
+  those that run on the target devices, is chosen
+  ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)). A newer decision replaces D15 if the separator
+  misses its target.
 - **M3:** the passkey check results (D8); the reference doc for the encrypted
   format, access files and recovery, reviewed before implementation.
 - **M4:** split in two when broken down: Android playback and device keys
