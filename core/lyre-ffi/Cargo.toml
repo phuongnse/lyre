@@ -10,3 +10,11 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 lyre-core.workspace = true
 uniffi.workspace = true
+
+[features]
+# Builds the uniffi-bindgen tool. The Android build of the library leaves it out.
+cli = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+required-features = ["cli"]

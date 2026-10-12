@@ -31,4 +31,10 @@ if [[ -f tests/e2e/package.json ]]; then
   (cd tests/e2e && npm run typecheck)
 fi
 
+if [[ -f android/settings.gradle.kts ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+  # The generated bindings are not ours to format.
+  (cd android && ktlint '**/*.kt' '**/*.kts' '!**/build/**' '!app/src/main/java/uniffi/**')
+fi
+
 node scripts/check-links.mjs
