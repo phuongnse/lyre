@@ -24,21 +24,45 @@ interface ShownSyllable {
   start: number
 }
 
+// One display line. `countdown` is the index of its countdown among the song's
+// countdowns, or -1 when it shows none. Only the first display line of a lyric
+// line shows its countdown.
+interface ShownLine {
+  syllables: ShownSyllable[]
+  countdown: number
+}
+
 // The lyrics in the Player: every display line, with each syllable highlighted
 // as it is sung. The core lays out the display lines from the widths measured
-// here, and works out how far the highlight has got. The text is exactly the
-// lyrics (D5).
+// here, and works out how far the highlight has got and how many countdown dots
+// have changed. The text is exactly the lyrics (D5): the dots add none.
 @Component({
   selector: 'lyre-lyrics',
   changeDetection: ChangeDetectionStrategy.OnPush,
   // The separators sit in their own spans, so the template's whitespace
-  // handling never touches the lyric text.
+  // handling never touches the lyric text. The countdown sits right before the
+  // first syllable, with no text between them.
   template: `
     <section #section [attr.aria-label]="messages.lyrics">
       <span #measure class="measure" aria-hidden="true"></span>
       @for (line of lines(); track $index) {
         <p>
-          @for (syllable of line; track syllable.index) {
+          @if (line.countdown >= 0) {
+            <span class="countdown"
+              ><span
+                #countdown
+                class="dots"
+                role="progressbar"
+                [attr.aria-label]="messages.countdown"
+                aria-valuemin="0"
+                aria-valuemax="4"
+                aria-valuenow="0"
+                [attr.data-countdown]="line.countdown"
+                ><span class="dot"></span><span class="dot"></span><span class="dot"></span
+                ><span class="dot"></span></span
+            ></span>
+          }
+          @for (syllable of line.syllables; track syllable.index) {
             @if (syllable.separator) {
               <span>{{ syllable.separator }}</span>
             }
@@ -71,7 +95,8 @@ interface ShownSyllable {
       white-space: nowrap;
     }
     /* The lyric text style: docs/ui-conventions.md#text-style. */
-    .syllable {
+    .syllable,
+    .dot {
       position: relative;
       color: #fff;
       -webkit-text-stroke: 0.125em #000;
@@ -79,7 +104,8 @@ interface ShownSyllable {
       text-shadow: 0.08em 0.08em 0 #000;
     }
     .syllable.sung,
-    .syllable[aria-current='true']::after {
+    .syllable[aria-current='true']::after,
+    .dot.changed {
       color: var(--lyre-highlight);
       -webkit-text-stroke-color: #fff;
     }
@@ -90,16 +116,33 @@ interface ShownSyllable {
       inset: 0;
       clip-path: inset(0 calc(100% - (var(--sweep) - var(--start))) 0 0);
     }
+    /* The countdown dots take no width, so they sit just left of the line. */
+    .countdown {
+      display: inline-block;
+      width: 0;
+    }
+    .dots {
+      display: inline-block;
+      white-space: nowrap;
+      transform: translateX(calc(-100% - 0.25em));
+    }
+    .dot + .dot {
+      margin-left: 0.1em;
+    }
+    .dot::before {
+      content: '●' / '';
+    }
   `,
 })
 export class Lyrics {
   readonly song = input.required<OpenedSong>()
   readonly video = input.required<HTMLVideoElement>()
   protected readonly messages = messages
-  protected readonly lines = signal<ShownSyllable[][]>([])
+  protected readonly lines = signal<ShownLine[]>([])
   private readonly section = viewChild.required<ElementRef<HTMLElement>>('section')
   private readonly measure = viewChild.required<ElementRef<HTMLElement>>('measure')
   private readonly syllables = viewChildren<ElementRef<HTMLElement>>('syllable')
+  private readonly countdowns = viewChildren<ElementRef<HTMLElement>>('countdown')
   // The width of the lyrics area, once it is drawn.
   private readonly width = signal<number | undefined>(undefined)
   // Counts the layouts asked for, so only the latest one is shown.
@@ -110,10 +153,12 @@ export class Lyrics {
 
   // What the last frame drew, so the next frame changes only what moved.
   private drawn: readonly ElementRef<HTMLElement>[] = []
+  private drawnCountdowns: readonly ElementRef<HTMLElement>[] = []
   private spans: HTMLElement[] = []
   private position = 0
   private sung = 0
   private current = -1
+  private total = 0
 
   constructor() {
     effect(() => {
@@ -163,31 +208,48 @@ export class Lyrics {
     const space = width(' ')
     measure.textContent = ''
     const starts: number[] = []
+    let lyricLine = -1
     const lines = song.layOut(widths, space, maxWidth).map((span) => {
       let start = 0
-      return song.lyrics.slice(span.start, span.end).map((syllable, k) => {
+      const syllables = song.lyrics.slice(span.start, span.end).map((syllable, k) => {
         const index = span.start + k
         if (k > 0) start += space
         starts[index] = start
         start += widths[index]
         return { index, text: syllable.text, separator: k > 0 ? syllable.separator : '', start: starts[index] }
       })
+      const first = span.lyricLine !== lyricLine
+      lyricLine = span.lyricLine
+      return { syllables, countdown: first ? song.countdownLines.indexOf(span.lyricLine) : -1 }
     })
     this.starts = starts
     this.widths = widths
     this.lines.set(lines)
   }
 
-  // Moves the highlight to the video's time. It runs every frame, so it writes
-  // no signal and changes only the syllables whose state moved.
+  // Moves the highlight and the countdown dots to the video's time. It runs
+  // every frame, so it writes no signal and changes only what moved.
   private draw(): void {
-    const position = this.song().sweepPosition(this.video().currentTime * 1000)
+    const ms = this.video().currentTime * 1000
+    const position = this.song().sweepPosition(ms)
+    const total = this.song().dotsChanged(ms)
     const syllables = this.syllables()
-    const full = syllables !== this.drawn
-    if (!full && position === this.position) return
+    const countdowns = this.countdowns()
+    const full = syllables !== this.drawn || countdowns !== this.drawnCountdowns
+    if (!full && position === this.position && total === this.total) return
     if (full) {
       this.drawn = syllables
+      this.drawnCountdowns = countdowns
       this.spans = syllables.map((syllable) => syllable.nativeElement)
+    }
+    if (full || total !== this.total) {
+      // Countdown k shows clamp(total - 4k, 0, 4) dots changed.
+      for (const { nativeElement: dots } of countdowns) {
+        const changed = Math.min(Math.max(total - 4 * Number(dots.dataset['countdown']), 0), 4)
+        dots.setAttribute('aria-valuenow', String(changed))
+        Array.from(dots.children).forEach((dot, i) => dot.classList.toggle('changed', i < changed))
+      }
+      this.total = total
     }
     const spans = this.spans
     const sung = Math.min(Math.floor(position), spans.length)

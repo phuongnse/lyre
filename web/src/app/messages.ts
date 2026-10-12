@@ -20,6 +20,7 @@ export const messages = {
   karaoke: 'Karaoke',
   original: 'Original',
   lyrics: 'Lyrics',
+  countdown: 'Countdown',
   passkeyCheckTitle: 'Passkey check',
   browserAndOs: 'Browser and OS',
   userAgentPlatform: (platform: string) => `Platform: ${platform}`,
