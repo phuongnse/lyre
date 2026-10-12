@@ -1,0 +1,12 @@
+[package]
+name = "lyre-ffi"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+lyre-core.workspace = true
+uniffi.workspace = true
