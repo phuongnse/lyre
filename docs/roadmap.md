@@ -47,30 +47,34 @@ stay in this order.
 
 ## M0 — Foundation
 
-This milestone is done directly, not through NexKit, because NexKit needs
-working checks before it can verify anything.
+Only what NexKit may not change, or needs before it can start, is done by
+hand (D14):
 
-1. Create the repository following the
-   [repository layout](architecture.md#repository-layout), with an
-   `.editorconfig`, pinned toolchains and lock files.
-2. Create the Rust workspace in `core/` with `lyre-core` exposing one trivial
+- `.nexkit/config.json` and the NexKit workflow, with the checks `build`,
+  `lint`, `test` and `e2e` and the `setup` step;
+- the CI workflow, which runs the same scripts on pushes, and on `main` after
+  NexKit merges;
+- the check scripts, which skip the parts not built yet, with the Markdown
+  link check in `lint`;
+- the rules on `main`, the agent credential secret and `nexkit doctor`.
+
+The rest are NexKit issues in this order. Each one follows the
+[repository layout](architecture.md#repository-layout), pins its toolchain
+and lock files, adds its part's checks to the scripts and lists its commands
+in `AGENTS.md`.
+
+1. Create the Rust workspace in `core/` with `lyre-core` exposing one trivial
    function, for example the core's version, plus `lyre-wasm` and `lyre-ffi`
    bindings for it. Rustfmt and Clippy with warnings as errors.
-3. Create `web/` with Vite, React and TypeScript, oxlint, Prettier and Vitest.
+2. Create `web/` with Vite, React and TypeScript, oxlint, Prettier and Vitest.
    The page shows the core's version through WebAssembly.
+3. Add a Playwright project in `tests/e2e` that serves the built web client
+   and checks that the page shows the core's version.
 4. Create `android/` with Gradle, Kotlin, Jetpack Compose and ktlint. A JVM
    unit test calls the core's version through the Kotlin bindings.
-5. Add a Playwright project that serves the built web client and checks that
-   the page shows the core's version.
-6. Write one script per check and document the commands in `AGENTS.md`:
-   `setup`, `build`, `lint`, `test`, `e2e`.
-7. Add a GitHub Actions CI workflow that runs the same scripts on pushes, and
-   on `main` after NexKit merges.
-8. Install NexKit with those checks, add the agent credential secret, set the
-   rules on `main`, and run `nexkit doctor`.
 
-Done when a trivial NexKit issue goes from `/nexkit plan` to a green pull
-request.
+Done when all four are merged and the checks run real builds and tests for
+the core, the web client and the Android app.
 
 ## M1 — Karaoke playback
 

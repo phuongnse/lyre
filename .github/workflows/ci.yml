@@ -1,0 +1,42 @@
+name: CI
+
+# A push to any branch runs CI, so hand-made pull requests show its result. NexKit's
+# branches are left out: NexKit runs the same scripts as its own checks, and its pushes and
+# pull requests use the Actions token, which starts no workflow or waits for approval.
+on:
+  push:
+    branches-ignore: ['nexkit/**']
+  # NexKit starts CI on main after it merges, because its merge starts no push workflow.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Setup
+        run: scripts/setup.sh
+      - name: Build
+        id: build
+        run: scripts/build.sh
+      # Every check runs once the build succeeds, so one run shows all results.
+      - name: Lint
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: scripts/lint.sh
+      - name: Unit tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: scripts/test.sh
+      - name: End-to-end tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: scripts/e2e.sh

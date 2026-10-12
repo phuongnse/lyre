@@ -156,8 +156,7 @@ Open points, each settled by a later decision:
   revised only to cut the number of criteria.
 - **Documentation:** these docs hold the product and architecture knowledge.
   Issues link to them.
-- **Bootstrap:** the skeleton, CI and the tool setup are done directly, not
-  through NexKit, because NexKit needs working checks first.
+- **Bootstrap:** replaced by [D14](#d14-nexkit-builds-most-of-m0--agreed).
 
 See [delivery.md](delivery.md) for the step-by-step workflow and who does each
 step.
@@ -178,3 +177,20 @@ its code.
 
 *Why:* the owner decides who gets each song. A recipient who wants to pass a
 song on has to ask the owner for a new share.
+
+## D14. NexKit builds most of M0 — Agreed
+
+Replaces the bootstrap rule of D11.
+
+- **By hand:** only what NexKit may not change, `.github/` and `.nexkit/`,
+  plus what it needs to start: the NexKit configuration and workflow, the CI
+  workflow, the check scripts, the rules on `main` and the agent credential.
+- **The check scripts start almost empty.** Each script runs the checks of
+  the parts of the repository that exist and skips the parts not built yet.
+  The lint check already checks the Markdown links of the docs.
+- **Through NexKit:** the core, the web client, the Playwright project and the
+  Android app, one issue each. Each issue adds its part's checks to the
+  scripts, so the checks grow with the code.
+
+*Why:* only `.github/` and `.nexkit/` are out of NexKit's reach. Everything
+else can be built and verified through it, issue by issue.

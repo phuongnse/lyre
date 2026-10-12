@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "setup": [
+    "scripts/setup.sh"
+  ],
+  "checks": [
+    {
+      "name": "build",
+      "run": "scripts/build.sh",
+      "timeout_minutes": 15
+    },
+    {
+      "name": "lint",
+      "run": "scripts/lint.sh",
+      "timeout_minutes": 10
+    },
+    {
+      "name": "test",
+      "run": "scripts/test.sh",
+      "timeout_minutes": 15
+    },
+    {
+      "name": "e2e",
+      "run": "scripts/e2e.sh",
+      "timeout_minutes": 15
+    }
+  ],
+  "stages": {
+    "plan": {
+      "timeout_minutes": 20
+    },
+    "implement": {
+      "timeout_minutes": 45
+    },
+    "review": {
+      "timeout_minutes": 25
+    },
+    "triage": {
+      "model": "claude-opus-5-5"
+    }
+  },
+  "default_profile": "standard",
+  "profiles": {
+    "standard": {
+      "when": "Anything that is not hard: a clear request that follows a pattern Lyre already has.",
+      "stages": {
+        "plan": {
+          "model": "claude-opus-5-5"
+        },
+        "implement": {
+          "model": "claude-sonnet-5-5"
+        },
+        "review": {
+          "model": "claude-opus-5-5"
+        }
+      }
+    },
+    "hard": {
+      "when": "A mistake could let a device that was not given access open a song, leak a content key, private key or recovery key, accept a changed or truncated song file, change or lose the exact lyrics, run a model that failed its integrity check, or make existing song files or access files unreadable. For example device keys, device codes, access files, the recovery key, encryption, the song file format and every parser of song files, lyrics and timing. Also hard: the request depends on a decision that is still Proposed. When unsure between standard and hard, choose hard.",
+      "stages": {
+        "plan": {
+          "model": "claude-opus-5-5"
+        },
+        "implement": {
+          "model": "claude-opus-5-5",
+          "timeout_minutes": 60
+        },
+        "review": {
+          "model": "claude-fable-5-1"
+        }
+      }
+    }
+  },
+  "fix": {
+    "max_auto_rounds": 2
+  },
+  "merge": {
+    "auto": true,
+    "after_workflows": [
+      "ci.yml"
+    ]
+  },
+  "conflicts": {
+    "auto_resolve": true
+  },
+  "close_parent_issues": true,
+  "notify": [
+    "phuongnse"
+  ]
+}

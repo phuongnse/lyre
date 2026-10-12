@@ -67,5 +67,16 @@ Writing on GitHub, for issues, plans, pull request descriptions and reviews:
 
 ## Commands
 
-The check scripts are written in M0 (see the [roadmap](docs/roadmap.md#m0--foundation)).
-Each script will also be a NexKit check and a CI step.
+Run from the repository root. Each script is also a NexKit check and a CI step.
+
+| Script | What it does |
+| --- | --- |
+| `scripts/setup.sh` | Installs what the checks need. Safe to run repeatedly. |
+| `scripts/build.sh` | Builds every part that exists. |
+| `scripts/lint.sh` | Linters and format checks for every part that exists, and the Markdown link and anchor check |
+| `scripts/test.sh` | Unit tests for every part that exists, and the tests of the scripts |
+| `scripts/e2e.sh` | Playwright journeys against the built web client, once `tests/e2e` exists |
+
+A script runs the checks of the parts of the repository that exist and skips
+the parts not built yet (D14). An issue that creates a part adds that part's
+steps to the scripts and its commands to this table.
