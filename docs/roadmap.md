@@ -111,8 +111,10 @@ item 4 needs (see [knowledge](domain/knowledge.md#lyrics)).
   results are recorded in the docs before M3 is broken down.
 - The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
   It runs the D15 separator and both candidate aligners, Omnilingual and
-  `lyric-alignment`, on WebGPU and WASM. It reports time, peak memory and
-  syllable onset error against a few hand-timed Vietnamese songs.
+  `lyric-alignment`, on WebGPU and on the one-thread WebAssembly fallback
+  (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
+  reports time, peak memory and syllable onset error against a few
+  hand-timed Vietnamese songs.
 - Its results choose the aligner. They are recorded in the docs before the
   later M2 work relies on that choice.
 

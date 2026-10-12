@@ -121,6 +121,18 @@ What was learned:
   slower than native code, and a browser tab has limited memory. Long songs
   are processed in chunks. An operation WebGPU cannot run falls back to the
   CPU, which is much slower.
+- **GitHub Pages sets no HTTP headers.** The web client is a static site on
+  GitHub Pages ([D9](../decisions.md#d9-lyre-has-no-server--agreed)), which
+  lets a site set none of its own headers. So its Content Security Policy is
+  a `<meta>` tag *(planned for M1)*, placed first in `<head>`, because it
+  covers only what comes after it. A `<meta>` policy cannot carry
+  `frame-ancestors`, `sandbox`, `report-uri` or `report-to`. Another site can
+  therefore frame the page, and policy violations are not reported.
+- **The page is not cross-origin isolated.** Without the COOP and COEP
+  headers, the page has no `SharedArrayBuffer`. The WebAssembly fallback of
+  ONNX Runtime Web then runs on one thread, much slower than WebGPU. The
+  [model measurement page](../roadmap.md#early-checks-on-real-devices)
+  measures that case *(planned for M2)*.
 - **Phones get hot.** Long processing on Android slows down as the device
   heats up. Processing runs as a foreground task the user can see and cancel.
 - **The browser may clear storage.** Songs, models and tasks kept by a web
