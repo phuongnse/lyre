@@ -70,7 +70,10 @@ The separator of D15, as the community fp32 export of its inner network.
 - **Sample rate:** 44.1 kHz.
 - **Channels:** stereo.
 - **Window length:** a fixed segment of 343,980 samples (7.8 s). The source's
-  audio is cut into segments of this length, and the last is padded.
+  audio is cut into segments of this length, and the last is padded with
+  silence. A segment starts every 257,985 samples, so neighbours overlap by a
+  quarter, as in Demucs's `apply_model`. The segments' stems are joined with
+  Demucs's triangular weights and trimmed to the source's length.
 - **Inputs:** two, both float32.
   - `x`, shape (1, 4, 2048, 336): the segment's spectrogram, with the real and
     imaginary parts of each channel as separate channels. It is an STFT with
@@ -233,8 +236,12 @@ on each [target device](../decisions.md#d25-target-devices-for-making-songs--pro
 - **Memory:** the stage finishes without running out of memory.
 - **Sum check:** the karaoke track plus the vocals stem is compared with the
   source's audio, sample by sample. The page reports the source's energy over
-  the energy of the difference, in dB. No pass mark is set yet. The issue
-  that builds the page sets one.
+  the energy of the difference, in dB. The core fails a run under a
+  provisional 10 dB, which guards against broken runs. The page confirms or
+  changes the mark.
+- **Clipping:** the core fails a run only when the vocals or the karaoke track
+  peaks more than 1 dB above the source's own peak. A sample over 1.0 alone
+  does not fail, because decoded loud masters already exceed it.
 - **Leftover vocals:** the owner listens to the karaoke track and records
   whether clear leftover lead vocals remain. Backing vocals may remain and
   are noted, not failed.

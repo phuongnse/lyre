@@ -91,7 +91,12 @@ What was learned:
   M2 measurements choose the aligner and confirm the separator (D15, D20).
 - **Check separation by sum.** Vocals plus karaoke track should add back up to
   the original, without clipping and at plausible levels. A large difference
-  means a broken run.
+  means a broken run. Two rules apply. The energy rule: the original's energy
+  over the energy of what the two tracks leave out must be at least 10 dB. The
+  mark is provisional until the model measurement page confirms or changes it.
+  The clipping rule: vocals or the karaoke track may not peak more than 1 dB
+  above the original's own peak. A sample over 1.0 alone does not fail, because
+  decoded loud masters already exceed it.
 - **Scan the whole vocal track for leftovers,** not only where lyrics are
   sung. Laughs, calls, harmonies and ad-libs have no lyric text but still leak
   into the karaoke track.
