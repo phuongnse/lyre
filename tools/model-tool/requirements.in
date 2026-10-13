@@ -1,0 +1,16 @@
+# The model tool's Python packages, for Python 3.12 on Linux and Windows, CPU only.
+# Regenerate requirements.txt from the repository root with uv:
+#   uv pip compile tools/model-tool/requirements.in --universal --python-version 3.12 --generate-hashes --index-strategy unsafe-best-match --emit-index-url --override tools/model-tool/overrides.txt -o tools/model-tool/requirements.txt
+# The CPU-only PyTorch wheels come from PyTorch's own index. The default Linux wheels pull
+# several GB of CUDA libraries.
+--extra-index-url https://download.pytorch.org/whl/cpu
+# 2.8 still has the TorchScript ONNX exporter (dynamo=False) that make_aligner.py uses.
+torch==2.8.0+cpu
+torchaudio==2.8.0+cpu
+# 4.x: the model is built from Wav2Vec2Model as this version defines it.
+transformers==4.57.6
+onnx
+onnxruntime
+demucs==4.0.1
+soundfile
+numpy

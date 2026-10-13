@@ -59,13 +59,16 @@ tests/
   e2e/                Playwright journeys against the built web client
   fixtures/           small sources, lyrics and expected timing for tests
 scripts/              one script per check, shared by CI and NexKit
+tools/
+  model-tool/         developer tool: makes and checks model ONNX files, run by hand
 ```
 
 Folders are created when the first issue needs them. M0 created `core/` with
 `lyre-core`, `lyre-wasm` and `lyre-ffi`, plus `web/`, `android/`, `tests/e2e`
 and `scripts/`. M1 added `core/lyre-cli` and `tests/fixtures`, and rebuilt
 `web/` on Angular. The [lyre-cli reference](reference/lyre-cli.md) describes
-the tool and the fixtures.
+the tool and the fixtures. `tools/model-tool` was added for the M2 model
+measurement page. Its [reference](reference/model-tool.md) describes it.
 
 ## Core rules
 

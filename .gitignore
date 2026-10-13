@@ -24,6 +24,10 @@ models/
 # Test results and logs written by scripts/
 artifacts/
 
+# Python: the model tool's virtual environment and bytecode
+.venv-models/
+__pycache__/
+
 # Local environment
 .env
 .env.*

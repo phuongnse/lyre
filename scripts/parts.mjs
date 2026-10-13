@@ -15,6 +15,7 @@ export const PARTS = [
     needs: ['web'],
   },
   { name: 'android', label: 'the Android app', paths: ['android/', 'core/'], needs: ['core'] },
+  { name: 'models', label: 'the model tool', paths: ['tools/model-tool/'], needs: [] },
 ]
 
 // A change under one of these paths can affect every part.

@@ -33,4 +33,9 @@ if [[ -f android/settings.gradle.kts ]] && checks android; then
   (cd android && ./gradlew --console=plain testDebugUnitTest)
 fi
 
+# The model tool's unit tests need only Python's standard library.
+if [[ -f tools/model-tool/requirements.txt ]] && checks models; then
+  python3 -m unittest discover -s tools/model-tool -p 'test_*.py'
+fi
+
 node --test scripts/*.test.mjs
