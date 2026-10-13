@@ -33,7 +33,7 @@ M4.
   components. The exceptions are the white and black of the
   [lyric text style](#text-style), its em-based outline and shadow sizes, the
   [vocal role colours](#vocal-role-colours), and the lyric font size with its
-  16 px floor (see [Lyrics area](#lyrics-area)).
+  16 px floor and its bold weight (see [Lyrics area](#lyrics-area)).
 - All tokens come from one seed colour, `#6B5778` (smoky purple), including the
   [highlight colour](#highlight-colour). Two sets of colours do not come from
   the seed, and a seed change never changes them: the white and black of the
@@ -164,10 +164,12 @@ Compose uses the same three values *(planned for M4)*.
 
 - The Lyrics area lies over the bottom of the video, inside the video's box,
   with no backdrop. Nothing else on the page moves into that space.
-- The lyric font size is 1/14 of the video's displayed height, and never under
+- The lyric font size is 1/10 of the video's displayed height, and never under
   16 px. When the video's size changes, the display lines are laid out again
   for the new size. The rule is a starting point to adjust after trying it on a
   phone.
+- Lyric text and the countdown dots are bold, weight 700. The core lays out the
+  display lines with the bold font's widths.
 - The two rows, with their countdown dots, stay inside the video's box. The
   rows have a gap below them of a quarter of the font size, and a line height
   of 1.25 times it.
