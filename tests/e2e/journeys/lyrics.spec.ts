@@ -93,25 +93,27 @@ test('each row holds its display line byte for byte', async ({ page }) => {
 
 const near = (actual: number, expected: number) => expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1)
 
-test('at 1.0 s the top row starts after the Countdown, which sits at the left gap', async ({ page }) => {
+// The Lyrics area's side margin is its padding. lyrics-over-video.spec.ts checks it against the font metrics.
+
+test('at 1.0 s the top row starts after the Countdown, which sits at the left margin', async ({ page }) => {
   const { region, video } = await openFixture(page)
   await seek(video, 1)
   await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
   const box = (await region.boundingBox())!
   const countdown = (await countdownsIn(region).boundingBox())!
   const first = (await syllableIn(region)('Mưa').boundingBox())!
-  const gap = 0.3 * (await region.evaluate((element) => parseFloat(getComputedStyle(element).fontSize)))
+  const gap = await region.evaluate((element) => parseFloat(getComputedStyle(element).paddingLeft))
   near(countdown.x, box.x + gap)
   near(first.x, countdown.x + countdown.width)
 })
 
-test('at 1.0 s the bottom row ends at the right gap of the Lyrics area', async ({ page }) => {
+test('at 1.0 s the bottom row ends at the right margin of the Lyrics area', async ({ page }) => {
   const { region, video } = await openFixture(page)
   await seek(video, 1)
   await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
   const box = (await region.boundingBox())!
   const last = (await syllableIn(region)('sông').boundingBox())!
-  const gap = 0.3 * (await region.evaluate((element) => parseFloat(getComputedStyle(element).fontSize)))
+  const gap = await region.evaluate((element) => parseFloat(getComputedStyle(element).paddingLeft))
   near(last.x + last.width, box.x + box.width - gap)
 })
 

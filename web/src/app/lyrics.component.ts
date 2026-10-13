@@ -21,6 +21,29 @@ export function lyricFontSize(height: number): number {
   return Math.max(height / 10, 16)
 }
 
+// The lyric font's own metrics, in CSS pixels: the height above and below the
+// baseline that a line box is built from, and the height of a capital.
+export interface FontMetrics {
+  ascent: number
+  descent: number
+  capHeight: number
+}
+
+// The visible gap between the two rows, from the top row's descender line to the
+// bottom row's cap-height line, and the space from the bottom row's descender
+// line to the video's bottom, which is that gap less the half leading under the
+// row's text: docs/ui-conventions.md#lyrics-area. `side` is used at both sides,
+// `below` is the bottom padding of the area. The row boxes are 1.25 times the
+// font size tall and 0.3 times apart.
+export function lyricsMargins(
+  fontSize: number,
+  { ascent, descent, capHeight }: FontMetrics,
+): { side: number; below: number } {
+  const halfLeading = (1.25 * fontSize - ascent - descent) / 2
+  const side = halfLeading + 0.3 * fontSize + halfLeading + ascent - capHeight
+  return { side, below: side - halfLeading }
+}
+
 // One syllable as shown in a display line. `separator` is the exact text before
 // it in the lyrics, or empty at the start of a display line. `start` is where it
 // starts in its display line, in CSS pixels.
@@ -54,9 +77,12 @@ interface ShownLine {
       #section
       [attr.aria-label]="messages.lyrics"
       [style.--margin]="margin() + 'px'"
+      [style.--side]="side() + 'px'"
+      [style.--below]="below() + 'px'"
       [style.--sung]="sungColour()"
     >
       <span #measure class="measure" aria-hidden="true"></span>
+      <span #capMeasure class="measure cap" aria-hidden="true"></span>
       <span #dotsMeasure class="measure dots" aria-hidden="true"
         ><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span
       ></span>
@@ -107,10 +133,11 @@ interface ShownLine {
          countdown dots inherit it: docs/ui-conventions.md#lyrics-area. */
       font-weight: 700;
       /* The font size is set from the video's height, so the line height and the
-         gap follow it. One gap of 0.3em is used at the sides, below the rows and
-         between them: docs/ui-conventions.md#lyrics-area. */
+         gap between the rows follow it. The sides and the bottom take the visible
+         gap between the rows, worked out from the font's metrics in --side and
+         --below: docs/ui-conventions.md#lyrics-area. */
       line-height: 1.25;
-      padding: 0 0.3em 0.3em;
+      padding: 0 var(--side, 0) var(--below, 0);
     }
     .measure {
       position: absolute;
@@ -119,10 +146,15 @@ interface ShownLine {
       visibility: hidden;
       white-space: pre;
     }
-    /* A row box is always one line height tall, so the gaps are between row boxes
+    /* The height of a capital in the lyric font, read as a length. */
+    .cap {
+      display: block;
+      height: 1cap;
+    }
+    /* A row box is always one line height tall, so the gap is between row boxes
        and a row keeps its place when it is empty. The top row's line starts after
        the margin for the countdown dots, and the bottom row's line ends at the
-       right gap. */
+       right margin. */
     p {
       margin: 0;
       height: 1lh;
@@ -163,7 +195,7 @@ interface ShownLine {
       clip-path: inset(0 calc(100% - (var(--sweep) - var(--start))) 0 0);
     }
     /* The countdown dots take no width, so they sit just left of the line. Their
-       box includes the gap to the line, so it is as wide as the margin. */
+       box includes the space to the line, so it is as wide as the margin. */
     .countdown {
       display: inline-block;
       width: 0;
@@ -200,15 +232,20 @@ export class Lyrics {
   // The width of the countdown dots with their gap, in CSS pixels. The top row's
   // line starts after it.
   protected readonly margin = signal(0)
+  // The left and right margins, and the space below the bottom row, in CSS
+  // pixels: lyricsMargins.
+  protected readonly side = signal(0)
+  protected readonly below = signal(0)
   // The colour of sung text: the token of the song's vocal role.
   protected readonly sungColour = computed(() => `var(--lyre-vocal-${this.song().details.vocalRole})`)
   private readonly section = viewChild.required<ElementRef<HTMLElement>>('section')
   private readonly measure = viewChild.required<ElementRef<HTMLElement>>('measure')
+  private readonly capMeasure = viewChild.required<ElementRef<HTMLElement>>('capMeasure')
   private readonly dotsMeasure = viewChild.required<ElementRef<HTMLElement>>('dotsMeasure')
   private readonly syllables = viewChildren<ElementRef<HTMLElement>>('syllable')
   private readonly countdowns = viewChildren<ElementRef<HTMLElement>>('countdown')
-  // The width of the lyrics area less both side gaps, and the lyric font size, in
-  // CSS pixels, once they are measured.
+  // The width of the lyrics area and the lyric font size, in CSS pixels, once they
+  // are measured.
   private readonly size = signal<{ width: number; fontSize: number } | undefined>(undefined)
   // Counts the layouts asked for, so only the latest one is shown.
   private layouts = 0
@@ -252,23 +289,37 @@ export class Lyrics {
   }
 
   // Sets the lyric font size from the video's displayed height, and measures the
-  // area's width less both side gaps with it. It writes the signal only when
-  // either changed.
+  // area's width. The width includes the padding, so changing the padding never
+  // changes it. It writes the signal only when either changed.
   private measureSize(): void {
     const section = this.section().nativeElement
     const fontSize = lyricFontSize(this.video().clientHeight)
     // Set on the element itself, so the measuring that follows sees the new size.
     section.style.fontSize = `${fontSize}px`
-    const style = getComputedStyle(section)
-    const width = section.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0)
+    const width = section.clientWidth
     const current = this.size()
     if (current?.width !== width || current.fontSize !== fontSize) this.size.set({ width, fontSize })
   }
 
-  // Measures every syllable, a space and the countdown dots, and has the core lay
-  // out the lines that fit `maxWidth`, the area's width less both side gaps, less
-  // the dots' width.
-  private async layOut(song: OpenedSong, maxWidth: number): Promise<void> {
+  // The lyric font's ascent, descent and cap height. They come from the font, not
+  // from any text, so they never change with the lyrics shown.
+  private fontMetrics(section: HTMLElement): FontMetrics {
+    const context = document.createElement('canvas').getContext('2d')
+    let ascent = 0
+    let descent = 0
+    if (context) {
+      context.font = getComputedStyle(section).font
+      const box = context.measureText('')
+      ascent = box.fontBoundingBoxAscent || 0
+      descent = box.fontBoundingBoxDescent || 0
+    }
+    return { ascent, descent, capHeight: this.capMeasure().nativeElement.getBoundingClientRect().height }
+  }
+
+  // Measures every syllable, a space and the countdown dots, works out the
+  // margins from the font's metrics, and has the core lay out the lines that fit
+  // `width`, the area's width, less both side margins, less the dots' width.
+  private async layOut(song: OpenedSong, width: number): Promise<void> {
     const attempt = ++this.layouts
     const section = this.section().nativeElement
     const texts = song.lyrics.map((syllable) => syllable.text)
@@ -280,17 +331,21 @@ export class Lyrics {
     }
     if (attempt !== this.layouts) return
     const measure = this.measure().nativeElement
-    const width = (text: string) => {
+    const textWidth = (text: string) => {
       measure.textContent = text
       return measure.getBoundingClientRect().width
     }
-    const widths = texts.map(width)
-    const space = width(' ')
+    const widths = texts.map(textWidth)
+    const space = textWidth(' ')
     measure.textContent = ''
     const margin = this.dotsMeasure().nativeElement.getBoundingClientRect().width
+    const { side, below } = lyricsMargins(
+      parseFloat(getComputedStyle(section).fontSize) || 0,
+      this.fontMetrics(section),
+    )
     const starts: number[] = []
     let lyricLine = -1
-    const lines = song.layOut(widths, space, Math.max(maxWidth - margin, 0)).map((span) => {
+    const lines = song.layOut(widths, space, Math.max(width - 2 * side - margin, 0)).map((span) => {
       let start = 0
       const syllables = song.lyrics.slice(span.start, span.end).map((syllable, k) => {
         const index = span.start + k
@@ -306,6 +361,8 @@ export class Lyrics {
     this.starts = starts
     this.widths = widths
     this.margin.set(margin)
+    this.side.set(side)
+    this.below.set(below)
     this.lines.set(lines)
     this.showRows()
   }
