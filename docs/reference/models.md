@@ -204,7 +204,7 @@ system's figure by hand when it is needed.
 The page checks the separator target of
 [D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)
 and the listening split of [D22](../decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)
-on each target device, with a song of about 4 minutes:
+on each [target device](../decisions.md#d25-target-devices-for-making-songs--proposed), with a song of about 4 minutes:
 
 - **Time:** the separate stage on WebGPU takes no longer than the song lasts.
   The download and the load time do not count.
@@ -224,7 +224,8 @@ on each target device, with a song of about 4 minutes:
 - **Runs on a device:** a candidate runs on a device when it finishes every
   measured song there on WebGPU, without an error and without running out of
   memory.
-- **The rule:** among the candidates that run on every target device, the one
+- **The rule:** among the candidates that run on every
+  [target device](../decisions.md#d25-target-devices-for-making-songs--proposed), the one
   with the lower median onset error is chosen
   ([D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
   The median pools every syllable of every measured song. It is not a median
