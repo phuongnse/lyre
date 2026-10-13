@@ -142,8 +142,9 @@ platform's native media and UI stack for performance.
 Open points, each settled by a later decision:
 
 - the vocal separation and alignment models: settled by
-  [D15](#d15-models-for-separation-and-alignment--agreed) and
-  [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed), confirmed by the M2 measurements;
+  [D15](#d15-models-for-separation-and-alignment--agreed),
+  [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) and
+  [D21](#d21-pinned-model-files-and-the-separator-target--agreed), confirmed by the M2 measurements;
 - the lowest Android version and the browsers Lyre supports.
 
 ## D11. Delivery workflow — Agreed
@@ -202,7 +203,8 @@ else can be built and verified through it, issue by issue.
 
 ## D15. Models for separation and alignment — Agreed
 
-Partly replaced by [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
+Partly replaced by [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
+and [D21](#d21-pinned-model-files-and-the-separator-target--agreed).
 
 The owner delegated this choice.
 
@@ -363,3 +365,41 @@ aligner.
 *Why:* `lyric-alignment` is trained on sung Vietnamese lyrics and may time
 syllables better. The non-commercial limit costs nothing while commercial use
 is out of scope.
+
+## D21. Pinned model files and the separator target — Agreed
+
+Says which files the models of
+[D15](#d15-models-for-separation-and-alignment--agreed) and
+[D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
+come from, and sets the separator's target. Replaces D15's detail of the
+separator file's format and size.
+
+- **Sources.** Every model file is downloaded from Hugging Face over HTTPS.
+  Each is pinned by repository, revision (a full commit), size and SHA-256.
+  The [models reference](reference/models.md) lists the files.
+- **Omnilingual CTC-300M:** the int8 export by sherpa-onnx,
+  `csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12`
+  (`model.int8.onnx` and `tokens.txt`).
+- **htdemucs:** the community export `webnn/stem-separator`
+  (`onnx/htdemucs_fwd.onnx` and its weights file `onnx/htdemucs_fwd.onnx.data`),
+  in fp32. It was converted from Meta's checkpoint `955717e8-8726e21a.th`, and
+  the [model tool](reference/model-tool.md#compare_htdemucspy) compared it
+  with that checkpoint. The STFT, its inverse and the normalisation around
+  the network are outside the file, so Lyre does them.
+- **Not hosted again.** Lyre does not host the htdemucs file itself while the
+  weights' licence is unclear.
+- **lyric-alignment:** Lyre's own ONNX export, made by the
+  [model tool](reference/model-tool.md#make_alignerpy), in fp32 and int8. The
+  owner publishes it in `phuongnse/lyric-alignment-onnx`, with its
+  attribution and CC-BY-NC-4.0.
+- **Separator target:** on each target device, a 4-minute song separates on
+  WebGPU in no more time than the song lasts, without running out of memory.
+  The karaoke track passes the
+  [sum check](reference/models.md#separator-target), and the owner hears no
+  clear leftover vocals. If the separator misses, a newer decision replaces
+  D15, as the [roadmap](roadmap.md#later-milestones) says.
+
+*Why:* a commit cannot change, so every device checks and runs the same bytes.
+Published exports spare Lyre from making its own, except for
+`lyric-alignment`, which has none. Separating no slower than the song plays
+keeps the wait for a song shorter than listening to it.

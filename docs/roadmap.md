@@ -116,8 +116,9 @@ Done when all ten were merged and the owner accepted the Player.
   It runs the D15 separator and both candidate aligners, Omnilingual and
   `lyric-alignment`, on WebGPU and on the one-thread WebAssembly fallback
   (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
-  reports time, peak memory and syllable onset error against a few
-  hand-timed Vietnamese songs.
+  reports time, memory as the browser reports it and syllable onset error
+  against a few hand-timed Vietnamese songs. The
+  [models reference](reference/models.md#measurement-method) sets the method.
 - The core computes the [onset error](domain/concepts.md#processing) of each
   syllable against a timing file written by hand. It also gives the median,
   the 90th percentile and the share of syllables within 100 ms, 100 ms
@@ -134,7 +135,8 @@ must settle:
   `lyric-alignment`. The aligner with the lower syllable onset error, among
   those that run on the target devices, is chosen
   ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)). A newer decision replaces D15 if the separator
-  misses its target.
+  misses its target
+  ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)).
 - **M3:** the passkey check results (D8); the reference doc for the encrypted
   format, access files and recovery, reviewed before implementation.
 - **M4:** split in two when broken down: Android playback and device keys

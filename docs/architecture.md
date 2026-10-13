@@ -28,8 +28,10 @@ flowchart LR
 - **Lyre core** is one Rust library (D10). It owns everything both clients
   must agree on: the song file format, encryption, access files, device
   codes, lyric parsing, forced alignment, display line layout, timing, and
-  the pinned model files with the check of a download against them. Both
-  clients call it; neither has its own copy of this logic.
+  the pinned model files with the check of a download against them. It also
+  does the separator's STFT, its inverse and the normalisation around the
+  model *(planned for M2)*. Both clients call it; neither has its own copy of
+  this logic.
 - **The web client** is a static site (D9). Its UI, media playback and model
   runs are in TypeScript. The UI is Angular with Angular Material (D19),
   built by the rules in [UI conventions](ui-conventions.md). It calls the
@@ -43,8 +45,11 @@ flowchart LR
   devices however people choose: a shared Drive folder, a chat, a USB stick.
 - **Models** are checked by the core against their pinned size and SHA-256
   hash. The client feeds a download to the core in pieces, and the check
-  passes only when both match. Downloading the files from their published
-  sources on first use and keeping them on the device is *(planned for M2)*.
+  passes only when both match. Downloading the files from Hugging Face over
+  HTTPS on first use
+  ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed))
+  and keeping them on the device is *(planned for M2)*. The
+  [models reference](reference/models.md) lists the pinned files.
 
 ## Repository layout
 
@@ -71,6 +76,8 @@ and `scripts/`. M1 added `core/lyre-cli` and `tests/fixtures`, and rebuilt
 `web/` on Angular. The [lyre-cli reference](reference/lyre-cli.md) describes
 the tool and the fixtures. `tools/model-tool` was added for the M2 model
 measurement page. Its [reference](reference/model-tool.md) describes it.
+The [models reference](reference/models.md) lists the model files and the
+page's measurement method.
 
 ## Core rules
 

@@ -96,8 +96,9 @@ failed on the owner's 207 s clip. PyTorch's top token was within 0.5 on
 directly, so an int8 error there moves the output most. Keeping them fp32
 costs about 13 MB.
 
-The int8 file is expected to be about 370 MB, against about 1.28 GB for
-`model.onnx`.
+The published int8 file is 359,796,311 bytes, against 1,275,253,998 bytes
+for `model.onnx`. The [models reference](models.md#lyric-alignment) pins
+both.
 
 ### compare_htdemucs.py
 
