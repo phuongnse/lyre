@@ -8,6 +8,7 @@ pub mod lyrics;
 pub mod lyrics_rows;
 pub mod model;
 pub mod onset_error;
+pub mod separation;
 pub mod song_file;
 pub mod timing_file;
 pub mod words;
