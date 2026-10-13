@@ -175,6 +175,11 @@ reference doc and reviewed before M3 implements them.
   a source is picked, for now on the source check page. It reads only the
   container and decodes nothing. Mediabunny reads MP4, WebM and MP3. It reads
   a WebM's tags, but not the segment title where ffmpeg writes a WebM title.
+  The core works out the stored type D24 gives the primary video track and
+  the primary audio track, from Mediabunny's codec name and codec string. The
+  web client asks `MediaSource.isTypeSupported`, as the Player does, and
+  refuses the source when a track has no stored type or this browser cannot
+  play it. MP3 is stored as `audio/mp4; codecs="mp4a.6B"`.
 - On the web, stage 2 decodes the source's audio with Mediabunny through
   WebCodecs, piece by piece, so neither the source nor the decoded audio is
   held whole. A streaming resampler in the web client gives 44.1 kHz stereo

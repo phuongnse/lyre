@@ -255,8 +255,12 @@ Compose uses the same three values *(planned for M4)*.
 - The source check page reads a picked source's details: its duration, its
   streams, its start offset, and its title, artist and composer, shown
   exactly as stored. A source without audio, or a file it cannot read, gets
-  one plain message. It can also decode the audio at a stage's rate, and shows
-  what came out: its rate, channels, length, tone and where sound starts.
+  one plain message. A source this browser cannot play shows a reason that
+  names the track and the codec, such as "This browser cannot play this
+  source's video (H.265), so a song cannot be made from it.", next to its
+  details. When neither track plays, the video is named. The page can also
+  decode the audio at a stage's rate, and shows what came out: its rate,
+  channels, length, tone and where sound starts.
   Audio the browser cannot decode gets the no-audio message. The Playwright
   journeys use it to check reading a source and decoding its audio.
 - The model check page downloads, checks and keeps the 56-byte test model

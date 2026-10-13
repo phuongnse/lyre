@@ -158,5 +158,12 @@ fixtures check decoding. The MP4 holds AAC audio, which not every Chromium
 build decodes. Its journey makes Chromium report that it has no AAC decoder,
 so the MP4 checks the no-audio refusal instead.
 
+The source check journeys also check the cannot-play reasons. One makes
+Chromium report that it cannot play H.264, and checks that the MP4 names its
+video next to its tags. Another does the same for Opus with the WebM. The MP3
+is stored as `audio/mp4; codecs="mp4a.6B"`, which Playwright's Chromium does
+not accept. So its journeys expect the MP3 audio reason next to its details,
+or no reason in a browser that accepts the type.
+
 The files under `tests/fixtures/` total about 61 KB. A test fails when they
 pass 64 KiB.

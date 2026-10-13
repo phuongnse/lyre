@@ -69,9 +69,10 @@ being followed blindly.
 The stages, in order:
 
 1. **Read the source.** Duration, streams, and title, artist and composer
-   tags. The source needs an audio stream; video is optional. *(planned for
-   M2)* Its video and audio must be in codecs the making device can play, or
-   the source is refused.
+   tags. The source needs an audio stream; video is optional. Its video and
+   audio must be in codecs the making device can play, in the stored types
+   D24 gives them, or the source is refused. The reason names the track and
+   the codec.
 2. **Extract the audio** of the song, or of the section, at full quality.
 3. **Separate** vocals from the karaoke track.
 4. **Align** the supplied syllables against the vocals.
