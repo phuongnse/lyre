@@ -27,7 +27,8 @@ flowchart LR
 
 - **Lyre core** is one Rust library (D10). It owns everything both clients
   must agree on: the song file format, encryption, access files, device
-  codes, lyric parsing, display line layout and timing. Both clients call it;
+  codes, lyric parsing, display line layout, timing, and the pinned model
+  files with the check of a download against them. Both clients call it;
   neither has its own copy of this logic.
 - **The web client** is a static site (D9). Its UI, media playback and model
   runs are in TypeScript. The UI is Angular with Angular Material (D19),
@@ -38,15 +39,17 @@ flowchart LR
   UniFFI.
 - **There is no Lyre server** (D9). Song files and access files move between
   devices however people choose: a shared Drive folder, a chat, a USB stick.
-- **Models** are downloaded from their published sources on first use,
-  checked against the pinned SHA-256 hash, and kept on the device *(planned
-  for M2)*.
+- **Models** are checked by the core against their pinned size and SHA-256
+  hash. The client feeds a download to the core in pieces, and the check
+  passes only when both match. Downloading the files from their published
+  sources on first use and keeping them on the device is *(planned for M2)*.
 
 ## Repository layout
 
 ```text
 core/                 Rust workspace
-  lyre-core/          song file format, crypto, access files, lyrics, layout, timing
+  lyre-core/          song file format, crypto, access files, lyrics, layout, timing,
+                      model check
   lyre-wasm/          WebAssembly bindings for the web client
   lyre-ffi/           UniFFI bindings for the Android app
   lyre-cli/           developer tool: build and inspect song files, used by tests
