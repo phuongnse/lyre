@@ -12,6 +12,8 @@ recording a newer one that replaces it.
 
 ## D2. Two clients: web and native Android — Agreed
 
+Narrowed by [D24](#d24-sources-are-repackaged-and-only-the-karaoke-track-is-encoded--agreed).
+
 - **Web:** Lyre runs in a desktop or mobile browser, with nothing to install.
 - **Android:** a native Android app, built for the best performance the
   device can give.
@@ -446,3 +448,30 @@ For M8. The owner wants to keep backing vocals for singing along.
 
 *Why:* backing vocals are part of how a song feels. A singer may want them
 back, but not at the price of a distorted karaoke track.
+
+## D24. Sources are repackaged, and only the karaoke track is encoded — Agreed
+
+Narrows [D2](#d2-two-clients-web-and-native-android--agreed): a song made on
+one client plays on another device only when that device decodes the song's
+stored codecs.
+
+- **No re-encoding.** Lyre never re-encodes a source's video or audio. It
+  keeps the coded frames byte for byte, at the source's codec, resolution and
+  frame rate.
+- **Repackaging only.** Lyre moves those frames into a container that Media
+  Source Extensions and Media3 stream piece by piece. That is WebM when WebM
+  holds the codec (VP8, VP9, AV1, Opus, Vorbis). Otherwise it is fragmented
+  MP4 (H.264, HEVC, AAC, MP3), the MP4 layout that is streamed in pieces.
+- **One encoded track.** The karaoke track is the only media Lyre encodes:
+  Opus, 48 kHz, stereo.
+- **Refused, not converted.** A source whose video or audio the making device
+  cannot play is refused with a plain reason. Lyre never converts it.
+- **Plain message on playback.** A Player that cannot play a stored type says
+  so plainly, for example "This device cannot play H.265 video", and plays
+  nothing.
+
+The [song file format](reference/song-file-format-v0.md#media) sets the
+containers, the stored types and the limits.
+
+*Why:* re-encoding video on a phone or in a browser is the slowest step by
+far, and it loses quality. Repackaging takes seconds.

@@ -109,10 +109,13 @@ Chunks come in this order, and no other type or order is accepted:
   no video.
 - **The thumbnail is optional.** Thumbnails are made by processing *(planned
   for M2)*. Songs built by hand for tests may have none.
-- **Both tracks are cut at the same times.** The original track has the same
-  number of segments as the karaoke track, each with the same `start_ms` and
-  `duration_ms`. Switching between Karaoke and Original then keeps the exact
-  position.
+- **Both audio tracks are cut at about the same times.** The original track
+  has the same number of segments as the karaoke track. Today each has the
+  same `start_ms` and `duration_ms`. *(planned for M2)* Each original
+  segment's start and end (`start_ms + duration_ms`) are within 50 ms of those
+  of the karaoke segment at the same position, because the original keeps its
+  own codec's frame length. Switching between Karaoke and Original then keeps
+  the position.
 - **The song's duration is the karaoke track's total**, the sum of its
   segments' `duration_ms`.
 - **The video matches the song.** The video's total duration is within
@@ -167,10 +170,14 @@ bytes.
 
 ### Media segments
 
-Init segments are 1 to 65,536 bytes. Media segments are 1 byte to 16 MiB,
-with a `duration_ms` of 1 to 10,000. The [media](#media) section says what
-these bytes hold. The core treats them as opaque and checks only their sizes,
-counts and times. The client's decoders check the media itself.
+Init segment chunks are 1 to 65,536 bytes today. With the stored type
+*(planned for M2)* they are 4 to 65,793 bytes. Media segments are 1 byte to
+16 MiB today, and up to 64 MiB *(planned for M2)*. An audio segment has a
+`duration_ms` of 1 to 10,000. A video segment has 1 to 10,000 today, and 1 to
+20,000 *(planned for M2)*. The [media](#media) section says what these bytes
+hold. The core treats the media as opaque and checks only the sizes, counts
+and times, and *(planned for M2)* the container part of each stored type. The
+client's decoders check the media itself.
 
 *Why opaque:* the core does no media work, so it has no media parser to keep
 in step with the decoders.
@@ -218,27 +225,63 @@ The rules for a good split are in
 
 ## Media
 
-- **Container.** WebM, in the Media Source Extensions (MSE) WebM byte stream
-  format, so a browser can append each chunk to a `SourceBuffer` as read.
-- **Init segment chunk.** The EBML header, then the Segment element with its
-  Info and Tracks elements. It holds exactly one track. `TimecodeScale` is
-  1,000,000, so timestamps are in milliseconds.
-- **Media segment chunk.** One or more complete Clusters of that track. Its
-  first block is a keyframe, and its first Cluster's timestamp equals the
-  index entry's `start_ms`.
-- **Video.** VP9 profile 0, 8-bit, 4:2:0, at most 1920×1080 at 30 frames per
-  second. MSE type: `video/webm; codecs="vp09.00.40.08"`.
-- **Audio.** Opus, 48 kHz, stereo. The karaoke track and the original track
-  are separate chunk sequences, each with one track. MSE type:
-  `audio/webm; codecs="opus"`.
+Lyre keeps the source's video and original audio as they were coded, and only
+repackages them. The karaoke track is the only media it encodes
+([D24](../decisions.md#d24-sources-are-repackaged-and-only-the-karaoke-track-is-encoded--agreed)).
+Each track is stored so that Media Source Extensions (MSE) can stream it: a
+browser appends each chunk to a `SourceBuffer` as it reads it.
 
-*Why these play in Playwright's Chromium:* VP9 and Opus are royalty-free and
-in every Chromium build, Playwright's included. H.264 and AAC are not in every
-Chromium build, so the web journeys could not rely on them.
+- **Container.** WebM, in the MSE WebM byte stream format, with
+  `TimecodeScale` 1,000,000 so timestamps are in milliseconds. Or, *(planned
+  for M2)* for a codec WebM cannot hold, fragmented MP4 in the MSE ISO BMFF
+  byte stream format. Fragmented MP4 is the MP4 layout that is streamed in
+  pieces. D24 says which container a codec gets.
+- **Init segment chunk.** Today it holds the container's init bytes only.
+  *(planned for M2)* It starts with the track's stored type:
 
-*Why these play through Media3 (planned for M4):* Android's compatibility
-definition requires VP9 and Opus decoders from Android 5.0. Media3 plays WebM
-segments through its DASH source, with a data source that reads the chunks.
+  | Size | Field | Value |
+  | --- | --- | --- |
+  | 2 | `type_length` | u16, 1 to 255 |
+  | `type_length` | `type` | The track's MSE type, in printable ASCII (`20` to `7E`), for example `video/mp4; codecs="avc1.640028"` |
+  | 1 to 65,536 | `init` | The container's init bytes, up to the end of the chunk |
+
+  The container's init bytes hold exactly one track. In WebM they are the
+  EBML header, then the Segment element with its Info and Tracks elements. In
+  fragmented MP4 *(planned for M2)* they are the `ftyp` and `moov` boxes.
+- **Stored type checks** *(planned for M2)*. The core checks only the
+  container part of each type. The video's type starts with `video/webm;` or
+  `video/mp4;`. The original track's starts with `audio/webm;` or
+  `audio/mp4;`. The karaoke track's is exactly `audio/webm; codecs="opus"`.
+  The core does not read the `codecs` value. The device's decoders decide
+  whether it plays.
+- **Media segment chunk.** One or more whole Clusters of that track, or
+  *(planned for M2)* one or more whole `moof` and `mdat` box pairs. It starts
+  on a keyframe that needs no earlier frame. Its first frame's presentation
+  time, rounded down to a whole millisecond, equals the index entry's
+  `start_ms`.
+- **Video.** Today the web Player plays VP9 video, with the MSE type
+  `video/webm; codecs="vp09.00.40.08"`. *(planned for M2)* The video is the
+  source's coded frames, at any codec, resolution and frame rate the device
+  plays. A video segment runs from one keyframe to a later one, and lasts at
+  most 20,000 ms.
+- **Audio.** The karaoke track is Opus, 48 kHz, stereo, with the MSE type
+  `audio/webm; codecs="opus"`. Today the original track is Opus too.
+  *(planned for M2)* The original track is the source's audio as it was coded.
+  The karaoke track and the original track are separate chunk sequences, each
+  with one track.
+- **The type is checked first** *(planned for M2)*. The stored type lets a
+  player ask `MediaSource.isTypeSupported`, or Media3 its decoders, before it
+  reads a segment. When the device cannot play a type, the Player shows the
+  plain message of D24, such as "This device cannot play H.265 video", and
+  plays nothing.
+
+*Why VP9 and Opus in the tests:* Playwright's Chromium has no H.264 or AAC
+decoder. So the fixture songs and the web journeys use VP9 video and Opus
+audio, and other codecs are checked on real devices.
+
+*Why these play through Media3 (planned for M4):* Media3 plays WebM and
+fragmented MP4 segments through its DASH source, with a data source that reads
+the chunks. The device's decoders decide which codecs play.
 
 ## Limits
 
@@ -249,7 +292,7 @@ A reader rejects the whole file when any value is outside these limits.
 | Header | exactly 32 bytes |
 | Index entry | exactly 24 bytes |
 | `entry_count` | 7 to 16,384 |
-| File size | at most 2,147,483,647 bytes (2³¹ − 1) |
+| File size | at most 2,147,483,647 bytes (2³¹ − 1) today. At most 4,294,967,295 bytes (2³² − 1) *(planned for M2)* |
 | Song details chunk | 8 to 3,079 bytes |
 | Title | 1 to 1,024 bytes |
 | Artist, composer | 0 to 1,024 bytes each |
@@ -258,15 +301,17 @@ A reader rejects the whole file when any value is outside these limits.
 | Lyrics chunk | 1 to 1,048,576 bytes |
 | Timing chunk | exactly `4 + 8 × count` bytes, 12 to 524,292 |
 | Syllables (`count`) | 1 to 65,536 |
-| Init segment chunk | 1 to 65,536 bytes |
-| Media segment chunk | 1 to 16,777,216 bytes (16 MiB) |
-| Media segment `duration_ms` | 1 to 10,000 |
+| Init segment chunk | 1 to 65,536 bytes today. 4 to 65,793 bytes with the stored type *(planned for M2)* |
+| Stored type | 1 to 255 printable ASCII bytes *(planned for M2)* |
+| Media segment chunk | 1 to 16,777,216 bytes (16 MiB) today. 1 to 67,108,864 bytes (64 MiB) *(planned for M2)* |
+| Audio media segment `duration_ms` | 1 to 10,000 |
+| Video media segment `duration_ms` | 1 to 10,000 today. 1 to 20,000 *(planned for M2)* |
+| Audio cut tolerance | 0 ms today. 50 ms *(planned for M2)* between each original segment's start and end and those of the karaoke segment at the same position |
 | Media segments per track | 1 to 4,096 |
 | Song duration | 1 to 3,600,000 ms (1 hour) |
 | Video duration | within 1,000 ms of the song duration |
-| Video | VP9 profile 0, at most 1920×1080 at 30 fps |
 
-Some limits, such as 1 hour and 1080p30, are working values for development.
+Some limits, such as 1 hour, are working values for development.
 A later format version may raise them.
 
 ## Room for encryption (M3)
@@ -305,7 +350,8 @@ This 249-byte song file is the core's known-answer example. It holds:
 
 The four media chunks are 2-byte placeholders, not playable media. This is
 valid version 0, because the core does not check media content. It keeps the
-example small enough to check by hand.
+example small enough to check by hand. The init chunks use today's layout,
+with no stored type, until the core reads stored types *(planned for M2)*.
 
 ### Annotated bytes
 
