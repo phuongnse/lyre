@@ -17,10 +17,12 @@ local.properties
 
 # Never committed: model weights, source media and song files made from real media
 models/
-# The web client's model code, and the 56-byte test vector the journeys download.
+# The web client's model code, and the test model files the journeys download: the
+# 56-byte test vector and the test separator of tools/model-tool/make_test_separator.py.
 !web/src/models/
 !tests/fixtures/models/
 *.onnx
+!tests/fixtures/models/*.onnx
 *.lyre
 !tests/fixtures/**/*.lyre
 

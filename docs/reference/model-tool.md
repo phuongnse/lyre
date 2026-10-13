@@ -10,8 +10,13 @@ runs it by hand. It does two jobs for the
 - It checks the community htdemucs ONNX file against Meta's PyTorch
   checkpoint.
 
+A third job is for tests: it makes the
+[test separator](#make_test_separatorpy), a tiny stand-in for htdemucs.
+
 No check script runs these commands. `scripts/test.sh` runs only the tool's
-unit tests, which need nothing beyond Python's standard library.
+unit tests, which need nothing beyond Python's standard library. One of them
+rebuilds the test separator in a temporary folder and compares it with the
+committed files.
 
 The terms in this doc are defined in the [concepts](../domain/concepts.md).
 
@@ -115,6 +120,33 @@ both.
    audio is reported as silent and not compared.
 
 A run takes about 0.3 GB of disk for downloads and about 6 GB of memory.
+
+### make_test_separator.py
+
+```sh
+python3 tools/model-tool/make_test_separator.py
+```
+
+It writes the test separator, a stand-in for the
+[htdemucs files](models.md#htdemucs) that the web journeys can load without
+the 170 MB real model. Tests never use the real models
+([testing](../architecture.md#testing)).
+
+- It writes `htdemucs_fwd.onnx` and `htdemucs_fwd.onnx.data` to
+  `tests/fixtures/models/`, or to the folder given as its argument. It prints
+  each file's size and SHA-256.
+- The graph has the real file's inputs and outputs, all float32: `x`
+  (1, 4, 2048, 336) and `xt` (1, 2, 343980) in, `x_out` (1, 16, 2048, 336)
+  and `xt_out` (1, 8, 343980) out.
+- Each output holds four copies of its input, one per stem, each multiplied
+  by 0.25. So the four stems add back up to the input, to float precision.
+  It separates nothing.
+- The 0.25 is the graph's only weight. It sits in the weights file, which the
+  graph names `htdemucs_fwd.onnx.data` as the real graph does. So a client
+  loads the test separator as it loads the real one.
+- It needs only Python's standard library, and every run writes the same
+  bytes. The core pins both files as `test-htdemucs-graph` and
+  `test-htdemucs-weights`, so after changing the script, update those pins.
 
 ## Pinned inputs
 
