@@ -230,6 +230,63 @@ test('packaging song.webm shows an Opus WebM original track whose segments total
   expect(problems).toEqual([])
 })
 
+// Picks song.webm, then karaoke.webm with the karaoke button, and makes both audio tracks.
+async function makeAudioTracks(page: Page): Promise<void> {
+  await chooseSource(page, source('song.webm'))
+  await expect(labelled(page, 'Source details')).toBeVisible()
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Choose a karaoke track' }).click()
+  await (await chooser).setFiles(source('karaoke.webm'))
+  await page.getByRole('button', { name: 'Make the audio tracks' }).click()
+}
+
+// The start and end of each segment in a list of rows such as "0–2000 ms".
+async function segmentsIn(page: Page, name: string): Promise<[number, number][]> {
+  const rows = await labelled(page, name).getByRole('listitem').allTextContents()
+  return rows.map((row) => {
+    const match = /^(\d+)–(\d+) ms$/.exec(row)
+    expect(match, row).not.toBeNull()
+    return [parseInt(match![1]!, 10), parseInt(match![2]!, 10)]
+  })
+}
+
+test('song.webm with karaoke.webm cuts both audio tracks at the same times, within 50 ms', async ({ page }) => {
+  const problems = watchProblems(page)
+  await makeAudioTracks(page)
+  await expect(labelled(page, 'Karaoke segments')).toBeVisible()
+  const original = await segmentsIn(page, 'Original segments')
+  const karaoke = await segmentsIn(page, 'Karaoke segments')
+  expect(original.length).toBeGreaterThanOrEqual(1)
+  expect(karaoke.length).toBe(original.length)
+  for (const [index, [start, end]] of karaoke.entries()) {
+    expect(Math.abs(start - original[index]![0])).toBeLessThanOrEqual(50)
+    expect(Math.abs(end - original[index]![1])).toBeLessThanOrEqual(50)
+  }
+  // karaoke.webm lasts 3 s, so fitting cut it to the source's 2 s.
+  expect(Math.abs((await secondsIn(page, 'Song duration')) - 2)).toBeLessThanOrEqual(0.1)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(problems).toEqual([])
+})
+
+test('with Opus encoding unsupported, making the audio tracks shows only the cannot-encode message', async ({
+  page,
+}) => {
+  const problems = watchProblems(page)
+  // Makes this browser report that it cannot encode Opus, as a browser without that encoder does.
+  await page.addInitScript(() => {
+    const isConfigSupported = AudioEncoder.isConfigSupported.bind(AudioEncoder)
+    AudioEncoder.isConfigSupported = async (config) =>
+      config.codec.startsWith('opus') ? { supported: false, config } : isConfigSupported(config)
+  })
+  await makeAudioTracks(page)
+  await expect(page.getByRole('alert')).toHaveText('This browser cannot encode audio, so a song cannot be made in it.')
+  await expect(page.getByRole('alert')).toHaveCount(1)
+  await expect(labelled(page, 'Original segments')).toHaveCount(0)
+  await expect(labelled(page, 'Karaoke segments')).toHaveCount(0)
+  await expect(labelled(page, 'Song duration')).toHaveCount(0)
+  expect(problems).toEqual([])
+})
+
 test('reading a source sends nothing: every request is a same-origin GET with no body', async ({ page }) => {
   await page.goto('/#/source-check')
   await expect(page.getByRole('button', { name: 'Choose a source' })).toBeEnabled()

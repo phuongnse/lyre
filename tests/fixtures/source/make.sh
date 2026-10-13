@@ -44,3 +44,6 @@ make -map 1:a -c:a libmp3lame -id3v2_version 4 \
 make -map 0:v "${vp9[@]}" -an "$out/video-only.webm"
 # The timeline of this one starts at 1.5 s.
 make -map 0:v -map 1:a "${vp9[@]}" "${opus[@]}" -output_ts_offset 1.5 "$out/late.webm"
+# The stand-in karaoke track: audio only, 3 s, longer than the sources, so fitting cuts it.
+ffmpeg -nostdin -hide_banner -loglevel error -y \
+  -f lavfi -i 'sine=frequency=660:sample_rate=48000:duration=3' "${opus[@]}" "$out/karaoke.webm"

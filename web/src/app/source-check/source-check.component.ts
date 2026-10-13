@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core'
 import { MatButton } from '@angular/material/button'
 import { loadCore } from '../../core'
+import { canEncodeKaraoke } from '../../karaoke-track'
+import { SegmentTimes } from '../../original-track-messages'
 import { CannotPlay, SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
 import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
 import { messages } from '../messages'
-import { Packaging, packageInWorker } from './original-track-worker'
+import { Packaging, makeAudioInWorker, packageInWorker } from './original-track-worker'
 
 // What came out of decoding, measured without keeping the samples. The tone
 // and the first sound are absent when the audio is silent.
@@ -23,13 +25,30 @@ interface PackagedSummary {
   durationMs: number
 }
 
+// What making both audio tracks gave: only their segment times reach the page.
+interface AudioTracks {
+  original: SegmentTimes[]
+  karaoke: SegmentTimes[]
+  songDurationMs: number
+}
+
 type State =
   | { status: 'empty' }
   | { status: 'reading' }
-  | { status: 'ready'; file: File; details: SourceDetails; decoded?: DecodedAudio; packaged?: PackagedSummary }
+  | {
+      status: 'ready'
+      file: File
+      details: SourceDetails
+      decoded?: DecodedAudio
+      packaged?: PackagedSummary
+      tracks?: AudioTracks
+    }
   | { status: 'decoding'; file: File; details: SourceDetails }
   | { status: 'packaging'; file: File; details: SourceDetails }
   | { status: 'package-failed'; file: File; details: SourceDetails }
+  | { status: 'making'; file: File; details: SourceDetails }
+  | { status: 'make-failed'; file: File; details: SourceDetails }
+  | { status: 'cannot-encode'; file: File; details: SourceDetails }
   | { status: 'failed'; problem: SourceProblem }
 
 // A sample louder than this counts as sound.
@@ -38,7 +57,9 @@ const LOUD = 0.01
 // The source check page (docs/ui-conventions.md#check-pages). It reads a
 // picked source's details, stage 1 of processing, and can decode its audio at
 // a stage's rate, stage 2, or package it into the original track in a Web
-// Worker, stage 8, until the real song-making page exists. A source this
+// Worker, stage 8, until the real song-making page exists. With a second
+// picked file standing in for the karaoke track, it can also make both audio
+// tracks, cut at the same times, in the worker. A source this
 // browser cannot play shows the reason next to its details, and can still be
 // decoded and packaged, because this is a test page. Opened by its URL,
 // #/source-check.
@@ -75,10 +96,13 @@ const LOUD = 0.01
       current.status === 'ready' ||
       current.status === 'decoding' ||
       current.status === 'packaging' ||
-      current.status === 'package-failed'
+      current.status === 'package-failed' ||
+      current.status === 'making' ||
+      current.status === 'make-failed' ||
+      current.status === 'cannot-encode'
     ) {
       @let details = current.details;
-      @let busy = current.status === 'decoding' || current.status === 'packaging';
+      @let busy = current.status === 'decoding' || current.status === 'packaging' || current.status === 'making';
       @if (details.cannotPlay !== undefined) {
         <p role="alert">{{ cannotPlayReason(details.cannotPlay) }}</p>
       }
@@ -115,6 +139,24 @@ const LOUD = 0.01
         <button matButton="outlined" type="button" [disabled]="busy" (click)="packageTrack(current.file, details)">
           {{ messages.packageOriginal }}
         </button>
+        <button matButton="outlined" type="button" [disabled]="busy" (click)="karaokeInput.click()">
+          {{ messages.chooseKaraoke }}
+        </button>
+        <input
+          #karaokeInput
+          type="file"
+          accept="audio/*,video/webm,video/mp4,.webm,.mp4,.mp3"
+          hidden
+          (change)="chooseKaraoke(karaokeInput)"
+        />
+        <button
+          matButton="outlined"
+          type="button"
+          [disabled]="busy || karaokeFile() === undefined"
+          (click)="makeAudio(current.file, details)"
+        >
+          {{ messages.makeAudioTracks }}
+        </button>
       }
       @if (current.status === 'decoding') {
         <p role="status">{{ messages.sourceDecoding }}</p>
@@ -122,6 +164,28 @@ const LOUD = 0.01
         <p role="status">{{ messages.sourcePackaging }}</p>
       } @else if (current.status === 'package-failed') {
         <p role="alert">{{ messages.sourcePackageFailed }}</p>
+      } @else if (current.status === 'making') {
+        <p role="status">{{ messages.makingAudioTracks }}</p>
+      } @else if (current.status === 'make-failed') {
+        <p role="alert">{{ messages.audioTracksFailed }}</p>
+      } @else if (current.status === 'cannot-encode') {
+        <p role="alert">{{ messages.cannotEncodeAudio }}</p>
+      } @else if (current.tracks !== undefined) {
+        @let tracks = current.tracks;
+        <dl [attr.aria-label]="messages.audioTracks">
+          <dt id="song-duration">{{ messages.songDuration }}</dt>
+          <dd aria-labelledby="song-duration">{{ messages.seconds((tracks.songDurationMs / 1000).toFixed(2)) }}</dd>
+        </dl>
+        <ol [attr.aria-label]="messages.originalSegmentTimes">
+          @for (segment of tracks.original; track $index) {
+            <li>{{ messages.segmentSpan(segment.startMs, segment.endMs) }}</li>
+          }
+        </ol>
+        <ol [attr.aria-label]="messages.karaokeSegmentTimes">
+          @for (segment of tracks.karaoke; track $index) {
+            <li>{{ messages.segmentSpan(segment.startMs, segment.endMs) }}</li>
+          }
+        </ol>
       } @else if (current.packaged !== undefined) {
         @let packaged = current.packaged;
         <dl [attr.aria-label]="messages.originalTrack">
@@ -157,6 +221,8 @@ const LOUD = 0.01
 export class SourceCheck {
   protected readonly messages = messages
   protected readonly state = signal<State>({ status: 'empty' })
+  // The file that stands in for the karaoke track until separation exists.
+  protected readonly karaokeFile = signal<File | undefined>(undefined)
   protected readonly separation = SEPARATION_FORMAT
   protected readonly alignment = ALIGNMENT_FORMAT
   // Counts the sources picked, and the decodes and packagings started, so only the latest one shows.
@@ -227,6 +293,43 @@ export class SourceCheck {
       this.state.set({ status: 'ready', file, details, packaged: { storedType, segmentCount, durationMs } })
     } else {
       this.state.set({ status: 'package-failed', file, details })
+    }
+  }
+
+  protected chooseKaraoke(input: HTMLInputElement): void {
+    const file = input.files?.[0]
+    // Clears the choice, so the same file can be picked again.
+    input.value = ''
+    if (file) this.karaokeFile.set(file)
+  }
+
+  // Packages the original track, then makes the karaoke track from the picked
+  // stand-in at its cut times, in a Web Worker. Only their segment times come
+  // back. A browser that cannot encode Opus is told so before any work starts.
+  // Any other failure shows one plain message.
+  protected async makeAudio(file: File, details: SourceDetails): Promise<void> {
+    const karaokeFile = this.karaokeFile()
+    if (details.audioType === undefined || karaokeFile === undefined) return
+    this.stopPackaging()
+    const attempt = ++this.attempts
+    this.state.set({ status: 'making', file, details })
+    // Checked before the worker starts, so nothing is made in a browser that cannot encode.
+    const canEncode = await canEncodeKaraoke()
+    if (attempt !== this.attempts) return
+    if (!canEncode) {
+      this.state.set({ status: 'cannot-encode', file, details })
+      return
+    }
+    const packaging = makeAudioInWorker(file, karaokeFile, details.audioType)
+    this.packaging = packaging
+    const reply = await packaging.reply
+    if (attempt !== this.attempts) return
+    this.packaging = undefined
+    if (reply.type === 'audio-done') {
+      const { original, karaoke, songDurationMs } = reply
+      this.state.set({ status: 'ready', file, details, tracks: { original, karaoke, songDurationMs } })
+    } else {
+      this.state.set({ status: 'make-failed', file, details })
     }
   }
 

@@ -266,9 +266,18 @@ Compose uses the same three values *(planned for M4)*.
   gives the audio a stored type, a **Package the original track** button
   packages it in a Web Worker, and shows the original track's stored type,
   its segment count and its total duration. A failure shows one message:
-  "This source's audio could not be packaged for a song." The Playwright
-  journeys use it to check reading a source, decoding its audio and
-  packaging it.
+  "This source's audio could not be packaged for a song." Until separation
+  exists, a **Choose a karaoke track** button picks a second audio file that
+  stands in for the karaoke track. Once one is picked, a **Make the audio
+  tracks** button packages the original track and makes the karaoke track
+  from it, in a Web Worker. The page then lists each track's segments, with
+  their start and end times, and shows the song's duration, which is the
+  karaoke track's total. When the browser cannot encode Opus, it shows only
+  "This browser cannot encode audio, so a song cannot be made in it.", and
+  makes nothing. Any other failure, such as an unreadable karaoke file, shows
+  one message: "The audio tracks could not be made for a song." The
+  Playwright journeys use it to check reading a source, decoding its audio,
+  packaging it and making both audio tracks.
 - The model check page downloads, checks and keeps the 56-byte test model
   file `test-two-block`. A progress bar and a line below it show the bytes
   downloaded, and the line stays after the download ends. The status line
