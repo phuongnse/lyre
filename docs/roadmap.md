@@ -133,11 +133,13 @@ must settle:
 
 - **M2:** the measurement page comes first. It compares Omnilingual and
   `lyric-alignment`. The aligner with the lower syllable onset error, among
-  those that run on the target devices, is chosen
+  those that run on the [target devices](decisions.md#d25-target-devices-for-making-songs--proposed), is chosen
   ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)). A newer decision replaces D15 if the separator
   misses its target
   ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
   as [D22](decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed) splits it).
+  The measurement results confirm or change the target devices of
+  [D25](decisions.md#d25-target-devices-for-making-songs--proposed), and the owner then marks it Agreed.
 - **M3:** the passkey check results (D8); the reference doc for the encrypted
   format, access files and recovery, reviewed before implementation.
 - **M4:** split in two when broken down: Android playback and device keys

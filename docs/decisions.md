@@ -356,7 +356,8 @@ aligner.
   `nguyenvulebinh/lyric-alignment`, a wav2vec2 model built for Vietnamese
   lyric alignment. Its model card states CC-BY-NC-4.0. Both do only forced
   alignment of the supplied syllables. Neither transcribes (D5).
-- **The choice:** among the aligners that run on the target devices, the one
+- **The choice:** among the aligners that run on the
+  [target devices](#d25-target-devices-for-making-songs--proposed), the one
   with the lower syllable onset error is chosen. The results are recorded in
   the docs.
 - **The measurement page is built at the start of M2.** It needs the ONNX
@@ -396,7 +397,7 @@ separator file's format and size.
   [model tool](reference/model-tool.md#make_alignerpy), in fp32 and int8. The
   owner publishes it in `phuongnse/lyric-alignment-onnx`, with its
   attribution and CC-BY-NC-4.0.
-- **Separator target:** on each target device, a 4-minute song separates on
+- **Separator target:** on each [target device](#d25-target-devices-for-making-songs--proposed), a 4-minute song separates on
   WebGPU in no more time than the song lasts, without running out of memory.
   The karaoke track passes the
   [sum check](reference/models.md#separator-target), and the owner hears no
@@ -475,3 +476,30 @@ containers, the stored types and the limits.
 
 *Why:* re-encoding video on a phone or in a browser is the slowest step by
 far, and it loses quality. Repackaging takes seconds.
+
+## D25. Target devices for making songs — Proposed
+
+Lists the target devices that
+[D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
+and [D21](#d21-pinned-model-files-and-the-separator-target--agreed) refer to.
+Lyre is built and tested so that making a song runs well on them.
+
+- **Desktop:** current Chrome or Edge with WebGPU, on
+  Windows, macOS and ChromeOS.
+- **Best effort:** Firefox and Safari with WebGPU. Their results are reported,
+  but they do not decide the aligner choice or the separator target.
+- **Android web:** current Chrome on Android 12 or later, with a recent
+  Adreno or Mali GPU.
+- **Android app (M4):** runs from Android 8.0 (`minSdk` 26). Android 12 or
+  later is recommended for processing.
+- **Memory:** 8 GB recommended, about 6 GB minimum.
+- **Below these:** processing falls back to one-thread WebAssembly. It is
+  slow, and Lyre says so plainly
+  ([D3](#d3-processing-runs-on-the-device-that-asks-for-it--agreed)).
+- **Settled by measurement:** the
+  [model measurement page](roadmap.md#early-checks-on-real-devices) measures
+  these devices. Its results confirm or change this list, and the owner then
+  marks it Agreed.
+
+*Why:* D20 and D21 judge the models on the target devices, but no doc listed
+them. A named list says which devices the measurements must cover.
