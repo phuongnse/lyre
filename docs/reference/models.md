@@ -36,7 +36,8 @@ The aligner of D15, as sherpa-onnx's int8 export.
 - **Input:** `x`, shape (1, samples), float32.
 - **Input normalisation:** outside the file, so Lyre does it. Samples in
   [−1, 1] are brought to zero mean and unit variance over the window:
-  (x − mean) / √(variance + 1e-5). This is what sherpa-onnx does, in
+  (x − mean) / √(variance + 1e-5), where the variance divides by the number
+  of samples. This is what sherpa-onnx does, in
   [`offline-omnilingual-asr-ctc-model.cc`](https://github.com/k2-fsa/sherpa-onnx/blob/6e7ea3e409f90aaf1541c87f21a013c4f20b9680/sherpa-onnx/csrc/offline-omnilingual-asr-ctc-model.cc)
   and [`test.py`](https://github.com/k2-fsa/sherpa-onnx/blob/6e7ea3e409f90aaf1541c87f21a013c4f20b9680/scripts/omnilingual-asr/test.py).
 - **Window length:** under 40 s (D15). Lyre uses 30 s windows with 2 s of
@@ -129,9 +130,16 @@ separate candidate on the measurement page.
 - **Output:** `log_probs`, shape (1, frames, 98), float32: CTC
   log-probabilities. The log-softmax is inside the file.
 - **Frame rate:** 50 frames per second (one frame per 320 samples).
-- **Vocabulary:** 98 tokens. The 96 entries of `vocab.json` give indexes 0
-  to 95, and `<s>` and `</s>` take 96 and 97. Index 95, `<pad>`, is the CTC
-  blank. Index 0, `|`, is the space between words.
+- **Vocabulary:** 98 tokens. `vocab.json` is a JSON object from each token
+  to its index. Its 96 entries give indexes 0 to 95, and `<s>` and `</s>`
+  take 96 and 97. Index 95, `<pad>`, is the CTC blank. Index 0, `|`, is the
+  space between words.
+
+The core's `aligner` module applies each aligner's input normalisation and
+log-softmax, and reads its vocabulary file. It refuses a vocabulary file
+over 1 MiB, with more than 16,384 entries, with an entry over 64 bytes, with
+indexes that are not 0 to n − 1 each used once, or with no blank where the
+aligner keeps it.
 
 ## Checking the pins
 

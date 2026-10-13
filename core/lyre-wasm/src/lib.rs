@@ -1,5 +1,6 @@
 //! WebAssembly bindings of the Lyre core, for the web client.
 
+use lyre_core::aligner;
 use lyre_core::alignment::{self, AlignmentError, Emissions};
 use lyre_core::alignment_windows::{self, WindowError};
 use lyre_core::countdown;
@@ -395,6 +396,91 @@ impl AlignerWindows {
         let windows = self.windows.take().ok_or(NO_WINDOW)?;
         Ok(windows.finish()?)
     }
+}
+
+/// A candidate aligner (D20).
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlignerKind {
+    Omnilingual = 0,
+    LyricAlignment = 1,
+}
+
+impl From<AlignerKind> for aligner::AlignerKind {
+    fn from(kind: AlignerKind) -> aligner::AlignerKind {
+        match kind {
+            AlignerKind::Omnilingual => aligner::AlignerKind::Omnilingual,
+            AlignerKind::LyricAlignment => aligner::AlignerKind::LyricAlignment,
+        }
+    }
+}
+
+/// How an aligner takes its input and gives its output: the model's input
+/// and output names, and whether Lyre normalises each window and applies
+/// log-softmax to each frame.
+#[wasm_bindgen]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlignerRules {
+    #[wasm_bindgen(getter_with_clone, js_name = inputName)]
+    pub input_name: String,
+    #[wasm_bindgen(getter_with_clone, js_name = outputName)]
+    pub output_name: String,
+    #[wasm_bindgen(js_name = normalisesInput)]
+    pub normalises_input: bool,
+    #[wasm_bindgen(js_name = appliesLogSoftmax)]
+    pub applies_log_softmax: bool,
+}
+
+/// An aligner's vocabulary: its tokens by index, and the blank's index.
+#[wasm_bindgen]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlignerVocabulary {
+    #[wasm_bindgen(getter_with_clone)]
+    pub tokens: Vec<String>,
+    pub blank: u32,
+}
+
+/// The input and output rules of the aligner `kind`.
+#[wasm_bindgen(js_name = alignerRules)]
+pub fn aligner_rules(kind: AlignerKind) -> AlignerRules {
+    let kind = aligner::AlignerKind::from(kind);
+    AlignerRules {
+        input_name: kind.input_name().to_owned(),
+        output_name: kind.output_name().to_owned(),
+        normalises_input: kind.normalises_input(),
+        applies_log_softmax: kind.applies_log_softmax(),
+    }
+}
+
+/// The aligner's input for one window of 16 kHz mono samples: normalised
+/// for Omnilingual, unchanged for lyric-alignment.
+#[wasm_bindgen(js_name = alignerInput)]
+pub fn aligner_input(kind: AlignerKind, window: &[f32]) -> Vec<f32> {
+    aligner::AlignerKind::from(kind).input(window)
+}
+
+/// The natural-log probabilities from the aligner's output: frames of
+/// `width` values, frame by frame. Log-softmax is applied to each frame for
+/// Omnilingual. Undefined when the output is not whole frames of `width`.
+#[wasm_bindgen(js_name = alignerLogProbs)]
+pub fn aligner_log_probs(kind: AlignerKind, output: &[f32], width: u32) -> Option<Vec<f32>> {
+    aligner::AlignerKind::from(kind)
+        .log_probs(output, width as usize)
+        .ok()
+}
+
+/// Reads the aligner's vocabulary file: `tokens.txt` for Omnilingual and
+/// `vocab.json` for lyric-alignment. Undefined when the file is refused.
+#[wasm_bindgen(js_name = readVocabulary)]
+pub fn read_vocabulary(kind: AlignerKind, bytes: &[u8]) -> Option<AlignerVocabulary> {
+    let vocabulary = aligner::AlignerKind::from(kind)
+        .read_vocabulary(bytes)
+        .ok()?;
+    Some(AlignerVocabulary {
+        tokens: vocabulary.tokens,
+        // A vocabulary has at most 16,384 entries, so the index fits.
+        blank: u32::try_from(vocabulary.blank).unwrap_or(u32::MAX),
+    })
 }
 
 /// One syllable's start and end in a hand-written timing file.
@@ -1361,7 +1447,7 @@ mod tests {
         assert_eq!(reader.syllables(), vec![]);
         assert_eq!(reader.lay_out(&[10.0, 10.0], 2.0, 100.0), vec![]);
         assert_eq!(reader.sweep_position(250.0), 0.0);
-        assert_eq!(reader.countdown_lines(), vec![]);
+        assert_eq!(reader.countdown_lines(), Vec::<u32>::new());
         assert_eq!(reader.dots_swept(1_000.0), 0.0);
         assert_eq!(
             reader.lyrics_rows(1_000.0),
@@ -1521,6 +1607,77 @@ mod tests {
     #[test]
     fn aligner_windows_refuse_empty_audio_naming_no_window() {
         assert_eq!(AlignerWindows::new(&[], 2).err(), Some(NO_WINDOW));
+    }
+
+    #[test]
+    fn aligner_rules_name_each_kind_input_and_output() {
+        assert_eq!(
+            aligner_rules(AlignerKind::Omnilingual),
+            AlignerRules {
+                input_name: "x".to_owned(),
+                output_name: "logits".to_owned(),
+                normalises_input: true,
+                applies_log_softmax: true,
+            }
+        );
+        assert_eq!(
+            aligner_rules(AlignerKind::LyricAlignment),
+            AlignerRules {
+                input_name: "input_values".to_owned(),
+                output_name: "log_probs".to_owned(),
+                normalises_input: false,
+                applies_log_softmax: false,
+            }
+        );
+    }
+
+    #[test]
+    fn aligner_input_and_log_probs_follow_each_kind() {
+        let window = [1.0, 2.0, 3.0, 4.0];
+        let normalised = aligner_input(AlignerKind::Omnilingual, &window);
+        assert!((normalised[0] + 1.341_635_4).abs() <= 1e-6);
+        assert_eq!(
+            aligner_input(AlignerKind::LyricAlignment, &window),
+            window.to_vec()
+        );
+        let log_probs =
+            aligner_log_probs(AlignerKind::Omnilingual, &[1.0, 2.0, 3.0], 3).expect("valid");
+        assert!((log_probs[2] + 0.407_606).abs() <= 1e-5);
+        assert_eq!(
+            aligner_log_probs(AlignerKind::LyricAlignment, &[-1.0, -2.0], 2),
+            Some(vec![-1.0, -2.0])
+        );
+        assert_eq!(
+            aligner_log_probs(AlignerKind::Omnilingual, &[0.0; 4], 3),
+            None
+        );
+    }
+
+    #[test]
+    fn read_vocabulary_reads_each_kind_file() {
+        let omnilingual = read_vocabulary(AlignerKind::Omnilingual, b"<s> 0\n<pad> 1\n  2\na 3\n")
+            .expect("valid");
+        assert_eq!(omnilingual.tokens, ["<s>", "<pad>", " ", "a"]);
+        assert_eq!(omnilingual.blank, 0);
+        let lyric_alignment = read_vocabulary(
+            AlignerKind::LyricAlignment,
+            br#"{"|": 0, "a": 1, "<pad>": 2}"#,
+        )
+        .expect("valid");
+        assert_eq!(lyric_alignment.tokens, ["|", "a", "<pad>", "<s>", "</s>"]);
+        assert_eq!(lyric_alignment.blank, 2);
+    }
+
+    #[test]
+    fn a_refused_vocabulary_is_undefined() {
+        assert_eq!(
+            read_vocabulary(AlignerKind::Omnilingual, b"<pad> 0\n"),
+            None
+        );
+        assert_eq!(
+            read_vocabulary(AlignerKind::LyricAlignment, br#"{"a": 0}"#),
+            None
+        );
     }
 
     #[test]

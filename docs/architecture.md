@@ -30,7 +30,8 @@ flowchart LR
   codes, lyric parsing, forced alignment, display line layout, timing, and
   the pinned model files with the check of a download against them. It also
   does the separator's STFT, its inverse and the normalisation around the
-  model. Both clients call it; neither has its own copy of
+  model, and each aligner's input normalisation, log-softmax and vocabulary
+  reading. Both clients call it; neither has its own copy of
   this logic.
 - **The web client** is a static site (D9). Its UI, media playback and model
   runs are in TypeScript. The UI is Angular with Angular Material (D19),
@@ -60,7 +61,7 @@ flowchart LR
 ```text
 core/                 Rust workspace
   lyre-core/          song file format, crypto, access files, lyrics, alignment, layout,
-                      timing, model check, separator spectrogram
+                      timing, model check, separator spectrogram, aligner vocabularies
   lyre-wasm/          WebAssembly bindings for the web client
   lyre-ffi/           UniFFI bindings for the Android app
   lyre-cli/           developer tool: build and inspect song files, used by tests
