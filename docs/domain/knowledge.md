@@ -113,23 +113,24 @@ What was learned:
 
 ## Vocal roles and duets
 
-*(planned for M8)*
-
 - **Each role has a fixed colour,** the same on both clients and kept
   readable over video by the lyric outline and shadow. See the
   [vocal role colours](../ui-conventions.md#vocal-role-colours).
-- **A duet needs proof.** A line is a duet only when two distinct lead singers
+- **Sung text uses only the role colours,** as Vietnamese karaoke does. A
+  song file records one role for the whole song, so its sung lyrics take that
+  colour.
+- **A duet needs proof** *(planned for M8)*. A line is a duet only when two distinct lead singers
   sing the same words at similar loudness. Overlapping voices, backing
   harmonies and ad-libs never make a duet.
-- **Vowels are not enough.** A backing singer holding only the vowels can
+- **Vowels are not enough** *(planned for M8)*. A backing singer holding only the vowels can
   score well against the lead's words. Consonants show who actually sang
   them.
-- **Lead and backing separation can hide a duet** by putting two equal
+- **Lead and backing separation can hide a duet** *(planned for M8)* by putting two equal
   singers in one track. Separating male from female voices catches that case.
-- **Decide roles per clause, not per display line.** A few missed words
+- **Decide roles per clause, not per display line** *(planned for M8)*. A few missed words
   should not flip a colour in the middle of a sung clause. Change a colour
   only at a punctuation boundary or a measurable pause.
-- **Ambiguity fails.** If the number of singers or their voices are
+- **Ambiguity fails** *(planned for M8)*. If the number of singers or their voices are
   ambiguous, processing fails instead of guessing.
 
 ## Running on the user's device

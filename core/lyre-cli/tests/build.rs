@@ -152,6 +152,22 @@ fn manifest_with_an_unknown_vocal_role_is_rejected() {
     assert!(err.to_string().contains("vocal_role"), "{err}");
 }
 
+/// `male.toml` is `song.toml` with its own header comment and a male vocal role.
+#[test]
+fn male_manifest_differs_from_the_fixture_only_in_its_vocal_role() {
+    fn body(name: &str) -> String {
+        let text = fs::read_to_string(song_dir().join(name)).expect("manifest is readable");
+        text.lines()
+            .skip_while(|line| line.starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+    let female = body("song.toml");
+    assert!(female.contains("vocal_role = \"female\""), "{female}");
+    let expected = female.replacen("vocal_role = \"female\"", "vocal_role = \"male\"", 1);
+    assert_eq!(body("male.toml"), expected);
+}
+
 /// The fixture manifest with absolute paths to the fixture files.
 fn absolute_manifest() -> toml::Table {
     let text = fs::read_to_string(song_dir().join("song.toml")).expect("manifest is readable");

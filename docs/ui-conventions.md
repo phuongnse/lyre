@@ -27,16 +27,15 @@ M4.
 - Use only Material 3 system tokens. On the web these are the `--mat-sys-*`
   CSS variables. In Compose they are `MaterialTheme.colorScheme`,
   `typography` and `shapes`. The only other colour tokens are the Lyre tokens
-  `--lyre-highlight` and `--lyre-vocal-*` from
-  [Lyrics in the Player](#lyrics-in-the-player).
+  `--lyre-vocal-*` from [Lyrics in the Player](#lyrics-in-the-player).
 - Put no hard-coded colours, font sizes, radii or spacing values in
   components. The exceptions are the white and black of the
   [lyric text style](#text-style), its em-based outline and shadow sizes, the
   [vocal role colours](#vocal-role-colours), and the lyric font size with its
   16 px floor and its bold weight (see [Lyrics area](#lyrics-area)).
-- All tokens come from one seed colour, `#6B5778` (smoky purple), including the
-  [highlight colour](#highlight-colour). Two sets of colours do not come from
-  the seed, and a seed change never changes them: the white and black of the
+- All tokens come from one seed colour, `#6B5778` (smoky purple). Two sets of
+  colours do not come from the seed, and a seed change never changes them: the
+  white and black of the
   [lyric text style](#text-style) and the
   [vocal role colours](#vocal-role-colours).
 - The same seed generates the Kotlin `ColorScheme`, `Typography` and `Shapes`
@@ -127,34 +126,21 @@ from M1, except those marked *(planned for M8)*.
   is drawn first, then the stroke, then the fill *(planned for M4)*.
 - Outline width and shadow offset are given in em, so they scale with the font
   size.
-- As the sweep passes a syllable, its fill turns to the
-  [highlight colour](#highlight-colour) and its outline turns white, together.
+- As the sweep passes a syllable, its fill turns to the song's
+  [vocal role colour](#vocal-role-colours) and its outline turns white,
+  together.
   The shadow never changes.
 - Lyrics have no backdrop. The outline and shadow keep them readable over any
   video.
 
-### Highlight colour
-
-- A song with no vocal role, or with one vocal role, uses the highlight
-  colour. It is made from the seed: the seed's HCT hue, at the highest chroma
-  that hue allows, at HCT tone 45.
-- The formula is `Hct.from(Hct.fromInt(seed).hue, 200, 45)` from Material
-  Color Utilities. Asking for chroma 200 returns the highest chroma the hue
-  allows at that tone. For the seed `#6B5778` the result is `#A100FB`.
-- It is not the scheme's `primary` token, which is too pale under a white
-  outline.
-- It is the token `--lyre-highlight` on the web. Compose uses the same value
-  *(planned for M4)*.
-- It follows the seed. A seed change recomputes it.
-- A song with more than one vocal role colours each lyric line by its role.
-  See [vocal role colours](#vocal-role-colours) *(planned for M8)*.
-
 ### Vocal role colours
 
-- Lyrics of a song with more than one [vocal role](domain/concepts.md#songs)
-  are coloured by role *(planned for M8)*.
+- Sung lyrics and changed [countdown dots](#countdown-dots) take the colour of
+  the song's [vocal role](domain/concepts.md#songs), from M1.
+- Sung text uses only these three colours, as Vietnamese karaoke does.
 - The colours do not come from the seed. They are the same on the web and on
-  Android.
+  Android. On the web the tokens are defined in `web/src/styles.scss`.
+- Colouring each lyric line by its own role is *(planned for M8)*.
 
 | Vocal role | Token | Colour |
 | --- | --- | --- |
@@ -214,7 +200,7 @@ Compose uses the same three values *(planned for M4)*.
   from media time 0.
 - Each dot uses the lyric [text style](#text-style) at the line's font size.
 - The dots change one by one from the left, like sung text. The fill turns
-  from white to the line's highlight colour and the outline from black to
+  from white to the line's vocal role colour and the outline from black to
   white. The shadow does not change.
 - Each step takes 0.5 s. The fourth step ends as the line's first syllable
   starts.

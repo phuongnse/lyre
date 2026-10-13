@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, Locator, Page, test } from '@playwright/test'
-import { fixture, openSongFile } from './song-file'
+import { fixture, maleFixture, openSongFile } from './song-file'
 
 // The fixture's syllables, with their times in seconds from
 // tests/fixtures/song/timing.txt.
@@ -16,10 +16,10 @@ const timing: [string, number, number][] = [
   ['lên', 10.4, 11],
 ]
 
-// Opens the fixture song and waits until its video can seek. Returns the
-// Lyrics region and the video.
-async function openFixture(page: Page): Promise<{ region: Locator; video: Locator }> {
-  await openSongFile(page, fixture)
+// Opens the fixture song, or `file`, and waits until its video can seek. Returns
+// the Lyrics region and the video.
+async function openFixture(page: Page, file = fixture): Promise<{ region: Locator; video: Locator }> {
+  await openSongFile(page, file)
   const video = page.getByLabel('Song video')
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(1)
   return { region: page.getByRole('region', { name: 'Lyrics' }), video }
@@ -63,7 +63,7 @@ test('after a seek back, the highlight moves to the syllable at the new time', a
   await seek(video, 2.45)
   await expect(syllable('rơi')).toHaveAttribute('aria-current', 'true')
   await expect(syllable('sông')).not.toHaveAttribute('aria-current')
-  // White is the unsung fill. The sung fill is the highlight colour.
+  // White is the unsung fill. The sung fill is the vocal role colour.
   await expect(syllable('sông')).toHaveCSS('color', 'rgb(255, 255, 255)')
 })
 
@@ -75,7 +75,9 @@ async function expectRows(region: Locator, expected: string[]): Promise<void> {
   const rows = rowsIn(region)
   await expect(region.getByRole('paragraph')).toHaveCount(2)
   await expect
-    .poll(async () => [await rows[0].textContent(), await rows[1].textContent()].map((text) => Buffer.from(text ?? '').toString('hex')))
+    .poll(async () =>
+      [await rows[0].textContent(), await rows[1].textContent()].map((text) => Buffer.from(text ?? '').toString('hex')),
+    )
     .toEqual(expected.map((text) => Buffer.from(text).toString('hex')))
 }
 
@@ -133,13 +135,13 @@ test('after a seek from 5.0 s back to 1.0 s, the first two lines show in their r
   await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
 })
 
-test('sung syllables have the highlight fill and a white outline, unsung ones white with a black outline', async ({
+test('sung syllables have the vocal role fill and a white outline, unsung ones white with a black outline', async ({
   page,
 }) => {
   const { region, video } = await openFixture(page)
   const syllable = syllableIn(region)
-  await seek(video, 2.9)
-  await expect(syllable('nhẹ')).toHaveAttribute('aria-current', 'true')
+  await seek(video, 4)
+  await expect(syllable('về')).toHaveAttribute('aria-current', 'true')
   const style = (text: string) =>
     syllable(text).evaluate((element) => {
       const computed = getComputedStyle(element)
@@ -150,11 +152,11 @@ test('sung syllables have the highlight fill and a white outline, unsung ones wh
         textShadow: computed.textShadow,
       }
     })
-  // #A100FB is the highlight colour from docs/ui-conventions.md#highlight-colour.
+  // #FF0000 is the female vocal role colour from docs/ui-conventions.md#vocal-role-colours.
   const sung = await style('Mưa')
-  expect(sung.fill).toBe('rgb(161, 0, 251)')
+  expect(sung.fill).toBe('rgb(255, 0, 0)')
   expect(sung.outline).toBe('rgb(255, 255, 255)')
-  const unsung = await style('Em')
+  const unsung = await style('sông')
   expect(unsung.fill).toBe('rgb(255, 255, 255)')
   expect(unsung.outline).toBe('rgb(0, 0, 0)')
   // Both keep the same crisp black shadow, a drop-shadow filter with no blur.
@@ -165,6 +167,16 @@ test('sung syllables have the highlight fill and a white outline, unsung ones wh
     expect(filter.endsWith(' 0px)'), filter).toBe(true)
     expect(textShadow).toBe('none')
   }
+})
+
+test('in a male song, sung syllables are blue with a white outline', async ({ page }) => {
+  const { region, video } = await openFixture(page, maleFixture)
+  const syllable = syllableIn(region)
+  await seek(video, 4)
+  await expect(syllable('về')).toHaveAttribute('aria-current', 'true')
+  // #0000FF is the male vocal role colour from docs/ui-conventions.md#vocal-role-colours.
+  await expect(syllable('Mưa')).toHaveCSS('color', 'rgb(0, 0, 255)')
+  await expect(syllable('Mưa')).toHaveCSS('-webkit-text-stroke-color', 'rgb(255, 255, 255)')
 })
 
 const countdownsIn = (region: Locator) => region.getByRole('progressbar', { name: 'Countdown' })
@@ -210,27 +222,30 @@ test('after a seek forward into a countdown and then back, each countdown matche
   await expect(countdowns).toHaveAttribute('aria-valuenow', '1')
 })
 
-test('changed dots have the highlight fill and a white outline, the others white with a black outline', async ({
+// The line after the 5 s break has countdown steps ending at 8.4, 8.9, 9.4 and 9.9 s.
+test('changed dots have the vocal role fill and a white outline, the others white with a black outline', async ({
   page,
 }) => {
   const { region, video } = await openFixture(page)
-  const first = countdownsIn(region).first()
-  await seek(video, 1.25)
-  await expect(first).toHaveAttribute('aria-valuenow', '2')
-  const dots = await first.evaluate((element) =>
+  const countdown = countdownsIn(region)
+  await seek(video, 9.5)
+  await expect(countdown).toHaveAttribute('aria-valuenow', '3')
+  const dots = await countdown.evaluate((element) =>
     [...element.children].map((dot) => {
       const computed = getComputedStyle(dot, '::before')
       return { fill: computed.color, outline: computed.webkitTextStrokeColor }
     }),
   )
   // The dots have the same shadow as the syllables.
-  const filters = await first.evaluate((element) => [...element.children].map((dot) => getComputedStyle(dot).filter))
-  const syllableFilter = await syllableIn(region)('Mưa').evaluate((element) => getComputedStyle(element).filter)
+  const filters = await countdown.evaluate((element) =>
+    [...element.children].map((dot) => getComputedStyle(dot).filter),
+  )
+  const syllableFilter = await syllableIn(region)('Trăng').evaluate((element) => getComputedStyle(element).filter)
   expect(filters).toEqual(Array(4).fill(syllableFilter))
-  // #A100FB is the highlight colour from docs/ui-conventions.md#highlight-colour.
-  const changed = { fill: 'rgb(161, 0, 251)', outline: 'rgb(255, 255, 255)' }
+  // #FF0000 is the female vocal role colour from docs/ui-conventions.md#vocal-role-colours.
+  const changed = { fill: 'rgb(255, 0, 0)', outline: 'rgb(255, 255, 255)' }
   const unchanged = { fill: 'rgb(255, 255, 255)', outline: 'rgb(0, 0, 0)' }
-  expect(dots).toEqual([changed, changed, unchanged, unchanged])
+  expect(dots).toEqual([changed, changed, changed, unchanged])
 })
 
 // Returns the fraction of pixels that differ between two PNG screenshots. A
@@ -282,7 +297,12 @@ async function sungPartShift(
   await expect(target).toHaveAttribute('aria-current', 'true')
   await target.scrollIntoViewIfNeeded()
   const box = (await target.boundingBox())!
-  const clip = { x: box.x, y: box.y, width: box.width * 0.9, height: box.height }
+  const clip = {
+    x: box.x,
+    y: box.y,
+    width: box.width * 0.9,
+    height: box.height,
+  }
   const before = await page.screenshot({ clip })
   await seek(video, after)
   await expect(target).not.toHaveAttribute('aria-current')
@@ -366,7 +386,10 @@ async function edgeScan(page: Page, region: Locator, video: Locator, target: Loc
           // Where the outline meets the backdrop instead of the shadow, the edge
           // pixel is white blended with green, so the next one in is checked too.
           const inner = position > 0 ? at(position - 1) : pixel
-          return { white: Math.max(Math.min(...pixel), Math.min(...inner)) >= 200, dark }
+          return {
+            white: Math.max(Math.min(...pixel), Math.min(...inner)) >= 200,
+            dark,
+          }
         }
       }
       return undefined
@@ -375,17 +398,24 @@ async function edgeScan(page: Page, region: Locator, video: Locator, target: Loc
     const columns = Array.from({ length: width }, (_, x) => line((y) => channels(x, y), height))
     const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0
     const found = [...rows, ...columns].filter((result) => result !== undefined)
-    const darkOf = (results: typeof rows) => median(results.filter((result) => result !== undefined).map((result) => result.dark))
+    const darkOf = (results: typeof rows) =>
+      median(results.filter((result) => result !== undefined).map((result) => result.dark))
     return {
       whiteFraction: found.filter((result) => result.white).length / Math.max(found.length, 1),
       rightBand: darkOf(rows),
       bottomBand: darkOf(columns),
     }
   }, png.toString('base64'))
-  return { whiteFraction: scan.whiteFraction, rightBand: scan.rightBand / em, bottomBand: scan.bottomBand / em }
+  return {
+    whiteFraction: scan.whiteFraction,
+    rightBand: scan.rightBand / em,
+    bottomBand: scan.bottomBand / em,
+  }
 }
 
-test('at 4.0 s the fully sung "Mưa" has an unbroken white outline and a black shadow band past it', async ({ page }) => {
+test('at 4.0 s the fully sung "Mưa" has an unbroken white outline and a black shadow band past it', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 720 })
   const { region, video } = await openFixture(page)
   await seek(video, 4)

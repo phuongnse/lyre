@@ -19,10 +19,11 @@ html {
       density: 0,
     )
   );
-  // The highlight colour of sung lyrics: Hct.from(Hct.fromInt(seed).hue, 200, 45)
-  // for the seed #6B5778. See docs/ui-conventions.md#highlight-colour. A seed
-  // change means computing it again, as with _theme-colors.scss.
-  --lyre-highlight: #a100fb;
+  // The vocal role colours of sung lyrics. They do not come from the seed: see
+  // docs/ui-conventions.md#vocal-role-colours.
+  --lyre-vocal-male: #0000ff;
+  --lyre-vocal-female: #ff0000;
+  --lyre-vocal-duet: #ff00ff;
 }
 
 body {

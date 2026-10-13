@@ -50,7 +50,12 @@ interface ShownLine {
   // handling never touches the lyric text. The countdown sits right before the
   // first syllable, with no text between them.
   template: `
-    <section #section [attr.aria-label]="messages.lyrics" [style.--margin]="margin() + 'px'">
+    <section
+      #section
+      [attr.aria-label]="messages.lyrics"
+      [style.--margin]="margin() + 'px'"
+      [style.--sung]="sungColour()"
+    >
       <span #measure class="measure" aria-hidden="true"></span>
       <span #dotsMeasure class="measure dots" aria-hidden="true"
         ><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span
@@ -140,10 +145,11 @@ interface ShownLine {
       /* Not text-shadow: Chromium paints the fill's shadow over the stroke. */
       filter: drop-shadow(0.15em 0.15em 0 #000);
     }
+    /* Sung text takes the song's vocal role colour, set in --sung. */
     .syllable.sung,
     .syllable[aria-current='true']::after,
     .dot.changed {
-      color: var(--lyre-highlight);
+      color: var(--sung);
       -webkit-text-stroke-color: #fff;
     }
     /* The sung part of the syllable being sung, drawn over it up to the sweep.
@@ -194,6 +200,8 @@ export class Lyrics {
   // The width of the countdown dots with their gap, in CSS pixels. The top row's
   // line starts after it.
   protected readonly margin = signal(0)
+  // The colour of sung text: the token of the song's vocal role.
+  protected readonly sungColour = computed(() => `var(--lyre-vocal-${this.song().details.vocalRole})`)
   private readonly section = viewChild.required<ElementRef<HTMLElement>>('section')
   private readonly measure = viewChild.required<ElementRef<HTMLElement>>('measure')
   private readonly dotsMeasure = viewChild.required<ElementRef<HTMLElement>>('dotsMeasure')

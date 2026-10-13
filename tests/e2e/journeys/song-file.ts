@@ -3,6 +3,8 @@ import { Page } from '@playwright/test'
 
 // scripts/e2e.sh builds the fixture song here with lyre-cli before the journeys run.
 export const fixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture.lyre', import.meta.url))
+// The same song with a male vocal role, built from tests/fixtures/song/male.toml.
+export const maleFixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture-male.lyre', import.meta.url))
 
 export type Choice = string | { name: string; mimeType: string; buffer: Buffer }
 
