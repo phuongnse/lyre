@@ -237,10 +237,15 @@ Compose uses the same three values *(planned for M4)*.
 
 - Check pages keep their code out of the main app's initial load. Examples are
   the passkey check page and the model measurement page (see
-  [early checks](roadmap.md#early-checks-on-real-devices)), and the task
-  check page at `#/task-check`.
+  [early checks](roadmap.md#early-checks-on-real-devices)), the task
+  check page at `#/task-check` and the source check page at
+  `#/source-check`.
 - The task check page runs a task of test stages, with its progress and a
   Cancel button. The Playwright journeys use it to check cancel and the
   cleanup after a reload ([processing](architecture.md#processing-planned-for-m2)).
+- The source check page reads a picked source's details: its duration, its
+  streams, its start offset, and its title, artist and composer, shown
+  exactly as stored. A source without audio, or a file it cannot read, gets
+  one plain message. The Playwright journeys use it to check reading a source.
 - Each one is a lazy-loaded route with `loadComponent`, in the same build and
   deploy as the main app. This is agreed in D19.

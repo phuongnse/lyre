@@ -63,6 +63,11 @@ if [[ -f tests/e2e/package.json ]] && needs e2e; then
       npx playwright install chromium
     fi
   )
+  # scripts/e2e.sh makes the source fixtures with ffmpeg (tests/fixtures/source/make.sh).
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends ffmpeg
+  fi
 fi
 
 if [[ -f android/settings.gradle.kts ]] && needs android; then

@@ -126,5 +126,15 @@ and libopus. ffmpeg versions may give different bytes, and the tests do not
 depend on exact media bytes. If the segment times change, update the
 durations in `song.toml`.
 
-The files under `tests/fixtures/` total about 58 KB. A test fails when they
+## The source fixtures
+
+`tests/fixtures/source/make.sh <out-dir>` makes small synthetic sources for
+the source check journeys: an MP4, a WebM and an MP3 with tags, a WebM with
+no audio, and a WebM whose timeline starts at 1.5 s. No real media is used.
+They are not committed: `scripts/e2e.sh` makes them into
+`artifacts/e2e/sources/`. It needs ffmpeg built with libx264, libvpx, libopus
+and libmp3lame. `scripts/setup.sh` installs ffmpeg for the journeys when it
+is missing.
+
+The files under `tests/fixtures/` total about 61 KB. A test fails when they
 pass 64 KiB.
