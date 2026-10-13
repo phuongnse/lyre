@@ -130,6 +130,9 @@ from M1, except those marked *(planned for M8)*.
   [vocal role colour](#vocal-role-colours) and its outline turns white,
   together.
   The shadow never changes.
+- The sung part of the syllable being sung is cut only at the sweep edge.
+  Behind it, the whole glyph is sung, including outline, overhangs and marks
+  that reach past the syllable's box.
 - Lyrics have no backdrop. The outline and shadow keep them readable over any
   video.
 

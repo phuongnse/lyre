@@ -328,26 +328,12 @@ test('the sung part of "nhẹ" lies over its text, and does not move when it is 
   expect(shift).toBeLessThanOrEqual(0.01)
 })
 
-// What edgeScan measures, with widths in em.
-interface EdgeScan {
-  // The fraction of scanned lines whose first bright pixel from the edge is white.
-  whiteFraction: number
-  // The median width of the dark band past that pixel, to the right and below.
-  rightBand: number
-  bottomBand: number
-}
-
-// Screenshots `target` with 0.3 em more to the right and below, on a plain
-// green backdrop with everything else hidden, and scans in from the right edge
-// along every pixel row and from the bottom edge up every column. The first
-// bright pixel on a line is the outer edge of the white outline, or of the white
-// fill when the outline is black. A line is white when that pixel or the next
-// one in is white, which leaves out the blending at the glyph's edge. The dark pixels between it and the edge are
-// the shadow band, with the black outline outside the glyph for an unsung one.
-async function edgeScan(page: Page, region: Locator, video: Locator, target: Locator): Promise<EdgeScan> {
-  // The video's test pattern moves, and the neighbouring glyphs would fall
-  // inside the scanned area. The backdrop goes on the region and never on a
-  // syllable, as its shadow would lie over a syllable's background.
+// Hides the video and every syllable and dot but `target`, and puts a plain
+// green backdrop on the region. The video's test pattern moves, and the
+// neighbouring glyphs would fall inside the scanned area. The backdrop goes on
+// the region and never on a syllable, as its shadow would lie over a syllable's
+// background. Returns the region's font size in pixels, which is 1 em.
+async function isolate(region: Locator, video: Locator, target: Locator): Promise<number> {
   await video.evaluate((element) => (element.style.visibility = 'hidden'))
   const handle = await target.elementHandle()
   const em = await region.evaluate((section, keep) => {
@@ -358,9 +344,39 @@ async function edgeScan(page: Page, region: Locator, video: Locator, target: Loc
     return parseFloat(getComputedStyle(section).fontSize)
   }, handle)
   await target.scrollIntoViewIfNeeded()
+  return em
+}
+
+// What edgeScan measures, with widths in em.
+interface EdgeScan {
+  // The fraction of scanned lines whose first bright pixel from the edge is white.
+  whiteFraction: number
+  // The median width of the dark band past that pixel, to the right and below.
+  rightBand: number
+  bottomBand: number
+  // The number of pixels in the scanned area in the female vocal role red.
+  redPixels: number
+}
+
+// Screenshots `target` from `from` of its width, with 0.3 em more to the right
+// and below, on a plain green backdrop with everything else hidden, and scans in
+// from the right edge along every pixel row and from the bottom edge up every
+// column. The first bright pixel on a line is the outer edge of the white
+// outline, or of the white fill when the outline is black. A line is white when
+// that pixel or the next one in is white, which leaves out the blending at the
+// glyph's edge. The dark pixels between it and the edge are the shadow band,
+// with the black outline outside the glyph for an unsung one.
+async function edgeScan(
+  page: Page,
+  region: Locator,
+  video: Locator,
+  target: Locator,
+  from = 0,
+): Promise<EdgeScan> {
+  const em = await isolate(region, video, target)
   const box = (await target.boundingBox())!
   const area = (await region.boundingBox())!
-  const left = Math.max(box.x, area.x)
+  const left = Math.max(box.x + from * box.width, area.x)
   const top = Math.max(box.y, area.y)
   const right = Math.min(box.x + box.width + 0.3 * em, area.x + area.width)
   const bottom = Math.min(box.y + box.height + 0.3 * em, area.y + area.height)
@@ -399,6 +415,10 @@ async function edgeScan(page: Page, region: Locator, video: Locator, target: Loc
     }
     const rows = Array.from({ length: height }, (_, y) => line((x) => channels(x, y), width))
     const columns = Array.from({ length: width }, (_, x) => line((y) => channels(x, y), height))
+    let redPixels = 0
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] >= 200 && data[i + 1] < 80 && data[i + 2] < 80) redPixels++
+    }
     const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0
     const found = [...rows, ...columns].filter((result) => result !== undefined)
     const darkOf = (results: typeof rows) =>
@@ -407,13 +427,82 @@ async function edgeScan(page: Page, region: Locator, video: Locator, target: Loc
       whiteFraction: found.filter((result) => result.white).length / Math.max(found.length, 1),
       rightBand: darkOf(rows),
       bottomBand: darkOf(columns),
+      redPixels,
     }
   }, png.toString('base64'))
   return {
     whiteFraction: scan.whiteFraction,
     rightBand: scan.rightBand / em,
     bottomBand: scan.bottomBand / em,
+    redPixels: scan.redPixels,
   }
+}
+
+// What leadingEdgeScan measures.
+interface LeadingEdgeScan {
+  // The pixel rows and columns whose first bright or dark pixel was found.
+  rows: number
+  columns: number
+  // The fraction of those rows and columns where that pixel is black.
+  blackRows: number
+  blackColumns: number
+}
+
+// Screenshots the left `swept` of `target`, from 0.3 em before it and above it,
+// on a plain green backdrop with everything else hidden. Scans in from the left
+// along every pixel row and down from the top along every column. The first
+// pixel on a line that is bright (a channel of 200 or more) or dark (all
+// channels under 80) is the glyph's leading edge. The green backdrop, and white
+// blended with it, count as neither. A line is black when that pixel is dark,
+// which is the unsung black outline showing where the sung white one should be.
+// Lines with no bright pixel are left out, as they only cross the shadow.
+async function leadingEdgeScan(
+  page: Page,
+  region: Locator,
+  video: Locator,
+  target: Locator,
+  swept: number,
+): Promise<LeadingEdgeScan> {
+  const em = await isolate(region, video, target)
+  const box = (await target.boundingBox())!
+  const area = (await region.boundingBox())!
+  const left = Math.max(box.x - 0.3 * em, area.x)
+  const top = Math.max(box.y - 0.3 * em, area.y)
+  const right = Math.min(box.x + swept * box.width, area.x + area.width)
+  const bottom = Math.min(box.y + box.height, area.y + area.height)
+  const clip = { x: left, y: top, width: right - left, height: bottom - top }
+  const png = await page.screenshot({ clip })
+  return page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+    const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!
+    context.drawImage(bitmap, 0, 0)
+    const { data, width, height } = context.getImageData(0, 0, bitmap.width, bitmap.height)
+    // Scans one line from its start and returns 'dark' or 'bright' for its first
+    // such pixel. A line with no bright pixel at all misses the glyph and only
+    // holds shadow, so it returns undefined.
+    const line = (at: (position: number) => number, length: number) => {
+      let first: 'dark' | 'bright' | undefined
+      for (let position = 0; position < length; position++) {
+        const i = at(position) * 4
+        const strongest = Math.max(data[i], data[i + 1], data[i + 2])
+        if (strongest >= 200) return first ?? 'bright'
+        if (strongest < 80) first ??= 'dark'
+      }
+      return undefined
+    }
+    const rows = Array.from({ length: height }, (_, y) => line((x) => y * width + x, width))
+    const columns = Array.from({ length: width }, (_, x) => line((y) => y * width + x, height))
+    const found = (lines: (string | undefined)[]) => lines.filter((result) => result !== undefined)
+    const black = (lines: (string | undefined)[]) =>
+      found(lines).filter((result) => result === 'dark').length / Math.max(found(lines).length, 1)
+    return {
+      rows: found(rows).length,
+      columns: found(columns).length,
+      blackRows: black(rows),
+      blackColumns: black(columns),
+    }
+  }, png.toString('base64'))
 }
 
 // The shadow is 0.1 em, so the band past the outline is 0.07 to 0.13 em wide.
@@ -447,6 +536,45 @@ test('at 4.0 s the unsung "bên" has a dark band of outline and shadow past its 
   // the outline's 0.06 em outside the glyph plus the 0.1 em shadow.
   const scan = await edgeScan(page, region, video, syllableIn(region)('bên'))
   expectShadowBand(scan, 0.125 / 2)
+})
+
+// "về" runs 3.8 to 4.1 s, so at 4.0 s two thirds of it is swept. The scan covers
+// its left quarter, the "v", and leaves out the marks over "ê" and their shadows.
+test('at 4.0 s no black outline shows behind the sweep at the left of "về"', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 4)
+  await expect(syllableIn(region)('về')).toHaveAttribute('aria-current', 'true')
+  const scan = await leadingEdgeScan(page, region, video, syllableIn(region)('về'), 0.25)
+  expect(scan.rows).toBeGreaterThan(0)
+  expect(scan.blackRows).toBe(0)
+})
+
+// "Em" runs 3.5 to 3.8 s, so at 3.65 s half of it is swept. The rows cover the
+// "E" and part of the "m". The columns cover only the "E", as the valley of the
+// "m" holds the shadow of its first hump.
+test('at 3.65 s no black outline shows behind the sweep at the left or top of "Em"', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 3.65)
+  await expect(syllableIn(region)('Em')).toHaveAttribute('aria-current', 'true')
+  const rowScan = await leadingEdgeScan(page, region, video, syllableIn(region)('Em'), 0.4)
+  expect(rowScan.rows).toBeGreaterThan(0)
+  expect(rowScan.blackRows).toBe(0)
+  const columnScan = await leadingEdgeScan(page, region, video, syllableIn(region)('Em'), 0.3)
+  expect(columnScan.columns).toBeGreaterThan(0)
+  expect(columnScan.blackColumns).toBe(0)
+})
+
+test('at 4.0 s the part of "về" ahead of the sweep keeps its white fill and black outline', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 4)
+  await expect(syllableIn(region)('về')).toHaveAttribute('aria-current', 'true')
+  // The sweep is two thirds along, so the last fifth is still ahead of it.
+  const scan = await edgeScan(page, region, video, syllableIn(region)('về'), 0.8)
+  expect(scan.redPixels).toBe(0)
+  expect(scan.rightBand).toBeGreaterThanOrEqual(0.14)
 })
 
 // The line after the 5 s break has countdown steps ending at 8.4, 8.9, 9.4 and 9.9 s.
