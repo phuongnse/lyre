@@ -271,5 +271,11 @@ Compose uses the same three values *(planned for M4)*.
   browser refuses persistent storage, a note says it may remove the
   downloaded models. The Playwright journeys use it to check a download, a
   later load that downloads nothing, and a file that fails its check.
+  A **Run the test separator** button checks both test separator files, runs
+  one window of silence in a Web Worker, and says which backend ran and the
+  shapes of the two outputs. Adding `?backend=wasm` to the URL, as in
+  `#/model-check?backend=wasm`, makes it run on WebAssembly even when the
+  browser has a GPU. The Playwright journeys use it to check the run without
+  a GPU, under the page's policy and from the site's own origin.
 - Each one is a lazy-loaded route with `loadComponent`, in the same build and
   deploy as the main app. This is agreed in D19.

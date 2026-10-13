@@ -187,6 +187,14 @@ reference doc and reviewed before M3 implements them.
   timeline's start: audio that starts later gets leading silence. Audio the
   browser cannot decode gets the no-audio refusal. For now it runs on the main
   thread from the source check page.
+- The web client runs a model with ONNX Runtime Web (MIT), at a pinned
+  version, in a Web Worker. It uses WebGPU when the browser gives it a GPU
+  adapter and the session opens on it, and otherwise WebAssembly on one
+  thread. The worker gets only model bytes that already passed their check.
+  ONNX Runtime's WebAssembly file is served from the site itself, at `ort/`,
+  never from a CDN. For now only the model check page runs a model, the
+  [test separator](reference/model-tool.md#make_test_separatorpy). The
+  separation stage itself is still planned.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is

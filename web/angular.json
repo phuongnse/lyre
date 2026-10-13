@@ -22,7 +22,14 @@
             "webWorkerTsConfig": "tsconfig.worker.json",
             "inlineStyleLanguage": "scss",
             "styles": ["src/styles.scss"],
-            "assets": [{ "glob": "lyre_wasm_bg.wasm", "input": "src/lyre-wasm", "output": "lyre-wasm" }],
+            "assets": [
+              { "glob": "lyre_wasm_bg.wasm", "input": "src/lyre-wasm", "output": "lyre-wasm" },
+              {
+                "glob": "ort-wasm-simd-threaded.asyncify.wasm",
+                "input": "node_modules/onnxruntime-web/dist",
+                "output": "ort"
+              }
+            ],
             "outputPath": { "base": "dist", "browser": "" }
           },
           "configurations": {
