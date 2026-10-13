@@ -78,7 +78,10 @@ The separator of D15, as the community fp32 export of its inner network.
   - `xt`, shape (1, 2, 343980): the segment's waveform.
 - **Input normalisation:** outside the file, so Lyre does it. Each input is
   normalised over the segment as (v − mean) / (std + 1e-5), with its own
-  mean and standard deviation. The
+  mean and standard deviation. The standard deviation divides by N − 1, as
+  PyTorch's does. Undoing it multiplies by the standard deviation and adds the
+  mean, without the epsilon. The core's `separation` module does these steps
+  and those under **After the file**. The
   [model tool](../../tools/model-tool/compare_htdemucs.py) shows the steps.
 - **Outputs:** two, both float32, with the stems in the order drums, bass,
   other, vocals.
