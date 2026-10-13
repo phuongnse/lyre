@@ -22,9 +22,11 @@ pub struct PinnedFile {
 /// Every pinned model file. Its `id` also names the file in a client's
 /// storage, so it uses only lowercase letters, digits and `-`.
 // The real files are the rows of docs/reference/models.md, and a test keeps
-// them identical. The `test-` entries are built from the SHA-256 test vectors
-// of FIPS 180-2. Their URLs are relative `test-models/` paths that only the
-// e2e server serves, so no release site has them.
+// them identical. Each `test-` entry is a file of tests/fixtures/models/. The
+// first two are SHA-256 test vectors of FIPS 180-2. The test separator's two
+// are made by tools/model-tool/make_test_separator.py. Their URLs are relative
+// `test-models/` paths that only the e2e server serves, so no release site has
+// them.
 pub const PINNED_FILES: &[PinnedFile] = &[
     PinnedFile {
         id: "omnilingual-int8-model",
@@ -79,6 +81,18 @@ pub const PINNED_FILES: &[PinnedFile] = &[
         url: "test-models/two-block.bin",
         size: 56,
         sha256: "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+    },
+    PinnedFile {
+        id: "test-htdemucs-graph",
+        url: "test-models/htdemucs_fwd.onnx",
+        size: 498,
+        sha256: "c1b1bda56c35161a92ee2c94cacaebe2e3f3aeb5841ffe7ad0d9d6342447f3bf",
+    },
+    PinnedFile {
+        id: "test-htdemucs-weights",
+        url: "test-models/htdemucs_fwd.onnx.data",
+        size: 4,
+        sha256: "75e253f50979177eba47b2d0805ad36038789108924514d2a761a70de057d16f",
     },
 ];
 
@@ -210,6 +224,20 @@ mod tests {
     }
 
     #[test]
+    fn the_test_separator_entries_pass_with_the_committed_files() {
+        let graph = include_bytes!("../../../tests/fixtures/models/htdemucs_fwd.onnx");
+        let weights = include_bytes!("../../../tests/fixtures/models/htdemucs_fwd.onnx.data");
+        assert_eq!(
+            check("test-htdemucs-graph", &[graph]),
+            passed("test-htdemucs-graph")
+        );
+        assert_eq!(
+            check("test-htdemucs-weights", &[weights]),
+            passed("test-htdemucs-weights")
+        );
+    }
+
+    #[test]
     fn the_empty_entry_passes_with_no_pieces() {
         assert_eq!(check("test-empty", &[]), passed("test-empty"));
     }
@@ -311,7 +339,7 @@ mod tests {
             .iter()
             .filter(|file| file.id.starts_with("test-"))
             .collect();
-        assert_eq!(tests.len(), 2);
+        assert_eq!(tests.len(), 4);
         for file in tests {
             assert!(file.url.starts_with("test-models/"), "{}", file.url);
             for part in [":", "..", "//"] {

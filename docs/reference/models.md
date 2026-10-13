@@ -98,6 +98,10 @@ The separator of D15, as the community fp32 export of its inner network.
 - **Frame rate:** about 43.07 spectrogram frames per second (44,100 / 1024).
 - **Vocabulary:** none. The karaoke track is the sum of the drums, bass and
   other stems (D15).
+- **Test stand-in:** tests use the
+  [test separator](model-tool.md#make_test_separatorpy) instead, which has the
+  same inputs and outputs and is pinned as `test-htdemucs-graph` and
+  `test-htdemucs-weights`.
 
 ## lyric-alignment
 

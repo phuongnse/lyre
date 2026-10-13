@@ -37,7 +37,9 @@ export function slugify(heading) {
   return heading
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replaceAll('`', '')
-    .replace(/(\*{1,3}|_{1,3})(\S(?:.*?\S)?)\1/g, '$2')
+    .replace(/(\*{1,3})(\S(?:.*?\S)?)\1/g, '$2')
+    // Underscores inside a word, as in snake_case, are not emphasis.
+    .replace(/(?<![\p{L}\p{N}_])(_{1,3})(\S(?:.*?\S)?)\1(?![\p{L}\p{N}_])/gu, '$2')
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s_-]/gu, '')

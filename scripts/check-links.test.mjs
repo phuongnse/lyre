@@ -48,6 +48,8 @@ describe('slugify', () => {
     assert.equal(slugify('The `kind` property'), 'the-kind-property')
     assert.equal(slugify('See [Storage](#storage) *now*'), 'see-storage-now')
     assert.equal(slugify('snake_case names'), 'snake_case-names')
+    assert.equal(slugify('make_test_separator.py'), 'make_test_separatorpy')
+    assert.equal(slugify('An _emphasised_ word'), 'an-emphasised-word')
     assert.equal(slugify('Übersicht: Entwürfe'), 'übersicht-entwürfe')
   })
 })

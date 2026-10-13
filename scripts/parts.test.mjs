@@ -57,6 +57,10 @@ describe('parts picked from changed paths', () => {
     assert.deepEqual(checkedParts(['tests/fixtures/song/lyrics.txt']), ['core', 'web', 'e2e'])
   })
 
+  test('tests/fixtures/models also picks the model tool, whose test checks the test separator', () => {
+    assert.deepEqual(checkedParts(['tests/fixtures/models/htdemucs_fwd.onnx']), ['core', 'web', 'e2e', 'models'])
+  })
+
   test('lyre-cli picks the same parts as the rest of the core', () => {
     const core = ['core', 'web', 'e2e', 'android']
     assert.deepEqual(checkedParts(['core/lyre-cli/src/main.rs']), core)
