@@ -193,6 +193,6 @@ test('the rows show the display lines the core picks, and follow when it picks o
   await vi.waitFor(() => expect(texts(element)).toEqual(['nhẹ', 'Mưa\trơi']))
 })
 
-test('the lyric font size is 1/14 of the video height, never under 16 px', () => {
-  expect([0, 140, 224, 720].map(lyricFontSize)).toEqual([16, 16, 16, 720 / 14])
+test('the lyric font size is 1/10 of the video height, never under 16 px', () => {
+  expect([0, 140, 160, 720].map(lyricFontSize)).toEqual([16, 16, 16, 72])
 })

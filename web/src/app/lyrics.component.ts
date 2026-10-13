@@ -18,7 +18,7 @@ import { messages } from './messages'
 // The lyric font size for a video `height` CSS pixels tall:
 // docs/ui-conventions.md#lyrics-area.
 export function lyricFontSize(height: number): number {
-  return Math.max(height / 14, 16)
+  return Math.max(height / 10, 16)
 }
 
 // One syllable as shown in a display line. `separator` is the exact text before
@@ -98,6 +98,9 @@ interface ShownLine {
     section {
       position: relative;
       font: var(--mat-sys-headline-small);
+      /* After the shorthand, which resets the weight. The measuring spans and the
+         countdown dots inherit it: docs/ui-conventions.md#lyrics-area. */
+      font-weight: 700;
       /* The font size is set from the video's height, so the line height and the
          gap below the rows follow it. */
       line-height: 1.25;

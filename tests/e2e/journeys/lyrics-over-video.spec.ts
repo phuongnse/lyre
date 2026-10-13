@@ -38,6 +38,13 @@ const tolerance = 1
 
 const fontSizeOf = (region: Locator) => region.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))
 
+const fontWeightOf = (locator: Locator) => locator.evaluate((element) => getComputedStyle(element).fontWeight)
+
+// The lyric font size for a video `height` pixels tall: 1/10 of it, never under 16 px.
+const expectedFontSize = (height: number) => Math.max(height / 10, 16)
+
+const syllables = ['Mưa', 'rơi', 'nhẹ', 'Em', 'về', 'bên', 'sông']
+
 for (const [width, height] of [
   [1280, 720],
   [390, 844],
@@ -62,6 +69,40 @@ for (const [width, height] of [
   })
 }
 
+for (const [width, height] of [
+  [1280, 720],
+  [390, 844],
+  [844, 390],
+]) {
+  test(`at ${width}×${height} the lyrics are 1/10 of the video's height and fit inside it`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    const { region, video } = await openFixture(page)
+    await seek(video, 4)
+    await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
+    const stage = await boxOf(video)
+    expect(Math.abs((await fontSizeOf(region)) - expectedFontSize(stage.height))).toBeLessThan(0.5)
+    for (const text of syllables) {
+      const syllable = await boxOf(region.getByText(text, { exact: true }))
+      expect(syllable.x).toBeGreaterThanOrEqual(stage.x - tolerance)
+      expect(syllable.x + syllable.width).toBeLessThanOrEqual(stage.x + stage.width + tolerance)
+    }
+    const top = await boxOf(region.getByRole('paragraph').nth(0))
+    expect(stage.y + stage.height - top.y).toBeLessThanOrEqual(stage.height / 3 + tolerance)
+  })
+}
+
+test('the lyric text and the Countdown are bold', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 4)
+  await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
+  expect(await fontWeightOf(region.getByText('Mưa', { exact: true }))).toBe('700')
+  await seek(video, 1)
+  const countdown = region.getByRole('progressbar', { name: 'Countdown' })
+  await expect(countdown).toBeVisible()
+  expect(await fontWeightOf(countdown)).toBe('700')
+})
+
 test('at 5.0 s the Countdown lies inside the video', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 })
   const { region, video } = await openFixture(page)
@@ -82,15 +123,15 @@ test('after the viewport shrinks, the font size follows the video and every syll
   const { region, video } = await openFixture(page)
   await seek(video, 1)
   await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
-  expect(Math.abs((await fontSizeOf(region)) - Math.max((await boxOf(video)).height / 14, 16))).toBeLessThan(0.5)
+  expect(Math.abs((await fontSizeOf(region)) - expectedFontSize((await boxOf(video)).height))).toBeLessThan(0.5)
 
   await page.setViewportSize({ width: 390, height: 844 })
   await expect
-    .poll(async () => Math.abs((await fontSizeOf(region)) - Math.max((await boxOf(video)).height / 14, 16)))
+    .poll(async () => Math.abs((await fontSizeOf(region)) - expectedFontSize((await boxOf(video)).height)))
     .toBeLessThan(0.5)
   await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
   const stage = await boxOf(video)
-  for (const text of ['Mưa', 'rơi', 'nhẹ', 'Em', 'về', 'bên', 'sông']) {
+  for (const text of syllables) {
     const syllable = await boxOf(region.getByText(text, { exact: true }))
     expect(syllable.x).toBeGreaterThanOrEqual(stage.x - tolerance)
     expect(syllable.x + syllable.width).toBeLessThanOrEqual(stage.x + stage.width + tolerance)
