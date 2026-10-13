@@ -47,7 +47,7 @@ folder, or absolute. Unknown fields are rejected.
 | `lyrics` | The lyrics file. Its bytes are stored exactly as they are (D5). |
 | `timing` | The [timing file](#timing-file). |
 | `thumbnail` | The thumbnail image. Optional. |
-| `[details]` | The song details: `title`, and optionally `artist` and `composer`. A missing artist or composer is stored as empty, which means not known. |
+| `[details]` | The song details: `title`, a required `vocal_role` of `"male"` or `"female"`, and optionally `artist` and `composer`. A missing artist or composer is stored as empty, which means not known. |
 | `[video]` | The video track. Optional. |
 | `[karaoke]` | The karaoke track. |
 | `[original]` | The original track. |

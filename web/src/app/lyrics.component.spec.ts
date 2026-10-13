@@ -32,7 +32,7 @@ function song({
   const timing = { lyricLine: 0, startMs: 0, endMs: 0 }
   return {
     songId: '00112233445566778899aabbccddeeff',
-    details: { title: 'Mưa', artist: '', composer: '' },
+    details: { title: 'Mưa', artist: '', composer: '', vocalRole: 'female' },
     durationMs: 1000,
     karaoke: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
     original: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },

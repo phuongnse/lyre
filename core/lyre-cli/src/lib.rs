@@ -14,7 +14,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use lyre_core::lyrics::{Lyrics, LyricsError};
-use lyre_core::song_file::{self, Segment, Song, SongDetails, SongFileError, Timing, Track};
+use lyre_core::song_file::{
+    self, Segment, Song, SongDetails, SongFileError, Timing, Track, VocalRole,
+};
 use serde::Deserialize;
 
 use crate::timing::TimingFileError;
@@ -42,6 +44,7 @@ struct Details {
     artist: String,
     #[serde(default)]
     composer: String,
+    vocal_role: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,10 +84,12 @@ pub fn build(manifest: &Path) -> Result<Vec<u8>, BuildError> {
             error,
         })?;
     let timing = Timing::new(times).map_err(BuildError::SongFile)?;
+    let vocal_role = parse_vocal_role(&spec.details.vocal_role).ok_or(BuildError::VocalRole)?;
     let details = SongDetails::new(
         spec.details.title,
         spec.details.artist,
         spec.details.composer,
+        vocal_role,
     )
     .map_err(BuildError::SongFile)?;
     let thumbnail = spec.thumbnail.as_deref().map(read).transpose()?;
@@ -131,6 +136,15 @@ fn parse_song_id(text: &str) -> Option<[u8; 16]> {
     Some(id)
 }
 
+/// Reads a vocal role written as exactly "male" or "female".
+fn parse_vocal_role(text: &str) -> Option<VocalRole> {
+    match text {
+        "male" => Some(VocalRole::Male),
+        "female" => Some(VocalRole::Female),
+        _ => None,
+    }
+}
+
 /// Why a song file could not be built.
 #[derive(Debug)]
 pub enum BuildError {
@@ -141,6 +155,8 @@ pub enum BuildError {
     Manifest(toml::de::Error),
     /// The song ID is not 32 hex digits.
     SongId,
+    /// The vocal role is not "male" or "female".
+    VocalRole,
     /// The core rejected the lyrics.
     Lyrics(LyricsError),
     /// The timing file breaks a rule.
@@ -160,6 +176,7 @@ impl fmt::Display for BuildError {
             }
             BuildError::Manifest(error) => write!(f, "manifest is not valid: {error}"),
             BuildError::SongId => write!(f, "song_id must be exactly 32 hex digits"),
+            BuildError::VocalRole => write!(f, r#"vocal_role must be "male" or "female""#),
             BuildError::Lyrics(error) => write!(f, "lyrics rejected: {error}"),
             BuildError::Timing { path, error } => write!(f, "{} {error}", path.display()),
             BuildError::SongFile(error) => write!(f, "song rejected: {error}"),
@@ -172,7 +189,7 @@ impl std::error::Error for BuildError {
         match self {
             BuildError::Read { source, .. } => Some(source),
             BuildError::Manifest(error) => Some(error),
-            BuildError::SongId => None,
+            BuildError::SongId | BuildError::VocalRole => None,
             BuildError::Lyrics(error) => Some(error),
             BuildError::Timing { error, .. } => Some(error),
             BuildError::SongFile(error) => Some(error),
@@ -182,7 +199,9 @@ impl std::error::Error for BuildError {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_song_id;
+    use lyre_core::song_file::VocalRole;
+
+    use super::{parse_song_id, parse_vocal_role};
 
     #[test]
     fn reads_a_song_id_of_32_hex_digits() {
@@ -206,6 +225,15 @@ mod tests {
             "+0112233445566778899aabbccddeeff",
         ] {
             assert_eq!(parse_song_id(text), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn reads_a_vocal_role_of_male_or_female() {
+        assert_eq!(parse_vocal_role("male"), Some(VocalRole::Male));
+        assert_eq!(parse_vocal_role("female"), Some(VocalRole::Female));
+        for text in ["tenor", "Male", "", " male"] {
+            assert_eq!(parse_vocal_role(text), None, "{text}");
         }
     }
 }

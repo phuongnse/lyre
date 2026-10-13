@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use lyre_core::song_file::{self, SyllableTime};
+use lyre_core::song_file::{self, SyllableTime, VocalRole};
 
 /// The largest total size of every file under `tests/fixtures`, in bytes.
 const MAX_FIXTURES_BYTES: u64 = 65_536;
@@ -47,6 +47,7 @@ fn fixture_song_reads_back_with_its_lyrics_and_timing() {
     assert_eq!(song.details.title(), "Mưa rơi nhẹ");
     assert_eq!(song.details.artist(), "Lyre fixtures");
     assert_eq!(song.details.composer(), "Lyre fixture composer");
+    assert_eq!(song.details.vocal_role(), VocalRole::Female);
     assert_eq!(song.thumbnail, Some(read("thumbnail.jpg")));
     assert_eq!(song.karaoke.init, read("karaoke/init.webm"));
     assert_eq!(song.original.init, read("original/init.webm"));
@@ -94,8 +95,9 @@ fn command_rejects_bad_timing_and_writes_nothing() {
         "# bad\n2000 2300 Mưa\n2200 2600 rơi\n2600 3200 nhẹ\n3500 3800 Em\n3800 4100 về\n4100 4400 bên\n4400 4900 sông\n9900 10400 Trăng\n10400 11000 lên\n",
     )
     .expect("timing is written");
-    let manifest = dir.path().join("song.toml");
-    fs::write(&manifest, manifest_with_timing(&timing)).expect("manifest is written");
+    let mut manifest = absolute_manifest();
+    manifest["timing"] = toml::Value::from(timing.to_str().expect("UTF-8 path"));
+    let manifest = write_manifest(dir.path(), &manifest);
     let out = dir.path().join("bad.lyre");
 
     let output = Command::new(env!("CARGO_BIN_EXE_lyre-cli"))
@@ -126,19 +128,41 @@ fn command_without_its_arguments_prints_usage() {
     assert!(stderr.contains("usage: lyre-cli build"), "{stderr}");
 }
 
-/// The fixture manifest with absolute paths to the fixture files, and with
-/// `timing` as its timing file.
-fn manifest_with_timing(timing: &Path) -> String {
+#[test]
+fn manifest_without_a_vocal_role_is_rejected() {
+    let dir = tempfile::tempdir().expect("temporary folder");
+    let mut manifest = absolute_manifest();
+    manifest["details"]
+        .as_table_mut()
+        .expect("details is a table")
+        .remove("vocal_role")
+        .expect("the fixture has a vocal role");
+
+    let err = lyre_cli::build(&write_manifest(dir.path(), &manifest)).unwrap_err();
+    assert!(err.to_string().contains("vocal_role"), "{err}");
+}
+
+#[test]
+fn manifest_with_an_unknown_vocal_role_is_rejected() {
+    let dir = tempfile::tempdir().expect("temporary folder");
+    let mut manifest = absolute_manifest();
+    manifest["details"]["vocal_role"] = toml::Value::from("tenor");
+
+    let err = lyre_cli::build(&write_manifest(dir.path(), &manifest)).unwrap_err();
+    assert!(err.to_string().contains("vocal_role"), "{err}");
+}
+
+/// The fixture manifest with absolute paths to the fixture files.
+fn absolute_manifest() -> toml::Table {
     let text = fs::read_to_string(song_dir().join("song.toml")).expect("manifest is readable");
     let mut manifest: toml::Table = text.parse().expect("manifest is valid TOML");
     let absolute = |name: &toml::Value| {
         let name = name.as_str().expect("path is a string");
         toml::Value::from(song_dir().join(name).to_str().expect("UTF-8 path"))
     };
-    for key in ["lyrics", "thumbnail"] {
+    for key in ["lyrics", "timing", "thumbnail"] {
         manifest[key] = absolute(&manifest[key]);
     }
-    manifest["timing"] = toml::Value::from(timing.to_str().expect("UTF-8 path"));
     for track in ["video", "karaoke", "original"] {
         let track = manifest[track].as_table_mut().expect("track is a table");
         track["init"] = absolute(&track["init"]);
@@ -146,7 +170,14 @@ fn manifest_with_timing(timing: &Path) -> String {
             segment["file"] = absolute(&segment["file"]);
         }
     }
-    manifest.to_string()
+    manifest
+}
+
+/// Writes `manifest` to `song.toml` in `dir` and returns its path.
+fn write_manifest(dir: &Path, manifest: &toml::Table) -> PathBuf {
+    let path = dir.join("song.toml");
+    fs::write(&path, manifest.to_string()).expect("manifest is written");
+    path
 }
 
 #[test]

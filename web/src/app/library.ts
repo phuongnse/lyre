@@ -32,7 +32,8 @@ export class Library {
   // for persistent storage.
   keep(song: OpenedSong, file: Blob): Promise<void> {
     return this.update(async () => {
-      await this.store.keep({ songId: song.songId, ...song.details, openedAt: Date.now(), file })
+      const { title, artist, composer } = song.details
+      await this.store.keep({ songId: song.songId, title, artist, composer, openedAt: Date.now(), file })
       const songs = await this.store.list()
       return { songs, mayBeCleared: !((await this.store.persisted()) || (await this.store.persist())) }
     })

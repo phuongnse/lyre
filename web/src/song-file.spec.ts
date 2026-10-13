@@ -21,7 +21,7 @@ function example(): Uint8Array<ArrayBuffer> {
     .replaceAll(' ', '')
   const bytes = new Uint8Array(hex.length / 2)
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16)
-  expect(bytes.length).toBe(248)
+  expect(bytes.length).toBe(249)
   return bytes
 }
 
@@ -67,21 +67,21 @@ test('opening the example reads the header, the index and single chunks, never t
   expect(ranges).toEqual([
     [0, 32],
     [32, 200],
-    [200, 210],
-    [210, 220],
-    [220, 240],
-    [240, 242],
-    [242, 244],
+    [200, 211],
+    [211, 221],
+    [221, 241],
+    [241, 243],
+    [243, 245],
   ])
   expect(ranges).not.toContainEqual([0, file.length])
-  // The original track's init and segment are at [244, 246) and [246, 248).
-  for (const [start, end] of ranges) expect(end <= 244 || start >= 248).toBe(true)
+  // The original track's init and segment are at [245, 247) and [247, 249).
+  for (const [start, end] of ranges) expect(end <= 245 || start >= 249).toBe(true)
 })
 
 test('the example gives its song ID and its details as stored', async () => {
   const song = await openSongFile(new Blob([example()]))
   expect(song.songId).toBe('000102030405060708090a0b0c0d0e0f')
-  expect(song.details).toEqual({ title: 'Mưa', artist: '', composer: '' })
+  expect(song.details).toEqual({ title: 'Mưa', artist: '', composer: '', vocalRole: 'female' })
   song.close()
 })
 
@@ -147,9 +147,9 @@ test('the karaoke track lists its chunks with their times', async () => {
     startMs,
     durationMs,
   })
-  expect(song.karaoke.init).toMatchObject(ref(3, 240, 0, 0))
+  expect(song.karaoke.init).toMatchObject(ref(3, 241, 0, 0))
   expect(song.karaoke.segments).toHaveLength(1)
-  expect(song.karaoke.segments[0]).toMatchObject(ref(4, 242, 0, 1000))
+  expect(song.karaoke.segments[0]).toMatchObject(ref(4, 243, 0, 1000))
   song.close()
 })
 
@@ -162,9 +162,9 @@ test('the original track lists its chunks with their times', async () => {
     startMs,
     durationMs,
   })
-  expect(song.original.init).toMatchObject(ref(5, 244, 0, 0))
+  expect(song.original.init).toMatchObject(ref(5, 245, 0, 0))
   expect(song.original.segments).toHaveLength(1)
-  expect(song.original.segments[0]).toMatchObject(ref(6, 246, 0, 1000))
+  expect(song.original.segments[0]).toMatchObject(ref(6, 247, 0, 1000))
   song.close()
 })
 
@@ -179,7 +179,7 @@ test('a file with the wrong magic is not a song file', async () => {
 })
 
 test('the example without its last byte is damaged', async () => {
-  expect(await problemOf(new Blob([example().slice(0, 247)]))).toBe('damaged')
+  expect(await problemOf(new Blob([example().slice(0, 248)]))).toBe('damaged')
 })
 
 test('a file that ends inside its index is damaged', async () => {
@@ -188,13 +188,13 @@ test('a file that ends inside its index is damaged', async () => {
 
 test('a timing that does not match the lyrics is damaged', async () => {
   const file = example()
-  file[220] = 0x03
+  file[221] = 0x03
   expect(await problemOf(new Blob([file]))).toBe('damaged')
 })
 
 test('a source that fails to read is damaged', async () => {
   const failing: ByteSource = {
-    size: 248,
+    size: 249,
     slice: () => ({ arrayBuffer: () => Promise.reject(new Error('read failed')) }) as unknown as Blob,
   }
   expect(await problemOf(failing)).toBe('damaged')

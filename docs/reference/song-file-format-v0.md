@@ -121,14 +121,18 @@ Chunks come in this order, and no other type or order is accepted:
 
 ### Song details
 
-Three fields in this order: the title, the artist and the composer. Each is a
-u16 byte length, then that many UTF-8 bytes.
+Four fields in this order: the title, the artist, the composer and the vocal
+role. The title, the artist and the composer are each a u16 byte length, then
+that many UTF-8 bytes. The vocal role is one byte after the composer.
 
 - The title has 1 to 1,024 bytes. The artist and the composer have 0 to 1,024
   bytes, where 0 means not known.
-- Each field is valid UTF-8 with no NUL character.
-- No bytes are left after the composer.
-- Each field is stored as supplied.
+- Each text field is valid UTF-8 with no NUL character.
+- Each text field is stored as supplied.
+- The vocal role is `1` for male or `2` for female. It records one role for
+  the whole song, so it covers solo songs. Any other value, or a missing byte,
+  is rejected. Roles per lyric line come with M8.
+- No bytes are left after the vocal role.
 
 ### Thumbnail
 
@@ -246,9 +250,10 @@ A reader rejects the whole file when any value is outside these limits.
 | Index entry | exactly 24 bytes |
 | `entry_count` | 7 to 16,384 |
 | File size | at most 2,147,483,647 bytes (2³¹ − 1) |
-| Song details chunk | 7 to 3,078 bytes |
+| Song details chunk | 8 to 3,079 bytes |
 | Title | 1 to 1,024 bytes |
 | Artist, composer | 0 to 1,024 bytes each |
+| Vocal role | 1 byte, `1` (male) or `2` (female) |
 | Thumbnail chunk | 0 or 1, of 1 to 1,048,576 bytes |
 | Lyrics chunk | 1 to 1,048,576 bytes |
 | Timing chunk | exactly `4 + 8 × count` bytes, 12 to 524,292 |
@@ -285,10 +290,11 @@ song is open.
 
 ## Known-answer example
 
-This 248-byte song file is the core's known-answer example. It holds:
+This 249-byte song file is the core's known-answer example. It holds:
 
 - `song_id`: the bytes `00` to `0F`;
-- song details: the title "Mưa", with no artist and no composer (10 bytes);
+- song details: the title "Mưa", with no artist and no composer, and the
+  vocal role female (11 bytes);
 - lyrics: `"Mưa rơi\n"` (10 bytes), which is 1 lyric line with 2 syllables;
 - timing: 2 syllables, from 0 to 500 ms and from 500 to 1,000 ms (20 bytes);
 - the karaoke track: init segment `"ki"` and one media segment `"ks"` from 0
@@ -314,78 +320,79 @@ offset  bytes                                    meaning
   16    00 01 02 03 04 05 06 07                  song_id
   24    08 09 0A 0B 0C 0D 0E 0F                  song_id
                                                  Index entry 1: song details
-  32    01 00  00 00  0A 00 00 00                type 1, reserved, length 10
+  32    01 00  00 00  0B 00 00 00                type 1, reserved, length 11
   40    C8 00 00 00 00 00 00 00                  offset 200
   48    00 00 00 00  00 00 00 00                 start_ms 0, duration_ms 0
                                                  Index entry 2: lyrics
   56    03 00  00 00  0A 00 00 00                type 3, reserved, length 10
-  64    D2 00 00 00 00 00 00 00                  offset 210
+  64    D3 00 00 00 00 00 00 00                  offset 211
   72    00 00 00 00  00 00 00 00                 start_ms 0, duration_ms 0
                                                  Index entry 3: timing
   80    04 00  00 00  14 00 00 00                type 4, reserved, length 20
-  88    DC 00 00 00 00 00 00 00                  offset 220
+  88    DD 00 00 00 00 00 00 00                  offset 221
   96    00 00 00 00  00 00 00 00                 start_ms 0, duration_ms 0
                                                  Index entry 4: karaoke init
  104    12 00  00 00  02 00 00 00                type 18, reserved, length 2
- 112    F0 00 00 00 00 00 00 00                  offset 240
+ 112    F1 00 00 00 00 00 00 00                  offset 241
  120    00 00 00 00  00 00 00 00                 start_ms 0, duration_ms 0
                                                  Index entry 5: karaoke segment
  128    13 00  00 00  02 00 00 00                type 19, reserved, length 2
- 136    F2 00 00 00 00 00 00 00                  offset 242
+ 136    F3 00 00 00 00 00 00 00                  offset 243
  144    00 00 00 00  E8 03 00 00                 start_ms 0, duration_ms 1000
                                                  Index entry 6: original init
  152    14 00  00 00  02 00 00 00                type 20, reserved, length 2
- 160    F4 00 00 00 00 00 00 00                  offset 244
+ 160    F5 00 00 00 00 00 00 00                  offset 245
  168    00 00 00 00  00 00 00 00                 start_ms 0, duration_ms 0
                                                  Index entry 7: original segment
  176    15 00  00 00  02 00 00 00                type 21, reserved, length 2
- 184    F6 00 00 00 00 00 00 00                  offset 246
+ 184    F7 00 00 00 00 00 00 00                  offset 247
  192    00 00 00 00  E8 03 00 00                 start_ms 0, duration_ms 1000
                                                  Chunk 1: song details
  200    04 00  4D C6 B0 61                       title, 4 bytes: "Mưa"
  206    00 00                                    artist, 0 bytes
  208    00 00                                    composer, 0 bytes
+ 210    02                                       vocal role 2, female
                                                  Chunk 2: lyrics
- 210    4D C6 B0 61 20 72 C6 A1 69 0A            "Mưa rơi\n"
+ 211    4D C6 B0 61 20 72 C6 A1 69 0A            "Mưa rơi\n"
                                                  Chunk 3: timing
- 220    02 00 00 00                              count 2
- 224    00 00 00 00  F4 01 00 00                 "Mưa": 0 to 500 ms
- 232    F4 01 00 00  E8 03 00 00                 "rơi": 500 to 1000 ms
+ 221    02 00 00 00                              count 2
+ 225    00 00 00 00  F4 01 00 00                 "Mưa": 0 to 500 ms
+ 233    F4 01 00 00  E8 03 00 00                 "rơi": 500 to 1000 ms
                                                  Chunks 4 to 7: placeholders
- 240    6B 69                                    karaoke init "ki"
- 242    6B 73                                    karaoke segment "ks"
- 244    6F 69                                    original init "oi"
- 246    6F 73                                    original segment "os"
- 248                                             end of file
+ 241    6B 69                                    karaoke init "ki"
+ 243    6B 73                                    karaoke segment "ks"
+ 245    6F 69                                    original init "oi"
+ 247    6F 73                                    original segment "os"
+ 249                                             end of file
 ```
 
 ### Hex dump
 
-The same 248 bytes as an `xxd` dump. `xxd -r` turns it back into the file.
+The same 249 bytes as an `xxd` dump. `xxd -r` turns it back into the file.
 
 ```text
 00000000: 894c 5952 450d 0a1a 0000 0000 0700 0000  .LYRE...........
 00000010: 0001 0203 0405 0607 0809 0a0b 0c0d 0e0f  ................
-00000020: 0100 0000 0a00 0000 c800 0000 0000 0000  ................
+00000020: 0100 0000 0b00 0000 c800 0000 0000 0000  ................
 00000030: 0000 0000 0000 0000 0300 0000 0a00 0000  ................
-00000040: d200 0000 0000 0000 0000 0000 0000 0000  ................
-00000050: 0400 0000 1400 0000 dc00 0000 0000 0000  ................
+00000040: d300 0000 0000 0000 0000 0000 0000 0000  ................
+00000050: 0400 0000 1400 0000 dd00 0000 0000 0000  ................
 00000060: 0000 0000 0000 0000 1200 0000 0200 0000  ................
-00000070: f000 0000 0000 0000 0000 0000 0000 0000  ................
-00000080: 1300 0000 0200 0000 f200 0000 0000 0000  ................
+00000070: f100 0000 0000 0000 0000 0000 0000 0000  ................
+00000080: 1300 0000 0200 0000 f300 0000 0000 0000  ................
 00000090: 0000 0000 e803 0000 1400 0000 0200 0000  ................
-000000a0: f400 0000 0000 0000 0000 0000 0000 0000  ................
-000000b0: 1500 0000 0200 0000 f600 0000 0000 0000  ................
+000000a0: f500 0000 0000 0000 0000 0000 0000 0000  ................
+000000b0: 1500 0000 0200 0000 f700 0000 0000 0000  ................
 000000c0: 0000 0000 e803 0000 0400 4dc6 b061 0000  ..........M..a..
-000000d0: 0000 4dc6 b061 2072 c6a1 690a 0200 0000  ..M..a r..i.....
-000000e0: 0000 0000 f401 0000 f401 0000 e803 0000  ................
-000000f0: 6b69 6b73 6f69 6f73                      kiksoios
+000000d0: 0000 024d c6b0 6120 72c6 a169 0a02 0000  ...M..a r..i....
+000000e0: 0000 0000 00f4 0100 00f4 0100 00e8 0300  ................
+000000f0: 006b 696b 736f 696f 73                   .kiksoios
 ```
 
 SHA-256 of the whole file:
 
 ```text
-0d5e26f079c1d365a126c09703fa5ecf79a27fa1fba4adf5ea72cd8edab23d49
+1cc9f478d6e61e2c30847ebe95a885e28c5d68f4f3d45b6bce4f6d5481128568
 ```
 
 ### Invalid variants
@@ -396,7 +403,8 @@ Each variant changes the example in one way. A reader rejects each one.
 | --- | --- |
 | Byte 0 is `88` instead of `89` | The magic is wrong. |
 | Bytes 8 and 9 are `01 00` | The version is not 0. |
-| The last byte is removed (247 bytes) | The last chunk ends after the end of the file. |
-| One byte is added at the end (249 bytes) | The last chunk does not end at the end of the file. |
-| Byte 220, the timing count, is `03` | The timing chunk is not `4 + 8 × 3` bytes, and 3 is not the lyrics' 2 syllables. |
+| The last byte is removed (248 bytes) | The last chunk ends after the end of the file. |
+| One byte is added at the end (250 bytes) | The last chunk does not end at the end of the file. |
+| Byte 210, the vocal role, is `03` | The vocal role is not known. |
+| Byte 221, the timing count, is `03` | The timing chunk is not `4 + 8 × 3` bytes, and 3 is not the lyrics' 2 syllables. |
 | Byte 196, the original segment's `duration_ms`, is `E7` (999) | The original segment's duration differs from the karaoke segment's. |

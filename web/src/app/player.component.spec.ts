@@ -64,7 +64,7 @@ function openedSong(): OpenedSong {
   )
   return {
     songId: '00112233445566778899aabbccddeeff',
-    details: { title: 'Mưa rơi nhẹ', artist: 'Lyre fixtures', composer: '' },
+    details: { title: 'Mưa rơi nhẹ', artist: 'Lyre fixtures', composer: '', vocalRole: 'female' },
     durationMs: 1000,
     karaoke: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
     original: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
@@ -104,6 +104,7 @@ test('a song file that opens is kept in the library with its song ID and details
   await vi.waitFor(() => expect(store.songs.size).toBe(1))
   const kept = store.songs.get('00112233445566778899aabbccddeeff')
   expect(kept).toMatchObject({ title: 'Mưa rơi nhẹ', artist: 'Lyre fixtures', composer: '' })
+  expect(kept).not.toHaveProperty('vocalRole')
   expect(kept?.file).toBe(file)
 
   await fixture.whenStable()
