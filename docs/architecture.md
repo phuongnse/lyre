@@ -188,6 +188,14 @@ reference doc and reviewed before M3 implements them.
   timeline's start: audio that starts later gets leading silence. Audio the
   browser cannot decode gets the no-audio refusal. For now it runs on the main
   thread from the source check page.
+- On the web, stage 8 repackages the source's primary audio into the
+  original track with Mediabunny, in a Web Worker, for now from the source
+  check page. The coded packets are copied as they are. The track is WebM or
+  fragmented MP4, by the stored type the core gives it, and its times are
+  shifted to the timeline's start. Audio whose first frame comes more than
+  50 ms after that start is refused. Mediabunny writes Clusters or fragments
+  of about 1 s, and the web client groups them into media segments of up to
+  10 s. It checks the format's limits, which the core's writer checks again.
 - The web client runs a model with ONNX Runtime Web (MIT), at a pinned
   version, in a Web Worker. It uses WebGPU when the browser gives it a GPU
   adapter and the session opens on it, and otherwise WebAssembly on one

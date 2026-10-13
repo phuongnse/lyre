@@ -216,6 +216,20 @@ test('without an AAC decoder, decoding the MP4 shows only the no-audio message',
   expect(problems).toEqual([])
 })
 
+test('packaging song.webm shows an Opus WebM original track whose segments total its 2 s', async ({ page }) => {
+  const problems = watchProblems(page)
+  await chooseSource(page, source('song.webm'))
+  await expect(labelled(page, 'Source details')).toBeVisible()
+  await page.getByRole('button', { name: 'Package the original track' }).click()
+  await expect(labelled(page, 'Original track')).toBeVisible()
+  await expect(labelled(page, 'Stored type')).toHaveText('audio/webm; codecs="opus"')
+  expect(await numberIn(page, 'Segments')).toBeGreaterThanOrEqual(1)
+  expect(Math.abs((await secondsIn(page, 'Total duration')) - 2)).toBeLessThanOrEqual(0.1)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  // A Trusted Types violation from the new worker would show here.
+  expect(problems).toEqual([])
+})
+
 test('reading a source sends nothing: every request is a same-origin GET with no body', async ({ page }) => {
   await page.goto('/#/source-check')
   await expect(page.getByRole('button', { name: 'Choose a source' })).toBeEnabled()

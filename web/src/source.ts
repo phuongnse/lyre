@@ -1,5 +1,8 @@
 import { BlobSource, Input, InputTrack, MP3, MP4, MediaCodec, MetadataTags, WEBM } from 'mediabunny'
 import { storedType } from './lyre-wasm/lyre_wasm.js'
+import { SourceError } from './source-error'
+
+export { SourceError, type SourceProblem } from './source-error'
 
 // Reads a source's details: stage 1 of processing
 // (docs/domain/knowledge.md#processing). It only reads the container, through
@@ -19,6 +22,9 @@ export interface SourceDetails {
   composer?: string
   // Set when this browser cannot play a track, so a song cannot be made from it.
   cannotPlay?: CannotPlay
+  // The stored type the core gives the primary audio track, even when this
+  // browser cannot play it. Absent when the core gives none.
+  audioType?: string
 }
 
 export type SourceTrack = 'video' | 'audio'
@@ -35,16 +41,6 @@ export interface TrackCodec {
 export interface CannotPlay {
   track: SourceTrack
   codec: MediaCodec | null
-}
-
-// Why a source was refused. Mediabunny's own messages are not meant for users.
-export type SourceProblem = 'no-audio' | 'unreadable'
-
-export class SourceError extends Error {
-  constructor(readonly problem: SourceProblem) {
-    super(problem)
-    this.name = 'SourceError'
-  }
 }
 
 // What the container says, before it becomes SourceDetails.
@@ -126,6 +122,8 @@ export function sourceDetailsFrom(facts: SourceFacts, canPlay: (type: string) =>
   if (title !== undefined) details.title = title
   if (artist !== undefined) details.artist = artist
   if (composer !== undefined) details.composer = composer
+  const audioType = facts.audioCodec === null ? undefined : typeOf(facts.audioCodec)
+  if (audioType !== undefined) details.audioType = audioType
   // The video is checked first, so it is named when both tracks fail, as in the Player.
   const tracks: [SourceTrack, TrackCodec | null][] = [
     ['video', facts.videoCodec],
@@ -140,9 +138,14 @@ export function sourceDetailsFrom(facts: SourceFacts, canPlay: (type: string) =>
 }
 
 // Whether the core gives the track a stored type, and this browser can play it.
-function plays({ codec, parameters }: TrackCodec, canPlay: (type: string) => boolean): boolean {
-  const type = codec === null ? undefined : storedType(codec, parameters ?? '')
+function plays(found: TrackCodec, canPlay: (type: string) => boolean): boolean {
+  const type = typeOf(found)
   return type !== undefined && canPlay(type)
+}
+
+// The stored type the core gives a track, if any.
+function typeOf({ codec, parameters }: TrackCodec): string | undefined {
+  return codec === null ? undefined : storedType(codec, parameters ?? '')
 }
 
 // A tag's text exactly as stored. Anything other than non-empty text is absent.

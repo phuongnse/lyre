@@ -88,6 +88,7 @@ test('a source this browser plays is not refused', () => {
     return true
   })
   expect(details).not.toHaveProperty('cannotPlay')
+  expect(details.audioType).toBe('audio/webm; codecs="opus"')
   expect(asked).toEqual(['video/webm; codecs="vp09.00.10.08"', 'audio/webm; codecs="opus"'])
 })
 
@@ -102,11 +103,14 @@ test('H.264 video this browser cannot play is refused, naming the video', () => 
 test('FLAC audio is refused even when this browser says it can play it', () => {
   const details = sourceDetailsFrom(facts({ audioCodec: { codec: 'flac', parameters: 'flac' } }), playsEverything)
   expect(details.cannotPlay).toEqual({ track: 'audio', codec: 'flac' })
+  expect(details).not.toHaveProperty('audioType')
 })
 
 test('the video is named when neither track plays', () => {
   const details = sourceDetailsFrom(facts(), () => false)
   expect(details.cannotPlay).toEqual({ track: 'video', codec: 'vp9' })
+  // The audio's stored type is kept, though this browser cannot play it.
+  expect(details.audioType).toBe('audio/webm; codecs="opus"')
 })
 
 test('a track whose codec Mediabunny does not know is refused', () => {

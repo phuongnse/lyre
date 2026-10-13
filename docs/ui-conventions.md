@@ -261,8 +261,13 @@ Compose uses the same three values *(planned for M4)*.
   details. When neither track plays, the video is named. The page can also
   decode the audio at a stage's rate, and shows what came out: its rate,
   channels, length, tone and where sound starts.
-  Audio the browser cannot decode gets the no-audio message. The Playwright
-  journeys use it to check reading a source and decoding its audio.
+  Audio the browser cannot decode gets the no-audio message. When the core
+  gives the audio a stored type, a **Package the original track** button
+  packages it in a Web Worker, and shows the original track's stored type,
+  its segment count and its total duration. A failure shows one message:
+  "This source's audio could not be packaged for a song." The Playwright
+  journeys use it to check reading a source, decoding its audio and
+  packaging it.
 - The model check page downloads, checks and keeps the 56-byte test model
   file `test-two-block`. A progress bar and a line below it show the bytes
   downloaded, and the line stays after the download ends. The status line
