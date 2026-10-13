@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core'
 import { MatButton } from '@angular/material/button'
-import { SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
+import { loadCore } from '../../core'
+import { CannotPlay, SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
 import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
 import { messages } from '../messages'
 
@@ -26,9 +27,10 @@ const LOUD = 0.01
 
 // The source check page (docs/ui-conventions.md#check-pages). It reads a
 // picked source's details, stage 1 of processing, and can decode its audio at
-// a stage's rate, stage 2, until the real song-making page exists. Opened by
-// its URL, #/source-check. The route is lazy, so Mediabunny stays out of the
-// main app's initial load.
+// a stage's rate, stage 2, until the real song-making page exists. A source
+// this browser cannot play shows the reason next to its details, and can still
+// be decoded, because this is a test page. Opened by its URL, #/source-check.
+// The route is lazy, so Mediabunny stays out of the main app's initial load.
 @Component({
   selector: 'lyre-source-check',
   imports: [MatButton],
@@ -59,6 +61,9 @@ const LOUD = 0.01
     }
     @if (current.status === 'ready' || current.status === 'decoding') {
       @let details = current.details;
+      @if (details.cannotPlay !== undefined) {
+        <p role="alert">{{ cannotPlayReason(details.cannotPlay) }}</p>
+      }
       <!-- Each tag is alone in its row, so the row's text is exactly the tag. -->
       <dl [attr.aria-label]="messages.sourceDetails">
         <dt id="source-duration">{{ messages.sourceDuration }}</dt>
@@ -138,6 +143,8 @@ export class SourceCheck {
     const attempt = ++this.attempts
     this.state.set({ status: 'reading' })
     try {
+      // The core gives the stored types that the browser is asked about.
+      await loadCore()
       const details = await readSource(file)
       if (attempt === this.attempts) this.state.set({ status: 'ready', file, details })
     } catch (error) {
@@ -146,6 +153,11 @@ export class SourceCheck {
       const problem = error instanceof SourceError ? error.problem : 'unreadable'
       this.state.set({ status: 'failed', problem })
     }
+  }
+
+  protected cannotPlayReason({ track, codec }: CannotPlay): string {
+    const name = codec === null ? messages.unknownCodec : messages.codecNames[codec]
+    return messages.sourceCannotPlay[track](name)
   }
 
   protected async decode(file: File, details: SourceDetails, format: AudioFormat): Promise<void> {

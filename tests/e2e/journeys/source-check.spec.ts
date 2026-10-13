@@ -63,14 +63,40 @@ async function decodeSource(page: Page, file: string, button: string): Promise<v
   await expect(labelled(page, 'Decoded audio')).toBeVisible()
 }
 
+// Makes this browser report that it cannot play a stored type holding `codec`,
+// as a browser without that decoder does.
+async function reportUnplayable(page: Page, codec: string): Promise<void> {
+  await page.addInitScript((codec) => {
+    const isTypeSupported = MediaSource.isTypeSupported.bind(MediaSource)
+    MediaSource.isTypeSupported = (type) => !type.includes(codec) && isTypeSupported(type)
+  }, codec)
+}
+
+// The refusal `file` gets in this browser, if any. MP3 is stored as
+// `audio/mp4; codecs="mp4a.6B"`, which Playwright's Chromium does not accept.
+async function refusalOf(page: Page, file: string): Promise<string | undefined> {
+  if (file !== 'song.mp3') return undefined
+  const mp3 = await page.evaluate(() => MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.6B"'))
+  return mp3 ? undefined : "This browser cannot play this source's audio (MP3), so a song cannot be made from it."
+}
+
+// Checks that the only alert is `refusal`, or that there is none.
+async function expectRefusal(page: Page, refusal: string | undefined): Promise<void> {
+  if (refusal === undefined) {
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    return
+  }
+  await expect(page.getByRole('alert')).toHaveText(refusal)
+  await expect(page.getByRole('alert')).toHaveCount(1)
+}
+
 const cases = [
-  { file: 'song.mp4', streams: 'Video and audio', tags: { Title: title, Artist: artist, Composer: composer } },
   { file: 'song.webm', streams: 'Video and audio', tags: { Title: undefined, Artist: artist, Composer: undefined } },
   { file: 'song.mp3', streams: 'Audio only', tags: { Title: title, Artist: artist, Composer: composer } },
 ]
 
 for (const { file, streams, tags } of cases) {
-  test(`${file} shows its duration, streams and exact tags`, async ({ page }) => {
+  test(`${file} shows its duration, streams and exact tags, and a refusal only if it cannot play`, async ({ page }) => {
     const problems = watchProblems(page)
     await chooseSource(page, source(file))
     await expect(labelled(page, 'Source details')).toBeVisible()
@@ -78,10 +104,40 @@ for (const { file, streams, tags } of cases) {
     await expect(labelled(page, 'Timeline starts at')).toHaveCount(0)
     await expect(labelled(page, 'Streams')).toHaveText(streams)
     for (const [name, value] of Object.entries(tags)) await expectTag(page, name, value)
-    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expectRefusal(page, await refusalOf(page, file))
     expect(problems).toEqual([])
   })
 }
+
+test('with H.264 unplayable, song.mp4 shows the cannot-play-video reason next to its exact tags', async ({ page }) => {
+  const problems = watchProblems(page)
+  await reportUnplayable(page, 'avc1')
+  await chooseSource(page, source('song.mp4'))
+  await expect(page.getByRole('alert')).toHaveText(
+    "This browser cannot play this source's video (H.264), so a song cannot be made from it.",
+  )
+  await expect(page.getByRole('alert')).toHaveCount(1)
+  await expect(labelled(page, 'Source details')).toBeVisible()
+  expect(Math.abs((await secondsIn(page, 'Duration')) - 2)).toBeLessThanOrEqual(0.1)
+  await expect(labelled(page, 'Streams')).toHaveText('Video and audio')
+  await expectTag(page, 'Title', title)
+  await expectTag(page, 'Artist', artist)
+  await expectTag(page, 'Composer', composer)
+  expect(problems).toEqual([])
+})
+
+test('with Opus unplayable, song.webm shows the cannot-play-audio reason next to its details', async ({ page }) => {
+  const problems = watchProblems(page)
+  await reportUnplayable(page, 'opus')
+  await chooseSource(page, source('song.webm'))
+  await expect(page.getByRole('alert')).toHaveText(
+    "This browser cannot play this source's audio (Opus), so a song cannot be made from it.",
+  )
+  await expect(page.getByRole('alert')).toHaveCount(1)
+  await expect(labelled(page, 'Source details')).toBeVisible()
+  await expect(labelled(page, 'Streams')).toHaveText('Video and audio')
+  expect(problems).toEqual([])
+})
 
 test('a video without audio shows only the no-audio message', async ({ page }) => {
   await chooseSource(page, source('video-only.webm'))
@@ -119,7 +175,8 @@ for (const file of ['song.webm', 'song.mp3']) {
       expect(await numberIn(page, 'Channels')).toBe(channels)
       expect(Math.abs((await secondsIn(page, 'Length')) - 2)).toBeLessThanOrEqual(0.1)
       expect(Math.abs((await numberIn(page, 'Tone', ' Hz')) - 440)).toBeLessThanOrEqual(5)
-      await expect(page.getByRole('alert')).toHaveCount(0)
+      // A refused source can still be decoded on this test page.
+      await expectRefusal(page, await refusalOf(page, file))
       expect(problems).toEqual([])
     })
   }

@@ -1,5 +1,41 @@
+import type { MediaCodec } from 'mediabunny'
+
 // Every user-visible string lives here (docs/ui-conventions.md#strings).
 // The text is still English. The Vietnamese text comes in a later issue.
+
+// Keyed by Mediabunny's codec name. The type makes every codec listed.
+const codecNames: Record<MediaCodec, string> = {
+  avc: 'H.264',
+  hevc: 'H.265',
+  vp8: 'VP8',
+  vp9: 'VP9',
+  av1: 'AV1',
+  prores: 'ProRes',
+  aac: 'AAC',
+  opus: 'Opus',
+  mp3: 'MP3',
+  vorbis: 'Vorbis',
+  flac: 'FLAC',
+  ac3: 'AC-3',
+  eac3: 'E-AC-3',
+  dts: 'DTS',
+  'pcm-s16': 'PCM',
+  'pcm-s16be': 'PCM',
+  'pcm-s24': 'PCM',
+  'pcm-s24be': 'PCM',
+  'pcm-s32': 'PCM',
+  'pcm-s32be': 'PCM',
+  'pcm-f32': 'PCM',
+  'pcm-f32be': 'PCM',
+  'pcm-f64': 'PCM',
+  'pcm-f64be': 'PCM',
+  'pcm-u8': 'PCM',
+  'pcm-s8': 'PCM',
+  ulaw: 'μ-law',
+  alaw: 'A-law',
+  webvtt: 'WebVTT',
+}
+
 export const messages = {
   appTitle: 'Lyre',
   coreLoading: 'Loading the Lyre core…',
@@ -70,6 +106,15 @@ export const messages = {
   sourceReading: 'Reading the source…',
   sourceNoAudio: 'This file has no audio, so a song cannot be made from it.',
   sourceUnreadable: 'This file is not a video or audio file Lyre can read.',
+  // Keyed by SourceTrack. Each track has its own sentence, so each translates whole.
+  sourceCannotPlay: {
+    video: (codec: string) =>
+      `This browser cannot play this source's video (${codec}), so a song cannot be made from it.`,
+    audio: (codec: string) =>
+      `This browser cannot play this source's audio (${codec}), so a song cannot be made from it.`,
+  },
+  codecNames,
+  unknownCodec: 'unknown codec',
   sourceDetails: 'Source details',
   sourceDuration: 'Duration',
   sourceStartOffset: 'Timeline starts at',

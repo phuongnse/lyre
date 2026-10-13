@@ -1377,6 +1377,33 @@ fn encode_timing(timing: &Timing) -> Result<Vec<u8>, SongFileError> {
     Ok(bytes)
 }
 
+/// The stored type D24 gives a source track: WebM when WebM holds the codec,
+/// otherwise fragmented MP4. `codec` is Mediabunny's name for it, and
+/// `parameters` its codec string. MP3 is always stored as `mp4a.6B`.
+///
+/// Gives `None` for a codec outside D24's lists, and for a codec string that
+/// is empty, holds a `"` or a byte outside printable ASCII, or makes the
+/// stored type longer than [`MAX_STORED_TYPE_BYTES`]. So every stored type it
+/// gives passes the init segment chunk's checks for its track.
+pub fn stored_type(codec: &str, parameters: &str) -> Option<String> {
+    let (container, parameters) = match codec {
+        "vp8" | "vp9" | "av1" => ("video/webm", parameters),
+        "avc" | "hevc" => ("video/mp4", parameters),
+        "opus" | "vorbis" => ("audio/webm", parameters),
+        "aac" => ("audio/mp4", parameters),
+        "mp3" => ("audio/mp4", "mp4a.6B"),
+        _ => return None,
+    };
+    let printable = parameters
+        .bytes()
+        .all(|byte| (0x20..=0x7E).contains(&byte) && byte != b'"');
+    if parameters.is_empty() || !printable {
+        return None;
+    }
+    let stored_type = format!("{container}; codecs=\"{parameters}\"");
+    (stored_type.len() <= MAX_STORED_TYPE_BYTES).then_some(stored_type)
+}
+
 /// Parses an init segment chunk of `chunk_type`: the stored type, checked
 /// for its length, its bytes and its container, then the container's init
 /// bytes. The `codecs` value is never read.
@@ -2391,6 +2418,90 @@ mod tests {
                 Err(SongFileError::StoredTypeContainer {
                     chunk_type: chunk_type.code()
                 }),
+                "{stored_type}"
+            );
+        }
+    }
+
+    /// Mediabunny's codec name, its codec string and the stored type D24 gives.
+    const SOURCE_TYPES: [(&str, &str, Option<&str>); 10] = [
+        (
+            "vp9",
+            "vp09.00.10.08",
+            Some("video/webm; codecs=\"vp09.00.10.08\""),
+        ),
+        (
+            "avc",
+            "avc1.640028",
+            Some("video/mp4; codecs=\"avc1.640028\""),
+        ),
+        (
+            "hevc",
+            "hvc1.1.6.L93.B0",
+            Some("video/mp4; codecs=\"hvc1.1.6.L93.B0\""),
+        ),
+        (
+            "av1",
+            "av01.0.04M.08",
+            Some("video/webm; codecs=\"av01.0.04M.08\""),
+        ),
+        ("opus", "opus", Some("audio/webm; codecs=\"opus\"")),
+        ("vorbis", "vorbis", Some("audio/webm; codecs=\"vorbis\"")),
+        ("aac", "mp4a.40.2", Some("audio/mp4; codecs=\"mp4a.40.2\"")),
+        ("mp3", "mp3", Some("audio/mp4; codecs=\"mp4a.6B\"")),
+        ("flac", "flac", None),
+        ("vp9", "", None),
+    ];
+
+    #[test]
+    fn source_track_gets_the_stored_type_d24_gives() {
+        for (codec, parameters, expected) in SOURCE_TYPES {
+            assert_eq!(
+                stored_type(codec, parameters).as_deref(),
+                expected,
+                "{codec} {parameters}"
+            );
+        }
+        // MP3 ignores the codec string it is given.
+        assert_eq!(
+            stored_type("mp3", "").as_deref(),
+            Some("audio/mp4; codecs=\"mp4a.6B\"")
+        );
+        assert_eq!(
+            stored_type("vp8", "vp8").as_deref(),
+            Some("video/webm; codecs=\"vp8\"")
+        );
+        assert_eq!(stored_type("pcm-s16", "pcm-s16"), None);
+    }
+
+    #[test]
+    fn source_track_gets_no_stored_type_the_song_file_would_refuse() {
+        assert_eq!(stored_type("aac", "mp4a\".40.2"), None);
+        assert_eq!(stored_type("aac", "mp4a.40.2\n"), None);
+        assert_eq!(stored_type("aac", "mp4a.40.é"), None);
+        assert_eq!(stored_type("avc", &"a".repeat(250)), None);
+        // The longest codec string that still fits.
+        let longest = "a".repeat(MAX_STORED_TYPE_BYTES - "video/webm; codecs=\"\"".len());
+        assert_eq!(
+            stored_type("vp9", &longest).map(|t| t.len()),
+            Some(MAX_STORED_TYPE_BYTES)
+        );
+        assert_eq!(stored_type("vp9", &format!("{longest}a")), None);
+    }
+
+    #[test]
+    fn every_stored_type_given_passes_the_init_chunk_check() {
+        for (codec, parameters, _) in SOURCE_TYPES {
+            let Some(stored_type) = stored_type(codec, parameters) else {
+                continue;
+            };
+            let chunk_type = if ["vp9", "avc", "hevc", "av1"].contains(&codec) {
+                ChunkType::VideoInit
+            } else {
+                ChunkType::OriginalInit
+            };
+            assert!(
+                read_init(chunk_type, &init_chunk(stored_type.as_bytes(), b"in")).is_ok(),
                 "{stored_type}"
             );
         }

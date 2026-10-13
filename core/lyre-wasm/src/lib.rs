@@ -21,6 +21,13 @@ pub fn core_version() -> String {
     lyre_core::version().to_owned()
 }
 
+/// The stored type D24 gives a source track, from Mediabunny's name for its
+/// codec and its codec string. Undefined when the track cannot be stored.
+#[wasm_bindgen(js_name = storedType)]
+pub fn stored_type(codec: &str, parameters: &str) -> Option<String> {
+    song_file::stored_type(codec, parameters)
+}
+
 /// Why a song file was refused. It holds no core message, because those are
 /// not meant for users.
 #[wasm_bindgen]
@@ -1002,6 +1009,15 @@ mod tests {
 
     /// The 56-byte two-block test vector of FIPS 180-2.
     const TWO_BLOCK: &[u8] = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+
+    #[test]
+    fn a_source_track_gets_its_stored_type() {
+        assert_eq!(
+            stored_type("vp9", "vp09.00.10.08").as_deref(),
+            Some("video/webm; codecs=\"vp09.00.10.08\"")
+        );
+        assert_eq!(stored_type("flac", "flac"), None);
+    }
 
     #[test]
     fn a_model_check_passes_for_the_pinned_bytes() {
