@@ -203,6 +203,7 @@ system's figure by hand when it is needed.
 
 The page checks the separator target of
 [D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)
+and the listening split of [D22](../decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)
 on each target device, with a song of about 4 minutes:
 
 - **Time:** the separate stage on WebGPU takes no longer than the song lasts.
@@ -213,7 +214,8 @@ on each target device, with a song of about 4 minutes:
   the energy of the difference, in dB. No pass mark is set yet. The issue
   that builds the page sets one.
 - **Leftover vocals:** the owner listens to the karaoke track and records
-  whether clear leftover vocals remain.
+  whether clear leftover lead vocals remain. Backing vocals may remain and
+  are noted, not failed.
 
 ### The choice
 
