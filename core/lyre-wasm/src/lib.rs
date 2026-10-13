@@ -381,16 +381,16 @@ impl SongReader {
             .collect()
     }
 
-    /// The total number of countdown dots changed at media time `ms`, across
-    /// every countdown. Countdown `k`, counting from 0, shows
-    /// `clamp(total - 4k, 0, 4)` dots changed. It is 0 while the lyrics and
-    /// the timing are not both read.
-    #[wasm_bindgen(js_name = dotsChanged)]
-    pub fn dots_changed(&self, ms: f64) -> u32 {
+    /// The total number of countdown dots swept at media time `ms`, across
+    /// every countdown, with the fraction of the dot being swept. Countdown
+    /// `k`, counting from 0, shows `clamp(total - 4k, 0, 4)` dots swept. It is
+    /// 0 while the lyrics and the timing are not both read.
+    #[wasm_bindgen(js_name = dotsSwept)]
+    pub fn dots_swept(&self, ms: f64) -> f64 {
         let (Some(lyrics), Some(timing)) = (&self.lyrics, &self.timing) else {
-            return 0;
+            return 0.0;
         };
-        countdown::dots_changed(&countdown::countdowns(lyrics, timing.syllables()), ms)
+        countdown::dots_swept(&countdown::countdowns(lyrics, timing.syllables()), ms)
     }
 
     /// The display lines the top and the bottom row of the Lyrics area show
@@ -619,7 +619,7 @@ mod tests {
     fn counts_down_to_the_first_line_of_the_known_answer_example() {
         let (reader, _) = read_all(&example()).expect("the example is valid");
         assert_eq!(reader.countdown_lines(), vec![0]);
-        assert_eq!(reader.dots_changed(0.0), 4);
+        assert_eq!(reader.dots_swept(0.0), 4.0);
     }
 
     #[test]
@@ -630,7 +630,7 @@ mod tests {
         assert_eq!(reader.lay_out(&[10.0, 10.0], 2.0, 100.0), vec![]);
         assert_eq!(reader.sweep_position(250.0), 0.0);
         assert_eq!(reader.countdown_lines(), vec![]);
-        assert_eq!(reader.dots_changed(1_000.0), 0);
+        assert_eq!(reader.dots_swept(1_000.0), 0.0);
         assert_eq!(
             reader.lyrics_rows(1_000.0),
             LyricsRows {

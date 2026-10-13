@@ -97,10 +97,10 @@ export interface OpenedSong {
   sweepPosition(ms: number): number
   // The lyric lines that have countdown dots, in order.
   countdownLines: number[]
-  // The total number of countdown dots changed at media time `ms`, across every
-  // countdown. Countdown k, counting from 0, shows clamp(total - 4k, 0, 4) dots
-  // changed. It is 0 once closed.
-  dotsChanged(ms: number): number
+  // The total number of countdown dots swept at media time `ms`, across every
+  // countdown, with the fraction of the dot being swept. Countdown k, counting
+  // from 0, shows clamp(total - 4k, 0, 4) dots swept. It is 0 once closed.
+  dotsSwept(ms: number): number
   // The display lines the top and the bottom row show at media time `ms`, for the
   // latest `layOut`. Both rows are empty before a layout, after the core refused
   // one, and once closed.
@@ -186,8 +186,8 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
         return closed ? 0 : reader.sweepPosition(ms)
       },
       countdownLines: Array.from(reader.countdownLines()),
-      dotsChanged(ms) {
-        return closed ? 0 : reader.dotsChanged(ms)
+      dotsSwept(ms) {
+        return closed ? 0 : reader.dotsSwept(ms)
       },
       lyricsRows(ms) {
         if (closed) return { top: undefined, bottom: undefined }

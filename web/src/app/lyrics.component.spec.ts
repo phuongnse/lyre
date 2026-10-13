@@ -20,7 +20,7 @@ interface SongOptions {
 
 // A song whose lyrics are by default "Mưa\trơi  nhẹ", laid out as one display
 // line with no countdown. Its sweep position is whatever `position` returns, its
-// total of countdown dots changed is whatever `total` returns, and its rows are
+// total of countdown dots swept is whatever `total` returns, and its rows are
 // whatever `rows` returns: by default the first two display lines.
 function song({
   position = () => 0,
@@ -46,7 +46,7 @@ function song({
     layOut,
     sweepPosition: position,
     countdownLines,
-    dotsChanged: total,
+    dotsSwept: total,
     lyricsRows: rows,
     read: () => Promise.reject(new Error('not read in these tests')),
     close: () => undefined,
@@ -116,7 +116,7 @@ test('the syllable being sung is current, and the ones before it are sung', asyn
   expect(sung()).toEqual([false, false, false])
 })
 
-test('the countdown dots changed follow the core count, and the lines stay exact', async () => {
+test('the countdown dots swept follow the core total, and the lines stay exact', async () => {
   let total = 0
   const timing = { startMs: 0, endMs: 0 }
   const element = await render(
@@ -137,24 +137,33 @@ test('the countdown dots changed follow the core count, and the lines stay exact
   )
   const countdowns = () => [...element.querySelectorAll('[role=progressbar]')]
   const values = () => countdowns().map((countdown) => countdown.getAttribute('aria-valuenow'))
-  const changed = () =>
-    countdowns().map((countdown) =>
-      [...countdown.querySelectorAll('.dot')].map((dot) => dot.classList.contains('changed')),
-    )
+  const dotsOf = (countdown: Element) => [...countdown.querySelectorAll<HTMLElement>('.dot')]
+  const swept = () => countdowns().map((countdown) => dotsOf(countdown).map((dot) => dot.classList.contains('swept')))
+  const sweeping = () =>
+    countdowns().map((countdown) => dotsOf(countdown).map((dot) => dot.classList.contains('sweeping')))
   const dots = (count: number) => [0, 1, 2, 3].map((i) => i < count)
   expect(countdowns().map((countdown) => countdown.getAttribute('aria-label'))).toEqual(['Countdown', 'Countdown'])
 
   for (const [next, expected] of [
     [0, [0, 0]],
-    [2, [2, 0]],
-    [6, [4, 2]],
-    // Going back undoes the steps after the new time.
+    [1.5, [1, 0]],
+    [5.5, [4, 1]],
+    // Going back undoes the sweep after the new time.
     [1, [1, 0]],
   ] as const) {
     total = next
     await vi.waitFor(() => expect(values()).toEqual(expected.map(String)))
-    expect(changed()).toEqual(expected.map(dots))
+    expect(swept()).toEqual(expected.map(dots))
+    // Only the dot being swept has the sweep layer, and only for a part-swept total.
+    const part = next % 1 > 0
+    expect(sweeping()).toEqual(
+      expected.map((count, k) => [0, 1, 2, 3].map((i) => part && i === count && next - 4 * k >= 0 && next - 4 * k < 4)),
+    )
   }
+
+  total = 5.5
+  await vi.waitFor(() => expect(values()).toEqual(['4', '1']))
+  expect(dotsOf(countdowns()[1])[1].style.getPropertyValue('--dot-sweep')).toBe('0.5')
   expect(texts(element)).toEqual(['Mưa\trơi', 'nhẹ'])
 })
 

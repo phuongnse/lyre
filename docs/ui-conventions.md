@@ -138,7 +138,7 @@ from M1, except those marked *(planned for M8)*.
 
 ### Vocal role colours
 
-- Sung lyrics and changed [countdown dots](#countdown-dots) take the colour of
+- Sung lyrics and swept [countdown dots](#countdown-dots) take the colour of
   the song's [vocal role](domain/concepts.md#songs), from M1.
 - Sung text uses only these three colours, as Vietnamese karaoke does.
 - The colours do not come from the seed. They are the same on the web and on
@@ -212,23 +212,24 @@ Compose uses the same three values *(planned for M4)*.
   to the start of this line's first syllable. At the start of the song it runs
   from media time 0.
 - Each dot uses the lyric [text style](#text-style) at the line's font size.
-- The dots change one by one from the left, like sung text. The fill turns
-  from white to the line's vocal role colour and the outline from black to
-  white. The shadow does not change.
+- The dots are swept one by one from the left, and each dot is swept from left
+  to right during its step, like sung text. Behind the sweep its fill is the
+  line's vocal role colour and its outline white. Ahead of it the dot is white
+  with a black outline. Only the sweep edge cuts the swept part, so no black
+  outline shows to its left, above it or below it. The shadow does not change.
 - Each step takes 0.5 s. The fourth step ends as the line's first syllable
-  starts.
+  starts, so the sweep runs on into the line's first syllable.
 - When the gap is shorter than 2 s, the four steps share it evenly.
-- Each dot changes all at once when its step ends.
-- The core works out which lyric lines have dots and how many have changed, so
-  both clients agree.
+- The core works out which lyric lines have dots and how far the sweep has
+  got, so both clients agree.
 - The dots sit just left of the top row's line, which is always the first
   display line of their lyric line. They sit in the Lyrics area's left
   margin, just inside the left margin, take no width from the line and add no text, so the line stays
   exact ([D5](decisions.md#d5-supplied-lyrics-are-authoritative--agreed)).
-- Changed dots stay changed after their line starts. A seek back undoes only
-  the steps that end after the new time.
+- Swept dots stay swept after their line starts. A seek back undoes the sweep
+  after the new time.
 - On the web each set of dots is a progress indicator named "Countdown", from
-  the strings catalogue, with a value from 0 to 4 for the dots changed. The
+  the strings catalogue, with a value from 0 to 4 for the dots fully swept. The
   same `requestAnimationFrame` loop as the highlight updates them, with no
   signal update per frame.
 

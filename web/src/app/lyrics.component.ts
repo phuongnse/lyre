@@ -65,7 +65,7 @@ interface ShownLine {
 // The lyrics in the Player: the two display lines the core picks for the video's
 // time, with each syllable highlighted as it is sung. The core lays out the
 // display lines from the widths measured here, and works out which ones show,
-// how far the highlight has got and how many countdown dots have changed. The text is exactly the lyrics (D5): the dots add none.
+// how far the highlight has got and how far the countdown dots have been swept. The text is exactly the lyrics (D5): the dots add none.
 @Component({
   selector: 'lyre-lyrics',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -180,7 +180,7 @@ interface ShownLine {
     /* Sung text takes the song's vocal role colour, set in --sung. */
     .syllable.sung,
     .syllable[aria-current='true']::after,
-    .dot.changed {
+    .dot.swept {
       color: var(--sung);
       -webkit-text-stroke-color: #fff;
     }
@@ -214,6 +214,19 @@ interface ShownLine {
     }
     .dot::before {
       content: '●' / '';
+    }
+    /* The swept part of the dot being swept, drawn over it up to the sweep. The
+       clip reaches 0.5em past the dot on the left, top and bottom, so only the
+       sweep edge cuts it. The white outline then covers the black one there,
+       as for a syllable being sung. */
+    .dot.sweeping::after {
+      content: '●' / '';
+      position: absolute;
+      inset: 0;
+      line-height: normal;
+      color: var(--sung);
+      -webkit-text-stroke-color: #fff;
+      clip-path: inset(-0.5em calc(100% - var(--dot-sweep) * 100%) -0.5em -0.5em);
     }
   `,
 })
@@ -384,7 +397,7 @@ export class Lyrics {
     this.showRows()
     const ms = this.video().currentTime * 1000
     const position = this.song().sweepPosition(ms)
-    const total = this.song().dotsChanged(ms)
+    const total = this.song().dotsSwept(ms)
     const syllables = this.syllables()
     const countdowns = this.countdowns()
     const full = syllables !== this.drawn || countdowns !== this.drawnCountdowns
@@ -397,11 +410,18 @@ export class Lyrics {
       for (const { nativeElement: span } of syllables) this.spans[Number(span.dataset['index'])] = span
     }
     if (full || total !== this.total) {
-      // Countdown k shows clamp(total - 4k, 0, 4) dots changed.
+      // Countdown k shows clamp(total - 4k, 0, 4) dots swept: the whole ones, and
+      // the fraction of the one being swept.
       for (const { nativeElement: dots } of countdowns) {
-        const changed = Math.min(Math.max(total - 4 * Number(dots.dataset['countdown']), 0), 4)
-        dots.setAttribute('aria-valuenow', String(changed))
-        Array.from(dots.children).forEach((dot, i) => dot.classList.toggle('changed', i < changed))
+        const swept = Math.min(Math.max(total - 4 * Number(dots.dataset['countdown']), 0), 4)
+        const whole = Math.floor(swept)
+        dots.setAttribute('aria-valuenow', String(whole))
+        Array.from(dots.children).forEach((dot, i) => {
+          dot.classList.toggle('swept', i < whole)
+          const sweeping = i === whole && swept > whole
+          dot.classList.toggle('sweeping', sweeping)
+          if (sweeping) (dot as HTMLElement).style.setProperty('--dot-sweep', String(swept - whole))
+        })
       }
       this.total = total
     }

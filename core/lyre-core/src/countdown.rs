@@ -1,9 +1,9 @@
-//! The countdown dots: which lyric lines have them, and how many have
-//! changed at a media time.
+//! The countdown dots: which lyric lines have them, and how far the sweep
+//! across them has got at a media time.
 //!
-//! The rules are in `docs/ui-conventions.md`, under "Countdown dots". A dot
-//! changes all at once when its step ends. Both clients call this, so the
-//! dots are the same on the web and on Android.
+//! The rules are in `docs/ui-conventions.md`, under "Countdown dots". Each dot
+//! is swept from left to right during its step, like a syllable. Both clients
+//! call this, so the dots are the same on the web and on Android.
 
 use crate::lyrics::Lyrics;
 use crate::song_file::SyllableTime;
@@ -62,26 +62,29 @@ pub fn countdowns(lyrics: &Lyrics, syllables: &[SyllableTime]) -> Vec<Countdown>
     result
 }
 
-/// The total number of dots changed at `ms`, across every countdown.
-/// Countdown `k`, counting from 0, shows `clamp(total - 4k, 0, 4)` dots
-/// changed.
+/// The total number of dots swept at `ms`, across every countdown, with the
+/// fraction of the dot being swept. Countdown `k`, counting from 0, shows
+/// `clamp(total - 4k, 0, 4)` dots swept.
 ///
 /// Each step takes [`STEP_MS`], or a quarter of the gap when the gap is
 /// shorter than four steps. The last step ends where the gap ends. A time
 /// that is not a number, or is negative, gives 0.
-pub fn dots_changed(countdowns: &[Countdown], ms: f64) -> u32 {
+pub fn dots_swept(countdowns: &[Countdown], ms: f64) -> f64 {
     if ms.is_nan() || ms < 0.0 {
-        return 0;
+        return 0.0;
     }
+    let dots = f64::from(DOTS);
     countdowns
         .iter()
         .map(|countdown| {
             let to = f64::from(countdown.to_ms);
             let gap = f64::from(countdown.to_ms.saturating_sub(countdown.from_ms));
-            let step = STEP_MS.min(gap / f64::from(DOTS));
-            (1..=DOTS)
-                .filter(|&dot| ms >= to - f64::from(DOTS - dot) * step)
-                .count() as u32
+            let step = STEP_MS.min(gap / dots);
+            if step == 0.0 {
+                return if ms >= to { dots } else { 0.0 };
+            }
+            let start = to - dots * step;
+            ((ms - start) / step).clamp(0.0, dots)
         })
         .sum()
 }
@@ -166,69 +169,96 @@ mod tests {
     }
 
     #[test]
-    fn changes_one_dot_each_quarter_of_a_short_gap() {
+    fn sweeps_one_dot_each_quarter_of_a_short_gap() {
         let countdowns = one(0, 1_200);
-        assert_eq!(dots_changed(&countdowns, 0.0), 0);
-        assert_eq!(dots_changed(&countdowns, 299.9), 0);
-        assert_eq!(dots_changed(&countdowns, 300.0), 1);
-        assert_eq!(dots_changed(&countdowns, 599.9), 1);
-        assert_eq!(dots_changed(&countdowns, 600.0), 2);
-        assert_eq!(dots_changed(&countdowns, 900.0), 3);
-        assert_eq!(dots_changed(&countdowns, 1_200.0), 4);
-        assert_eq!(dots_changed(&countdowns, 1_000_000.0), 4);
+        assert_eq!(dots_swept(&countdowns, 0.0), 0.0);
+        assert_eq!(dots_swept(&countdowns, 300.0), 1.0);
+        assert_eq!(dots_swept(&countdowns, 450.0), 1.5);
+        assert_eq!(dots_swept(&countdowns, 600.0), 2.0);
+        assert_eq!(dots_swept(&countdowns, 900.0), 3.0);
+        assert_eq!(dots_swept(&countdowns, 1_200.0), 4.0);
+        assert_eq!(dots_swept(&countdowns, 1_000_000.0), 4.0);
+        assert_eq!(dots_swept(&countdowns, f64::INFINITY), 4.0);
     }
 
     #[test]
-    fn changes_one_dot_each_half_second_before_a_long_gap_ends() {
+    fn sweeps_one_dot_each_half_second_before_a_long_gap_ends() {
         let countdowns = one(0, 3_000);
-        assert_eq!(dots_changed(&countdowns, 1_499.0), 0);
-        assert_eq!(dots_changed(&countdowns, 1_500.0), 1);
-        assert_eq!(dots_changed(&countdowns, 2_000.0), 2);
-        assert_eq!(dots_changed(&countdowns, 2_500.0), 3);
-        assert_eq!(dots_changed(&countdowns, 2_999.0), 3);
-        assert_eq!(dots_changed(&countdowns, 3_000.0), 4);
+        assert_eq!(dots_swept(&countdowns, 999.0), 0.0);
+        assert_eq!(dots_swept(&countdowns, 1_000.0), 0.0);
+        assert_eq!(dots_swept(&countdowns, 1_250.0), 0.5);
+        assert_eq!(dots_swept(&countdowns, 1_500.0), 1.0);
+        assert_eq!(dots_swept(&countdowns, 2_000.0), 2.0);
+        assert_eq!(dots_swept(&countdowns, 2_750.0), 3.5);
+        assert_eq!(dots_swept(&countdowns, 3_000.0), 4.0);
     }
 
     #[test]
     fn uses_a_step_of_a_quarter_of_a_gap_that_is_not_whole() {
         let countdowns = one(0, 1_001);
-        assert_eq!(dots_changed(&countdowns, 750.5), 2);
-        assert_eq!(dots_changed(&countdowns, 750.75), 3);
-        assert_eq!(dots_changed(&countdowns, 1_000.9), 3);
-        assert_eq!(dots_changed(&countdowns, 1_001.0), 4);
+        assert_eq!(dots_swept(&countdowns, 500.5), 2.0);
+        assert_eq!(dots_swept(&countdowns, 750.75), 3.0);
+        assert_eq!(dots_swept(&countdowns, 1_001.0), 4.0);
     }
 
     #[test]
-    fn changes_the_four_dots_of_a_gap_of_2000_ms_half_a_second_apart() {
+    fn sweeps_the_four_dots_of_a_gap_of_2000_ms_half_a_second_apart() {
         let countdowns = one(0, 2_000);
-        assert_eq!(dots_changed(&countdowns, 499.0), 0);
-        assert_eq!(dots_changed(&countdowns, 500.0), 1);
-        assert_eq!(dots_changed(&countdowns, 2_000.0), 4);
+        assert_eq!(dots_swept(&countdowns, 0.0), 0.0);
+        assert_eq!(dots_swept(&countdowns, 500.0), 1.0);
+        assert_eq!(dots_swept(&countdowns, 2_000.0), 4.0);
     }
 
     #[test]
-    fn changes_all_four_dots_at_once_for_a_line_at_time_zero() {
-        assert_eq!(dots_changed(&one(0, 0), 0.0), 4);
+    fn sweeps_all_four_dots_at_once_for_a_line_at_time_zero() {
+        assert_eq!(dots_swept(&one(0, 0), 0.0), 4.0);
+    }
+
+    #[test]
+    fn sweeps_all_four_dots_at_once_for_a_gap_of_zero() {
+        let countdowns = one(3_000, 3_000);
+        assert_eq!(dots_swept(&countdowns, 2_999.0), 0.0);
+        assert_eq!(dots_swept(&countdowns, 3_000.0), 4.0);
     }
 
     #[test]
     fn adds_up_the_dots_of_every_countdown() {
         let countdowns = two_lines(5_000);
-        assert_eq!(dots_changed(&countdowns, 0.0), 4);
-        assert_eq!(dots_changed(&countdowns, 4_500.0), 5);
-        assert_eq!(dots_changed(&countdowns, 6_000.0), 8);
+        assert_eq!(dots_swept(&countdowns, 0.0), 4.0);
+        assert_eq!(dots_swept(&countdowns, 4_500.0), 5.0);
+        assert_eq!(dots_swept(&countdowns, 6_000.0), 8.0);
+    }
+
+    #[test]
+    fn sweeps_the_fixture_countdown_from_7_9_to_9_9_seconds() {
+        let lyrics = Lyrics::parse("Mưa rơi nhẹ\n\nEm về bên sông\n\nTrăng lên".as_bytes())
+            .expect("valid lyrics");
+        let syllables = [
+            time(2000, 2300),
+            time(2300, 2600),
+            time(2600, 3200),
+            time(3500, 3800),
+            time(3800, 4100),
+            time(4100, 4400),
+            time(4400, 4900),
+            time(9900, 10400),
+            time(10400, 11000),
+        ];
+        let countdowns = countdowns(&lyrics, &syllables);
+        assert_eq!(dots_swept(&countdowns, 8_650.0), 5.5);
+        assert_eq!(dots_swept(&countdowns, 9_900.0), 8.0);
     }
 
     #[test]
     fn is_zero_for_a_time_that_is_not_a_number_or_negative() {
         let countdowns = one(0, 0);
-        assert_eq!(dots_changed(&countdowns, f64::NAN), 0);
-        assert_eq!(dots_changed(&countdowns, -1.0), 0);
-        assert_eq!(dots_changed(&countdowns, f64::NEG_INFINITY), 0);
+        assert_eq!(dots_swept(&countdowns, f64::NAN), 0.0);
+        assert_eq!(dots_swept(&countdowns, -1.0), 0.0);
+        assert_eq!(dots_swept(&countdowns, f64::NEG_INFINITY), 0.0);
     }
 
     #[test]
     fn is_zero_without_countdowns() {
-        assert_eq!(dots_changed(&[], 500.0), 0);
+        assert_eq!(dots_swept(&[], 500.0), 0.0);
     }
 }
