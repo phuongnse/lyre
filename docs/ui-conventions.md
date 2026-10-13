@@ -174,9 +174,12 @@ Compose uses the same three values *(planned for M4)*.
   phone.
 - Lyric text and the countdown dots are bold, weight 700. The core lays out the
   display lines with the bold font's widths.
-- The two rows, with their countdown dots, stay inside the video's box. The
-  rows have a gap below them of a quarter of the font size, and a line height
-  of 1.25 times it.
+- The two rows, with their countdown dots, stay inside the video's box. One
+  gap of 0.3 times the lyric font size is used in four places: at the left
+  and right sides, below the bottom row and between the two rows. It is
+  measured between row boxes, not glyph ink. Each row is one line height tall,
+  1.25 times the font size, and keeps its place when the other row is empty.
+  The gap is a starting point to adjust after trying it.
 - The Lyrics area has two rows. The top row's line is aligned left and the
   bottom row's line is aligned right. A row shows one display line or nothing.
 - A group of display lines starts at the first display line of each lyric
@@ -191,11 +194,11 @@ Compose uses the same three values *(planned for M4)*.
   start, a row shows the group's next display line not shown yet. So the line
   just sung stays during the gap between lines. If the group has none, the row
   keeps the finished line, fully sung, until the group's last line ends.
-- The countdown dots sit just left of the top row's line. The area keeps a
-  left margin as wide as the dots, so they stay inside it.
-- The core lays out the display lines to fit the area's width less the width
-  of the dots margin. A full-width line in the top row then never runs into
-  the dots.
+- The countdown dots sit at the left gap, just left of the top row's line.
+  The area keeps a left margin as wide as the dots, so they stay inside it.
+- The core lays out the display lines to fit the area's width less both side
+  gaps and the width of the dots margin. A full-width line then never runs
+  into the dots or the right gap.
 - The rows depend only on the media time, so they follow seeks.
 - The core works out which display line each row shows, so both clients
   agree.
@@ -221,7 +224,7 @@ Compose uses the same three values *(planned for M4)*.
   both clients agree.
 - The dots sit just left of the top row's line, which is always the first
   display line of their lyric line. They sit in the Lyrics area's left
-  margin, take no width from the line and add no text, so the line stays
+  margin, just inside the left gap, take no width from the line and add no text, so the line stays
   exact ([D5](decisions.md#d5-supplied-lyrics-are-authoritative--agreed)).
 - Changed dots stay changed after their line starts. A seek back undoes only
   the steps that end after the new time.
