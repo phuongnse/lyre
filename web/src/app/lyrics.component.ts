@@ -102,9 +102,10 @@ interface ShownLine {
          countdown dots inherit it: docs/ui-conventions.md#lyrics-area. */
       font-weight: 700;
       /* The font size is set from the video's height, so the line height and the
-         gap below the rows follow it. */
+         gap follow it. One gap of 0.3em is used at the sides, below the rows and
+         between them: docs/ui-conventions.md#lyrics-area. */
       line-height: 1.25;
-      padding-bottom: 0.25em;
+      padding: 0 0.3em 0.3em;
     }
     .measure {
       position: absolute;
@@ -113,18 +114,20 @@ interface ShownLine {
       visibility: hidden;
       white-space: pre;
     }
-    /* A row keeps its height when it is empty. The top row's line starts after
+    /* A row box is always one line height tall, so the gaps are between row boxes
+       and a row keeps its place when it is empty. The top row's line starts after
        the margin for the countdown dots, and the bottom row's line ends at the
-       right edge. */
+       right gap. */
     p {
       margin: 0;
-      min-height: 1lh;
+      height: 1lh;
       white-space: nowrap;
       text-align: left;
       padding-left: var(--margin, 0);
     }
     p.bottom {
       text-align: right;
+      margin-top: 0.3em;
       padding-left: 0;
     }
     /* The lyric text style: docs/ui-conventions.md#text-style. */
@@ -196,8 +199,8 @@ export class Lyrics {
   private readonly dotsMeasure = viewChild.required<ElementRef<HTMLElement>>('dotsMeasure')
   private readonly syllables = viewChildren<ElementRef<HTMLElement>>('syllable')
   private readonly countdowns = viewChildren<ElementRef<HTMLElement>>('countdown')
-  // The width of the lyrics area and the lyric font size in CSS pixels, once they
-  // are measured.
+  // The width of the lyrics area less both side gaps, and the lyric font size, in
+  // CSS pixels, once they are measured.
   private readonly size = signal<{ width: number; fontSize: number } | undefined>(undefined)
   // Counts the layouts asked for, so only the latest one is shown.
   private layouts = 0
@@ -241,19 +244,22 @@ export class Lyrics {
   }
 
   // Sets the lyric font size from the video's displayed height, and measures the
-  // area's width with it. It writes the signal only when either changed.
+  // area's width less both side gaps with it. It writes the signal only when
+  // either changed.
   private measureSize(): void {
     const section = this.section().nativeElement
     const fontSize = lyricFontSize(this.video().clientHeight)
     // Set on the element itself, so the measuring that follows sees the new size.
     section.style.fontSize = `${fontSize}px`
-    const width = section.clientWidth
+    const style = getComputedStyle(section)
+    const width = section.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0)
     const current = this.size()
     if (current?.width !== width || current.fontSize !== fontSize) this.size.set({ width, fontSize })
   }
 
   // Measures every syllable, a space and the countdown dots, and has the core lay
-  // out the lines that fit `maxWidth` less the dots' width.
+  // out the lines that fit `maxWidth`, the area's width less both side gaps, less
+  // the dots' width.
   private async layOut(song: OpenedSong, maxWidth: number): Promise<void> {
     const attempt = ++this.layouts
     const section = this.section().nativeElement

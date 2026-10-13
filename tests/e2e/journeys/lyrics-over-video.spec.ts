@@ -81,15 +81,60 @@ for (const [width, height] of [
     await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
     const stage = await boxOf(video)
     expect(Math.abs((await fontSizeOf(region)) - expectedFontSize(stage.height))).toBeLessThan(0.5)
+    const gap = 0.3 * (await fontSizeOf(region))
     for (const text of syllables) {
       const syllable = await boxOf(region.getByText(text, { exact: true }))
-      expect(syllable.x).toBeGreaterThanOrEqual(stage.x - tolerance)
-      expect(syllable.x + syllable.width).toBeLessThanOrEqual(stage.x + stage.width + tolerance)
+      expect(syllable.x).toBeGreaterThanOrEqual(stage.x + gap - tolerance)
+      expect(syllable.x + syllable.width).toBeLessThanOrEqual(stage.x + stage.width - gap + tolerance)
     }
     const top = await boxOf(region.getByRole('paragraph').nth(0))
     expect(stage.y + stage.height - top.y).toBeLessThanOrEqual(stage.height / 3 + tolerance)
   })
 }
+
+const near = (actual: number, expected: number) => expect(Math.abs(actual - expected)).toBeLessThanOrEqual(tolerance)
+
+for (const [width, height] of [
+  [1280, 720],
+  [390, 844],
+]) {
+  test(`at ${width}×${height} the lyrics keep one gap at the sides, below the bottom row and between the rows`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height })
+    const { region, video } = await openFixture(page)
+    await seek(video, 4)
+    await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
+    const gap = 0.3 * (await fontSizeOf(region))
+    const stage = await boxOf(video)
+    // The Countdown's box includes its gap to the line, so its width is the dots margin.
+    const dots = await boxOf(region.getByRole('progressbar', { name: 'Countdown' }))
+    const first = await boxOf(region.getByText('Mưa', { exact: true }))
+    const last = await boxOf(region.getByText('sông', { exact: true }))
+    const top = await boxOf(region.getByRole('paragraph').nth(0))
+    const bottom = await boxOf(region.getByRole('paragraph').nth(1))
+    near(first.x, stage.x + gap + dots.width)
+    near(last.x + last.width, stage.x + stage.width - gap)
+    near(stage.y + stage.height - (bottom.y + bottom.height), gap)
+    near(bottom.y - (top.y + top.height), gap)
+  })
+}
+
+test('at 9.5 s the Countdown is at the left gap and the top row is where it was at 4.0 s', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 4)
+  await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
+  const before = await boxOf(region.getByRole('paragraph').nth(0))
+  await seek(video, 9.5)
+  await expectRows(region, ['Trăng lên', ''])
+  const gap = 0.3 * (await fontSizeOf(region))
+  const stage = await boxOf(video)
+  const countdown = await boxOf(region.getByRole('progressbar', { name: 'Countdown' }))
+  const top = await boxOf(region.getByRole('paragraph').nth(0))
+  near(countdown.x, stage.x + gap)
+  near(top.y, before.y)
+})
 
 test('the lyric text and the Countdown are bold', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 })
