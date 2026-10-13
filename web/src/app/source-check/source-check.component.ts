@@ -4,6 +4,7 @@ import { loadCore } from '../../core'
 import { CannotPlay, SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
 import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
 import { messages } from '../messages'
+import { Packaging, packageInWorker } from './original-track-worker'
 
 // What came out of decoding, measured without keeping the samples. The tone
 // and the first sound are absent when the audio is silent.
@@ -15,11 +16,20 @@ interface DecodedAudio {
   firstSound?: number
 }
 
+// What packaging the original track gave: only its summary reaches the page.
+interface PackagedSummary {
+  storedType: string
+  segmentCount: number
+  durationMs: number
+}
+
 type State =
   | { status: 'empty' }
   | { status: 'reading' }
-  | { status: 'ready'; file: File; details: SourceDetails; decoded?: DecodedAudio }
+  | { status: 'ready'; file: File; details: SourceDetails; decoded?: DecodedAudio; packaged?: PackagedSummary }
   | { status: 'decoding'; file: File; details: SourceDetails }
+  | { status: 'packaging'; file: File; details: SourceDetails }
+  | { status: 'package-failed'; file: File; details: SourceDetails }
   | { status: 'failed'; problem: SourceProblem }
 
 // A sample louder than this counts as sound.
@@ -27,9 +37,11 @@ const LOUD = 0.01
 
 // The source check page (docs/ui-conventions.md#check-pages). It reads a
 // picked source's details, stage 1 of processing, and can decode its audio at
-// a stage's rate, stage 2, until the real song-making page exists. A source
-// this browser cannot play shows the reason next to its details, and can still
-// be decoded, because this is a test page. Opened by its URL, #/source-check.
+// a stage's rate, stage 2, or package it into the original track in a Web
+// Worker, stage 8, until the real song-making page exists. A source this
+// browser cannot play shows the reason next to its details, and can still be
+// decoded and packaged, because this is a test page. Opened by its URL,
+// #/source-check.
 // The route is lazy, so Mediabunny stays out of the main app's initial load.
 @Component({
   selector: 'lyre-source-check',
@@ -59,8 +71,14 @@ const LOUD = 0.01
         </p>
       }
     }
-    @if (current.status === 'ready' || current.status === 'decoding') {
+    @if (
+      current.status === 'ready' ||
+      current.status === 'decoding' ||
+      current.status === 'packaging' ||
+      current.status === 'package-failed'
+    ) {
       @let details = current.details;
+      @let busy = current.status === 'decoding' || current.status === 'packaging';
       @if (details.cannotPlay !== undefined) {
         <p role="alert">{{ cannotPlayReason(details.cannotPlay) }}</p>
       }
@@ -87,24 +105,33 @@ const LOUD = 0.01
           <dd aria-labelledby="source-composer">{{ details.composer }}</dd>
         }
       </dl>
-      <button
-        matButton="outlined"
-        type="button"
-        [disabled]="current.status === 'decoding'"
-        (click)="decode(current.file, details, separation)"
-      >
+      <button matButton="outlined" type="button" [disabled]="busy" (click)="decode(current.file, details, separation)">
         {{ messages.decodeForSeparation }}
       </button>
-      <button
-        matButton="outlined"
-        type="button"
-        [disabled]="current.status === 'decoding'"
-        (click)="decode(current.file, details, alignment)"
-      >
+      <button matButton="outlined" type="button" [disabled]="busy" (click)="decode(current.file, details, alignment)">
         {{ messages.decodeForAlignment }}
       </button>
+      @if (details.audioType !== undefined) {
+        <button matButton="outlined" type="button" [disabled]="busy" (click)="packageTrack(current.file, details)">
+          {{ messages.packageOriginal }}
+        </button>
+      }
       @if (current.status === 'decoding') {
         <p role="status">{{ messages.sourceDecoding }}</p>
+      } @else if (current.status === 'packaging') {
+        <p role="status">{{ messages.sourcePackaging }}</p>
+      } @else if (current.status === 'package-failed') {
+        <p role="alert">{{ messages.sourcePackageFailed }}</p>
+      } @else if (current.packaged !== undefined) {
+        @let packaged = current.packaged;
+        <dl [attr.aria-label]="messages.originalTrack">
+          <dt id="original-type">{{ messages.originalStoredType }}</dt>
+          <dd aria-labelledby="original-type">{{ packaged.storedType }}</dd>
+          <dt id="original-segments">{{ messages.originalSegments }}</dt>
+          <dd aria-labelledby="original-segments">{{ packaged.segmentCount }}</dd>
+          <dt id="original-duration">{{ messages.originalDuration }}</dt>
+          <dd aria-labelledby="original-duration">{{ messages.seconds((packaged.durationMs / 1000).toFixed(2)) }}</dd>
+        </dl>
       } @else if (current.decoded !== undefined) {
         @let decoded = current.decoded;
         <dl [attr.aria-label]="messages.decodedAudio">
@@ -132,14 +159,17 @@ export class SourceCheck {
   protected readonly state = signal<State>({ status: 'empty' })
   protected readonly separation = SEPARATION_FORMAT
   protected readonly alignment = ALIGNMENT_FORMAT
-  // Counts the sources picked and the decodes started, so only the latest one shows.
+  // Counts the sources picked, and the decodes and packagings started, so only the latest one shows.
   private attempts = 0
+  // The packaging worker running, if any.
+  private packaging: Packaging | undefined
 
   protected async read(input: HTMLInputElement): Promise<void> {
     const file = input.files?.[0]
     // Clears the choice, so picking the same file again reads it again.
     input.value = ''
     if (!file) return
+    this.stopPackaging()
     const attempt = ++this.attempts
     this.state.set({ status: 'reading' })
     try {
@@ -161,6 +191,7 @@ export class SourceCheck {
   }
 
   protected async decode(file: File, details: SourceDetails, format: AudioFormat): Promise<void> {
+    this.stopPackaging()
     const attempt = ++this.attempts
     this.state.set({ status: 'decoding', file, details })
     try {
@@ -177,6 +208,31 @@ export class SourceCheck {
       const problem = error instanceof SourceError ? error.problem : 'unreadable'
       this.state.set({ status: 'failed', problem })
     }
+  }
+
+  // Packages the source's primary audio into the original track, in a Web
+  // Worker. Only its summary comes back. Any failure shows one plain message.
+  protected async packageTrack(file: File, details: SourceDetails): Promise<void> {
+    if (details.audioType === undefined) return
+    this.stopPackaging()
+    const attempt = ++this.attempts
+    this.state.set({ status: 'packaging', file, details })
+    const packaging = packageInWorker(file, details.audioType)
+    this.packaging = packaging
+    const reply = await packaging.reply
+    if (attempt !== this.attempts) return
+    this.packaging = undefined
+    if (reply.type === 'done') {
+      const { storedType, segmentCount, durationMs } = reply
+      this.state.set({ status: 'ready', file, details, packaged: { storedType, segmentCount, durationMs } })
+    } else {
+      this.state.set({ status: 'package-failed', file, details })
+    }
+  }
+
+  private stopPackaging(): void {
+    this.packaging?.stop()
+    this.packaging = undefined
   }
 }
 
