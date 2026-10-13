@@ -368,6 +368,8 @@ is out of scope.
 
 ## D21. Pinned model files and the separator target — Agreed
 
+Partly replaced by [D22](#d22-the-separator-target-splits-lead-and-backing-vocals--agreed).
+
 Says which files the models of
 [D15](#d15-models-for-separation-and-alignment--agreed) and
 [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
@@ -403,3 +405,44 @@ separator file's format and size.
 Published exports spare Lyre from making its own, except for
 `lyric-alignment`, which has none. Separating no slower than the song plays
 keeps the wait for a song shorter than listening to it.
+
+## D22. The separator target splits lead and backing vocals — Agreed
+
+Replaces the listening clause of the separator target of
+[D21](#d21-pinned-model-files-and-the-separator-target--agreed).
+
+- **Lead vocals:** the owner hears no clear leftover lead vocals in the
+  karaoke track.
+- **Backing vocals:** harmonies and wordless backing vocals may remain in M2.
+  The leftover clean-up of M8 handles them
+  ([processing](domain/knowledge.md#processing), stage 5).
+- **The separator stays** htdemucs. The time, memory and sum-check parts of
+  D21's target do not change.
+
+*Why:* the owner listened to a 207 s clip of a Vietnamese duet. The male and
+female lead vocals were removed well. Wordless female backing vocals stayed
+clearly, while male backing vocals on the same phrase were removed. Averaging
+over 4 time shifts with half-overlapping segments did not help. Neither did
+the vocals model of `htdemucs_ft`, with the karaoke track as the input minus
+its vocals. Lead vocals are what the singer replaces, so M2 can go on with
+htdemucs.
+
+## D23. Backing vocals as their own track — Proposed
+
+For M8. The owner wants to keep backing vocals for singing along.
+
+- **Separate track:** the karaoke track has no vocals. Backing vocals,
+  separated from the lead vocals, are stored as a separate track.
+- **Switch:** the Player offers a switch to add the backing vocals.
+- **Only when quality holds:** Lyre uses this only when both male and female
+  backing vocals are kept and the owner hears no distortion on a set of test
+  songs.
+- **Fallback:** otherwise all vocals are removed, as now.
+- **Needs a lead and backing separator,** which M8 also needs for vocal
+  roles. Its licence must be clear
+  ([models and licences](domain/knowledge.md#models-and-licences)).
+- **Settled in M8,** as an open point of the
+  [roadmap](roadmap.md#later-milestones).
+
+*Why:* backing vocals are part of how a song feels. A singer may want them
+back, but not at the price of a distorted karaoke track.

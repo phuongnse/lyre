@@ -90,6 +90,13 @@ What was learned:
 - **Scan the whole vocal track for leftovers,** not only where lyrics are
   sung. Laughs, calls, harmonies and ad-libs have no lyric text but still leak
   into the karaoke track.
+- **Wordless backing vocals can pass for an instrument.** Separators trained
+  to tell voices from instruments can take sustained, wordless backing vowels
+  in a high register for an instrument, so they leak into the karaoke track.
+  In the owner's test of a duet, the male backing vocals on the same phrase
+  were removed. More time shifts and the fine-tuned `htdemucs_ft` vocals model
+  did not help. M2 accepts these leftovers, and M8 cleans them up
+  ([D22](../decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)).
 - **Remove a leftover only when a second separator agrees.** Separators
   sometimes put a shared instrument in both outputs. Removing on the word of
   one separator damages the music. D15 has one separator, so the clean-up
@@ -200,7 +207,8 @@ pinned their files, which the [models reference](../reference/models.md) lists:
 - Every model needs an ONNX export that runs in ONNX Runtime Web and ONNX
   Runtime for Android. M2 measures whether the separator and both candidate aligners run fast enough there.
 - The models for vocal roles and for the leftover check are chosen when M8 is
-  broken down.
+  broken down. So is the lead and backing separator for
+  [D23](../decisions.md#d23-backing-vocals-as-their-own-track--proposed).
 
 ## What the protection does and does not do
 

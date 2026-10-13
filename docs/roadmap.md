@@ -136,11 +136,14 @@ must settle:
   those that run on the target devices, is chosen
   ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)). A newer decision replaces D15 if the separator
   misses its target
-  ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)).
+  ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
+  as [D22](decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed) splits it).
 - **M3:** the passkey check results (D8); the reference doc for the encrypted
   format, access files and recovery, reviewed before implementation.
 - **M4:** split in two when broken down: Android playback and device keys
   first, then making songs on Android; the lowest Android version, and
   emulator tests in CI.
+- **M8:** settle [D23](decisions.md#d23-backing-vocals-as-their-own-track--proposed), backing vocals as their own track,
+  and choose a lead and backing separator with a clear licence.
 - **M9:** licences for every model that is downloaded for other people, and
   the attribution D18 needs in both clients.
