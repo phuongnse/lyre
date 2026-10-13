@@ -6,8 +6,6 @@
 //! segments cut beforehand. The tool treats them as opaque bytes, as the core
 //! does.
 
-pub mod timing;
-
 use std::fmt;
 use std::fs;
 use std::io;
@@ -17,9 +15,8 @@ use lyre_core::lyrics::{Lyrics, LyricsError};
 use lyre_core::song_file::{
     self, Segment, Song, SongDetails, SongFileError, Timing, Track, VocalRole,
 };
+use lyre_core::timing_file::{self, TimingFileError};
 use serde::Deserialize;
-
-use crate::timing::TimingFileError;
 
 /// The manifest: where the parts of the song are, and its details. Paths are
 /// relative to the manifest's folder.
@@ -79,7 +76,7 @@ pub fn build(manifest: &Path) -> Result<Vec<u8>, BuildError> {
     // The lyrics bytes go to the core unchanged (D5).
     let lyrics = Lyrics::parse(&read(&spec.lyrics)?).map_err(BuildError::Lyrics)?;
     let times =
-        timing::parse(&read(&spec.timing)?, &lyrics).map_err(|error| BuildError::Timing {
+        timing_file::parse(&read(&spec.timing)?, &lyrics).map_err(|error| BuildError::Timing {
             path: dir.join(&spec.timing),
             error,
         })?;

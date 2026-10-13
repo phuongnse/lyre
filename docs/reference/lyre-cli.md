@@ -98,6 +98,9 @@ A syllable may start exactly when the previous one ends. After these checks,
 the core's rules still apply: for example, the last syllable must end by the
 end of the song.
 
+The parser lives in the core (`lyre-core`), so the web client can read a
+timing file the same way through `lyre-wasm`.
+
 ## The fixture song
 
 `tests/fixtures/song/` holds a synthetic 12-second song. No file in it comes

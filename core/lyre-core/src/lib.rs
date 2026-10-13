@@ -7,7 +7,9 @@ pub mod highlight;
 pub mod lyrics;
 pub mod lyrics_rows;
 pub mod model;
+pub mod onset_error;
 pub mod song_file;
+pub mod timing_file;
 pub mod words;
 
 /// The version of the Lyre core, from the workspace package version.
