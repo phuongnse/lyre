@@ -8,5 +8,9 @@ export const routes: Routes = [
     path: 'passkey-check',
     loadComponent: () => import('./passkey-check/passkey-check.component').then((m) => m.PasskeyCheck),
   },
+  {
+    path: 'task-check',
+    loadComponent: () => import('./task-check/task-check.component').then((m) => m.TaskCheck),
+  },
   { path: '**', redirectTo: '' },
 ]

@@ -6,6 +6,7 @@ use lyre_core::display_lines::{self, DisplayLine, MeasuredSyllable};
 use lyre_core::highlight;
 use lyre_core::lyrics::Lyrics;
 use lyre_core::lyrics_rows;
+use lyre_core::model;
 use lyre_core::song_file::{
     self, Chunk, ChunkType, Header, Index, IndexEntry, SongDetails, SongFileError, Timing,
 };
@@ -543,6 +544,50 @@ impl SongReader {
     }
 }
 
+/// The result of a model check: the file's ID and whether it passed. It
+/// holds no file bytes.
+#[wasm_bindgen]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelCheckResult {
+    #[wasm_bindgen(getter_with_clone)]
+    pub id: String,
+    pub passed: bool,
+}
+
+/// Checks a downloaded model file against its pinned size and SHA-256. The
+/// client feeds the download in pieces. The check keeps only the hash
+/// state, never the bytes.
+#[wasm_bindgen]
+pub struct ModelCheck {
+    check: model::ModelCheck,
+}
+
+#[wasm_bindgen]
+impl ModelCheck {
+    /// Starts a check of the pinned model file with this `id`. There is
+    /// none for an unknown ID.
+    pub fn start(id: &str) -> Option<ModelCheck> {
+        model::ModelCheck::new(id).map(|check| ModelCheck { check })
+    }
+
+    /// Hashes the next `piece` of the download. Returns false once the file
+    /// has grown past its pinned size, and the client should stop. Every
+    /// later piece is then ignored.
+    pub fn feed(&mut self, piece: &[u8]) -> bool {
+        self.check.feed(piece)
+    }
+
+    /// The result so far. It passes only when exactly the pinned size was
+    /// fed and the SHA-256 matches.
+    pub fn result(&self) -> ModelCheckResult {
+        let result = self.check.result();
+        ModelCheckResult {
+            id: result.id.to_owned(),
+            passed: result.passed,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -599,6 +644,37 @@ mod tests {
             }
         }
         Ok((reader, media))
+    }
+
+    /// The 56-byte two-block test vector of FIPS 180-2.
+    const TWO_BLOCK: &[u8] = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+
+    #[test]
+    fn a_model_check_passes_for_the_pinned_bytes() {
+        let mut check = ModelCheck::start("test-two-block").expect("a pinned ID");
+        assert!(check.feed(&TWO_BLOCK[..10]));
+        assert!(check.feed(&TWO_BLOCK[10..]));
+        assert_eq!(
+            check.result(),
+            ModelCheckResult {
+                id: "test-two-block".to_owned(),
+                passed: true,
+            }
+        );
+    }
+
+    #[test]
+    fn a_model_check_fails_with_one_byte_changed() {
+        let mut changed = TWO_BLOCK.to_vec();
+        changed[20] ^= 0x01;
+        let mut check = ModelCheck::start("test-two-block").expect("a pinned ID");
+        assert!(check.feed(&changed));
+        assert!(!check.result().passed);
+    }
+
+    #[test]
+    fn an_unknown_model_gives_no_check() {
+        assert!(ModelCheck::start("no-such-model").is_none());
     }
 
     #[test]

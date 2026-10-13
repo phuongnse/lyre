@@ -6,6 +6,7 @@ publish.workspace = true
 license = "MIT AND CC-BY-SA-4.0"
 
 [dependencies]
+sha2 = { version = "0.10", default-features = false }
 unicode-normalization = "0.1"
 
 [dev-dependencies]

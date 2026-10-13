@@ -6,6 +6,7 @@ pub mod display_lines;
 pub mod highlight;
 pub mod lyrics;
 pub mod lyrics_rows;
+pub mod model;
 pub mod song_file;
 pub mod words;
 
