@@ -206,7 +206,17 @@ reference doc and reviewed before M3 implements them.
   the same number of segments, each start and end within 50 ms. A packet
   that starts at the original's end, which the encoder adds for the audio it
   held back, is left out. The page checks that the browser can encode Opus
-  before it starts the worker.
+  before it starts the worker. The same worker then repackages the source's
+  primary video into the video track, by the stored type the core gives it.
+  Its coded packets are copied as they are, and its times are shifted like
+  the audio's. Mediabunny starts a Cluster or fragment at every keyframe, and
+  the web client groups them into media segments of up to 20 s and 64 MiB, so
+  each segment starts on a keyframe. A source is refused when its keyframes
+  are more than 20 s apart, when one group of frames is over 64 MiB, or when
+  its video does not start on a keyframe. Video whose first frame comes more
+  than 50 ms after the timeline's start is refused too. The video must end
+  within 1,000 ms of the song's duration, which the core's writer checks
+  again. An audio-only source gives no video.
 - The web client runs a model with ONNX Runtime Web (MIT), at a pinned
   version, in a Web Worker. It uses WebGPU when the browser gives it a GPU
   adapter and the session opens on it, and otherwise WebAssembly on one

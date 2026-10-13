@@ -42,6 +42,13 @@ export function packageInWorker(file: File, storedType: string): Packaging {
 
 // Packages the primary audio of `file` into the original track, then makes
 // the karaoke track from `karaokeFile` at its cut times, in a Web Worker.
-export function makeAudioInWorker(file: File, karaokeFile: File, storedType: string): Packaging {
-  return runInWorker({ type: 'make-audio', file, karaokeFile, storedType })
+// With `videoType`, it then packages the primary video of `file` too.
+export function makeAudioInWorker(file: File, karaokeFile: File, storedType: string, videoType?: string): Packaging {
+  return runInWorker({
+    type: 'make-audio',
+    file,
+    karaokeFile,
+    storedType,
+    ...(videoType === undefined ? {} : { videoType }),
+  })
 }

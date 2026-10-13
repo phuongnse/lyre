@@ -300,6 +300,23 @@ describe('groupSegments', () => {
     expect(() => groupSegments([piece(0)], 10_001)).toThrow(PackageError)
   })
 
+  test('a segment holds at most 67,108,864 bytes, and a larger piece is refused', () => {
+    // The pieces share one buffer, so the test needs little more than 64 MiB.
+    const buffer = new Uint8Array(MAX_SEGMENT_BYTES + 1)
+    const half = buffer.subarray(0, MAX_SEGMENT_BYTES / 2)
+    const pieces = [0, 100, 200].map((startMs, i) => ({ startMs, bytes: i < 2 ? half : buffer.subarray(0, 1) }))
+    const { segments } = groupSegments(pieces, 1_000)
+    expect(segments.map((segment) => segment.bytes.length)).toEqual([MAX_SEGMENT_BYTES, 1])
+    expect(segments.map((segment) => segment.durationMs)).toEqual([200, 800])
+    expect(() => groupSegments([{ startMs: 0, bytes: buffer }], 1_000)).toThrow(new PackageError('piece too large'))
+  })
+
+  test('video segments may last up to 20,000 ms, and a late video start names the video', () => {
+    const { segments } = groupSegments([piece(0), piece(10_000), piece(20_000)], 30_000, 20_000, 'video')
+    expect(segments.map((segment) => segment.durationMs)).toEqual([20_000, 10_000])
+    expect(() => groupSegments([piece(51)], 1_000, 20_000, 'video')).toThrow(new PackageError('video starts late'))
+  })
+
   test('pieces out of order, an end before the last piece, or no pieces are refused', () => {
     expect(() => groupSegments([piece(900), piece(0)], 2_000)).toThrow(PackageError)
     expect(() => groupSegments([piece(0), piece(900)], 900)).toThrow(PackageError)

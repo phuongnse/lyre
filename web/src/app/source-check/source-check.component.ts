@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core'
 import { MatButton } from '@angular/material/button'
 import { loadCore } from '../../core'
 import { canEncodeKaraoke } from '../../karaoke-track'
-import { SegmentTimes } from '../../original-track-messages'
+import { SegmentTimes, VideoRefusal } from '../../original-track-messages'
 import { CannotPlay, SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
 import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
 import { messages } from '../messages'
@@ -25,10 +25,12 @@ interface PackagedSummary {
   durationMs: number
 }
 
-// What making both audio tracks gave: only their segment times reach the page.
+// What making the tracks gave: only their segment times reach the page. An
+// audio-only source has no video.
 interface AudioTracks {
   original: SegmentTimes[]
   karaoke: SegmentTimes[]
+  video?: SegmentTimes[]
   songDurationMs: number
 }
 
@@ -47,19 +49,27 @@ type State =
   | { status: 'packaging'; file: File; details: SourceDetails }
   | { status: 'package-failed'; file: File; details: SourceDetails }
   | { status: 'making'; file: File; details: SourceDetails }
-  | { status: 'make-failed'; file: File; details: SourceDetails }
+  | { status: 'make-failed'; file: File; details: SourceDetails; reason?: VideoRefusal }
   | { status: 'cannot-encode'; file: File; details: SourceDetails }
   | { status: 'failed'; problem: SourceProblem }
 
 // A sample louder than this counts as sound.
 const LOUD = 0.01
 
+// The message for a failure to make the tracks: its own for each video
+// refusal, and one plain message for anything else.
+export function makeFailedMessage(reason?: VideoRefusal): string {
+  if (reason === 'keyframe gap') return messages.videoKeyframeGap
+  if (reason === 'group too large') return messages.videoGroupTooLarge
+  return messages.audioTracksFailed
+}
+
 // The source check page (docs/ui-conventions.md#check-pages). It reads a
 // picked source's details, stage 1 of processing, and can decode its audio at
 // a stage's rate, stage 2, or package it into the original track in a Web
 // Worker, stage 8, until the real song-making page exists. With a second
 // picked file standing in for the karaoke track, it can also make both audio
-// tracks, cut at the same times, in the worker. A source this
+// tracks, cut at the same times, and the video track, in the worker. A source this
 // browser cannot play shows the reason next to its details, and can still be
 // decoded and packaged, because this is a test page. Opened by its URL,
 // #/source-check.
@@ -167,7 +177,7 @@ const LOUD = 0.01
       } @else if (current.status === 'making') {
         <p role="status">{{ messages.makingAudioTracks }}</p>
       } @else if (current.status === 'make-failed') {
-        <p role="alert">{{ messages.audioTracksFailed }}</p>
+        <p role="alert">{{ makeFailedMessage(current.reason) }}</p>
       } @else if (current.status === 'cannot-encode') {
         <p role="alert">{{ messages.cannotEncodeAudio }}</p>
       } @else if (current.tracks !== undefined) {
@@ -186,6 +196,13 @@ const LOUD = 0.01
             <li>{{ messages.segmentSpan(segment.startMs, segment.endMs) }}</li>
           }
         </ol>
+        @if (tracks.video !== undefined) {
+          <ol [attr.aria-label]="messages.videoSegmentTimes">
+            @for (segment of tracks.video; track $index) {
+              <li>{{ messages.segmentSpan(segment.startMs, segment.endMs) }}</li>
+            }
+          </ol>
+        }
       } @else if (current.packaged !== undefined) {
         @let packaged = current.packaged;
         <dl [attr.aria-label]="messages.originalTrack">
@@ -220,6 +237,7 @@ const LOUD = 0.01
 })
 export class SourceCheck {
   protected readonly messages = messages
+  protected readonly makeFailedMessage = makeFailedMessage
   protected readonly state = signal<State>({ status: 'empty' })
   // The file that stands in for the karaoke track until separation exists.
   protected readonly karaokeFile = signal<File | undefined>(undefined)
@@ -304,9 +322,11 @@ export class SourceCheck {
   }
 
   // Packages the original track, then makes the karaoke track from the picked
-  // stand-in at its cut times, in a Web Worker. Only their segment times come
-  // back. A browser that cannot encode Opus is told so before any work starts.
-  // Any other failure shows one plain message.
+  // stand-in at its cut times, then packages the video, if any, in a Web
+  // Worker. Only their segment times come back. A browser that cannot encode
+  // Opus is told so before any work starts. A video whose keyframes are too far
+  // apart, or whose group of frames is too large, gets its own message. Any
+  // other failure shows one plain message.
   protected async makeAudio(file: File, details: SourceDetails): Promise<void> {
     const karaokeFile = this.karaokeFile()
     if (details.audioType === undefined || karaokeFile === undefined) return
@@ -320,16 +340,23 @@ export class SourceCheck {
       this.state.set({ status: 'cannot-encode', file, details })
       return
     }
-    const packaging = makeAudioInWorker(file, karaokeFile, details.audioType)
+    const packaging = makeAudioInWorker(file, karaokeFile, details.audioType, details.videoType)
     this.packaging = packaging
     const reply = await packaging.reply
     if (attempt !== this.attempts) return
     this.packaging = undefined
     if (reply.type === 'audio-done') {
-      const { original, karaoke, songDurationMs } = reply
-      this.state.set({ status: 'ready', file, details, tracks: { original, karaoke, songDurationMs } })
+      const { original, karaoke, video, songDurationMs } = reply
+      const tracks: AudioTracks = { original, karaoke, songDurationMs }
+      if (video !== undefined) tracks.video = video
+      this.state.set({ status: 'ready', file, details, tracks })
     } else {
-      this.state.set({ status: 'make-failed', file, details })
+      const reason = reply.type === 'failed' ? reply.reason : undefined
+      this.state.set(
+        reason === undefined
+          ? { status: 'make-failed', file, details }
+          : { status: 'make-failed', file, details, reason },
+      )
     }
   }
 
