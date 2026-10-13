@@ -1,11 +1,13 @@
 import { makeKaraoke } from './karaoke-track'
 import { PackageReply, PackageRequest, SegmentTimes } from './original-track-messages'
 import { PackagedTrack, packageOriginal } from './original-track'
+import { makeThumbnail } from './thumbnail'
 import { checkVideoEnd, packageVideo, videoRefusal } from './video-track'
 
 // Packages a source's audio into the original track, and can then make the
-// karaoke track cut at its times and the video track, off the page's main
-// thread. It answers with a summary, never with the error's text.
+// karaoke track cut at its times and the video track, and makes a source's
+// thumbnail, off the page's main thread. It answers with a summary, never with
+// the error's text.
 addEventListener('message', (event: MessageEvent<PackageRequest>) => {
   const request = event.data
   if (request.type === 'package') {
@@ -17,6 +19,12 @@ addEventListener('message', (event: MessageEvent<PackageRequest>) => {
           segmentCount: segments.length,
           durationMs: segments.reduce((sum, segment) => sum + segment.durationMs, 0),
         } satisfies PackageReply),
+      () => postMessage({ type: 'failed' } satisfies PackageReply),
+    )
+  } else if (request.type === 'thumbnail') {
+    void makeThumbnail(request.file).then(
+      (bytes) =>
+        postMessage({ type: 'thumbnail-done', bytes } satisfies PackageReply, bytes === null ? [] : [bytes.buffer]),
       () => postMessage({ type: 'failed' } satisfies PackageReply),
     )
   } else if (request.type === 'make-audio') {

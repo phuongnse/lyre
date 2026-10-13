@@ -6,7 +6,7 @@ import { SegmentTimes, VideoRefusal } from '../../original-track-messages'
 import { CannotPlay, SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
 import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
 import { messages } from '../messages'
-import { Packaging, makeAudioInWorker, packageInWorker } from './original-track-worker'
+import { Packaging, makeAudioInWorker, packageInWorker, thumbnailInWorker } from './original-track-worker'
 
 // What came out of decoding, measured without keeping the samples. The tone
 // and the first sound are absent when the audio is silent.
@@ -23,6 +23,14 @@ interface PackagedSummary {
   storedType: string
   segmentCount: number
   durationMs: number
+}
+
+// What making the thumbnail gave: the JPEG as a data: URL, which the page's
+// Content Security Policy allows for images, and its size in bytes. A source
+// can give no thumbnail.
+interface ThumbnailImage {
+  dataUrl: string
+  bytes: number
 }
 
 // What making the tracks gave: only their segment times reach the page. An
@@ -44,10 +52,13 @@ type State =
       decoded?: DecodedAudio
       packaged?: PackagedSummary
       tracks?: AudioTracks
+      thumbnail?: ThumbnailImage | 'none'
     }
   | { status: 'decoding'; file: File; details: SourceDetails }
   | { status: 'packaging'; file: File; details: SourceDetails }
   | { status: 'package-failed'; file: File; details: SourceDetails }
+  | { status: 'thumbnailing'; file: File; details: SourceDetails }
+  | { status: 'thumbnail-failed'; file: File; details: SourceDetails }
   | { status: 'making'; file: File; details: SourceDetails }
   | { status: 'make-failed'; file: File; details: SourceDetails; reason?: VideoRefusal }
   | { status: 'cannot-encode'; file: File; details: SourceDetails }
@@ -69,7 +80,8 @@ export function makeFailedMessage(reason?: VideoRefusal): string {
 // a stage's rate, stage 2, or package it into the original track in a Web
 // Worker, stage 8, until the real song-making page exists. With a second
 // picked file standing in for the karaoke track, it can also make both audio
-// tracks, cut at the same times, and the video track, in the worker. A source this
+// tracks, cut at the same times, and the video track, in the worker, or make
+// its thumbnail, also in the worker. A source this
 // browser cannot play shows the reason next to its details, and can still be
 // decoded and packaged, because this is a test page. Opened by its URL,
 // #/source-check.
@@ -107,12 +119,18 @@ export function makeFailedMessage(reason?: VideoRefusal): string {
       current.status === 'decoding' ||
       current.status === 'packaging' ||
       current.status === 'package-failed' ||
+      current.status === 'thumbnailing' ||
+      current.status === 'thumbnail-failed' ||
       current.status === 'making' ||
       current.status === 'make-failed' ||
       current.status === 'cannot-encode'
     ) {
       @let details = current.details;
-      @let busy = current.status === 'decoding' || current.status === 'packaging' || current.status === 'making';
+      @let busy =
+        current.status === 'decoding' ||
+        current.status === 'packaging' ||
+        current.status === 'thumbnailing' ||
+        current.status === 'making';
       @if (details.cannotPlay !== undefined) {
         <p role="alert">{{ cannotPlayReason(details.cannotPlay) }}</p>
       }
@@ -145,6 +163,9 @@ export function makeFailedMessage(reason?: VideoRefusal): string {
       <button matButton="outlined" type="button" [disabled]="busy" (click)="decode(current.file, details, alignment)">
         {{ messages.decodeForAlignment }}
       </button>
+      <button matButton="outlined" type="button" [disabled]="busy" (click)="makeThumbnail(current.file, details)">
+        {{ messages.makeThumbnail }}
+      </button>
       @if (details.audioType !== undefined) {
         <button matButton="outlined" type="button" [disabled]="busy" (click)="packageTrack(current.file, details)">
           {{ messages.packageOriginal }}
@@ -174,12 +195,25 @@ export function makeFailedMessage(reason?: VideoRefusal): string {
         <p role="status">{{ messages.sourcePackaging }}</p>
       } @else if (current.status === 'package-failed') {
         <p role="alert">{{ messages.sourcePackageFailed }}</p>
+      } @else if (current.status === 'thumbnailing') {
+        <p role="status">{{ messages.makingThumbnail }}</p>
+      } @else if (current.status === 'thumbnail-failed') {
+        <p role="alert">{{ messages.thumbnailFailed }}</p>
       } @else if (current.status === 'making') {
         <p role="status">{{ messages.makingAudioTracks }}</p>
       } @else if (current.status === 'make-failed') {
         <p role="alert">{{ makeFailedMessage(current.reason) }}</p>
       } @else if (current.status === 'cannot-encode') {
         <p role="alert">{{ messages.cannotEncodeAudio }}</p>
+      } @else if (current.thumbnail === 'none') {
+        <p role="status">{{ messages.noThumbnail }}</p>
+      } @else if (current.thumbnail !== undefined) {
+        @let thumbnail = current.thumbnail;
+        <img [src]="thumbnail.dataUrl" [alt]="messages.thumbnail" />
+        <dl [attr.aria-label]="messages.thumbnailDetails">
+          <dt id="thumbnail-size">{{ messages.thumbnailSize }}</dt>
+          <dd aria-labelledby="thumbnail-size">{{ messages.bytes(thumbnail.bytes) }}</dd>
+        </dl>
       } @else if (current.tracks !== undefined) {
         @let tracks = current.tracks;
         <dl [attr.aria-label]="messages.audioTracks">
@@ -314,6 +348,36 @@ export class SourceCheck {
     }
   }
 
+  // Makes the source's thumbnail in a Web Worker. Only the JPEG comes back,
+  // or nothing when the source gives none. Any failure shows one plain
+  // message.
+  protected async makeThumbnail(file: File, details: SourceDetails): Promise<void> {
+    this.stopPackaging()
+    const attempt = ++this.attempts
+    this.state.set({ status: 'thumbnailing', file, details })
+    const packaging = thumbnailInWorker(file)
+    this.packaging = packaging
+    const reply = await packaging.reply
+    if (attempt !== this.attempts) return
+    this.packaging = undefined
+    if (reply.type !== 'thumbnail-done') {
+      this.state.set({ status: 'thumbnail-failed', file, details })
+      return
+    }
+    if (reply.bytes === null) {
+      this.state.set({ status: 'ready', file, details, thumbnail: 'none' })
+      return
+    }
+    const bytes = reply.bytes.length
+    const dataUrl = await readAsDataUrl(new Blob([reply.bytes as Uint8Array<ArrayBuffer>], { type: 'image/jpeg' }))
+    if (attempt !== this.attempts) return
+    this.state.set(
+      dataUrl === null
+        ? { status: 'thumbnail-failed', file, details }
+        : { status: 'ready', file, details, thumbnail: { dataUrl, bytes } },
+    )
+  }
+
   protected chooseKaraoke(input: HTMLInputElement): void {
     const file = input.files?.[0]
     // Clears the choice, so the same file can be picked again.
@@ -364,6 +428,16 @@ export class SourceCheck {
     this.packaging?.stop()
     this.packaging = undefined
   }
+}
+
+// The blob as a data: URL, or null if it cannot be read.
+function readAsDataUrl(blob: Blob): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(blob)
+  })
 }
 
 // Measures decoded audio piece by piece. The tone counts the first channel's

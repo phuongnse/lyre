@@ -41,6 +41,12 @@ make -map 0:v -map 1:a -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac 
 make -map 0:v -map 1:a "${vp9[@]}" "${opus[@]}" -metadata artist="$artist" "$out/song.webm"
 make -map 1:a -c:a libmp3lame -id3v2_version 4 \
   -metadata title="$title" -metadata artist="$artist" -metadata composer="$composer" "$out/song.mp3"
+# The cover art is a 1000x1000 PNG, so the journeys can check that it is re-encoded as JPEG and scaled down.
+ffmpeg -nostdin -hide_banner -loglevel error -y -f lavfi -i 'testsrc2=size=1000x1000:rate=1' -frames:v 1 "$out/cover.png"
+ffmpeg -nostdin -hide_banner -loglevel error -y \
+  -f lavfi -i 'sine=frequency=440:sample_rate=48000:duration=2' -i "$out/cover.png" \
+  -map 0:a -map 1:v -c:a libmp3lame -c:v copy -disposition:v attached_pic -metadata:s:v comment='Cover (front)' \
+  -id3v2_version 4 "$out/cover.mp3"
 make -map 0:v "${vp9[@]}" -an "$out/video-only.webm"
 # The timeline of this one starts at 1.5 s.
 make -map 0:v -map 1:a "${vp9[@]}" "${opus[@]}" -output_ts_offset 1.5 "$out/late.webm"

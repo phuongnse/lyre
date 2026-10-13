@@ -40,6 +40,11 @@ export function packageInWorker(file: File, storedType: string): Packaging {
   return runInWorker({ type: 'package', file, storedType })
 }
 
+// Makes the thumbnail of `file`, a JPEG or none, in a Web Worker.
+export function thumbnailInWorker(file: File): Packaging {
+  return runInWorker({ type: 'thumbnail', file })
+}
+
 // Packages the primary audio of `file` into the original track, then makes
 // the karaoke track from `karaokeFile` at its cut times, in a Web Worker.
 // With `videoType`, it then packages the primary video of `file` too.
