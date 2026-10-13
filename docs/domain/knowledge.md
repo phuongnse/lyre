@@ -145,7 +145,11 @@ What was learned:
   timeline after zero. Player time then differs from source time, which moves
   section cut points and timing unless it is corrected once, at the start.
   Repackaging *(planned for M2)* corrects it by rewriting the container
-  timestamps, so the song starts at 0.
+  timestamps. It shifts every track by the same amount, so that the earliest
+  track starts at 0. A track that started a few milliseconds later, such as
+  audio after its video, keeps that gap and so keeps its sync. The song file
+  lets a track's first segment start up to 50 ms late for this
+  ([index rules](../reference/song-file-format-v0.md#index)).
 - **A lyric correction is cheap only when the sung structure stays the same.**
   Changing words in place: re-time only the changed lines against the stored
   original track. Whitespace only: keep the timing. A different number of
