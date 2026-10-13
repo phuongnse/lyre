@@ -30,6 +30,7 @@ See [the life of a milestone](../delivery.md#the-life-of-a-milestone).
 | **Model** | A machine-learning model Lyre runs on the device, for example to separate vocals or to time lyrics. Pinned by version and SHA-256 hash, downloaded on first use. | M2 |
 | **Separation** | Splitting the source's audio into vocals and the karaoke track. | M2 |
 | **Alignment** | Timing the supplied syllables against the vocals. It never recognises words (D5). | M2 |
+| **Onset error** | How far a syllable's aligned start is from its start written by hand, in milliseconds, either way. It measures an aligner. | M2 |
 | **Task** | One run of processing for one song, with progress and the stage it is in. It can be cancelled, and leaves nothing behind when it fails. | M2 |
 
 ## Playing

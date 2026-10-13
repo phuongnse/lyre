@@ -118,6 +118,10 @@ Done when all ten were merged and the owner accepted the Player.
   (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
   reports time, peak memory and syllable onset error against a few
   hand-timed Vietnamese songs.
+- The core computes the [onset error](domain/concepts.md#processing) of each
+  syllable against a timing file written by hand. It also gives the median,
+  the 90th percentile and the share of syllables within 100 ms, 100 ms
+  included. Both statistics interpolate linearly between ranks.
 - Its results choose the aligner. They are recorded in the docs before the
   later M2 work relies on that choice.
 

@@ -7,9 +7,11 @@ use lyre_core::highlight;
 use lyre_core::lyrics::Lyrics;
 use lyre_core::lyrics_rows;
 use lyre_core::model;
+use lyre_core::onset_error;
 use lyre_core::song_file::{
     self, Chunk, ChunkType, Header, Index, IndexEntry, SongDetails, SongFileError, Timing,
 };
+use lyre_core::timing_file::{self, TimingErrorKind, TimingFileError};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// The version of the Lyre core.
@@ -291,6 +293,153 @@ pub fn align(
             confidence,
         })
         .collect())
+}
+
+/// One syllable's start and end in a hand-written timing file.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimedSyllable {
+    #[wasm_bindgen(js_name = startMs)]
+    pub start_ms: u32,
+    #[wasm_bindgen(js_name = endMs)]
+    pub end_ms: u32,
+}
+
+/// The rule a timing file broke, or `Lyrics` when the lyrics it is read
+/// against are not valid.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimingFileErrorKind {
+    Lyrics,
+    Malformed,
+    UnknownSyllable,
+    MissingSyllable,
+    Backwards,
+    Overlap,
+}
+
+/// Why a timing file was refused: the line, counting from 1, and the rule
+/// it broke. It holds no core message and never the lyric text.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimingFileFault {
+    line: Option<u32>,
+    kind: TimingFileErrorKind,
+}
+
+#[wasm_bindgen]
+impl TimingFileFault {
+    /// The line that broke a rule. There is none when the lyrics are not
+    /// valid.
+    #[wasm_bindgen(getter)]
+    pub fn line(&self) -> Option<u32> {
+        self.line
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn kind(&self) -> TimingFileErrorKind {
+        self.kind
+    }
+}
+
+impl From<TimingFileError> for TimingFileFault {
+    fn from(error: TimingFileError) -> TimingFileFault {
+        let kind = match error.kind {
+            TimingErrorKind::Malformed => TimingFileErrorKind::Malformed,
+            TimingErrorKind::UnknownSyllable { .. } => TimingFileErrorKind::UnknownSyllable,
+            TimingErrorKind::MissingSyllable { .. } => TimingFileErrorKind::MissingSyllable,
+            TimingErrorKind::Backwards => TimingFileErrorKind::Backwards,
+            TimingErrorKind::Overlap => TimingFileErrorKind::Overlap,
+        };
+        TimingFileFault {
+            // A line is at most the file's length plus 1, and WebAssembly
+            // memory holds under 4 GiB, so it fits.
+            line: Some(u32::try_from(error.line).unwrap_or(u32::MAX)),
+            kind,
+        }
+    }
+}
+
+/// Reads the hand-written timing file `text` against `lyrics`, both as
+/// bytes. It returns one time per syllable of the lyrics, in lyric order.
+#[wasm_bindgen(js_name = parseTimingFile)]
+pub fn parse_timing_file(
+    text: &[u8],
+    lyrics: &[u8],
+) -> Result<Vec<TimedSyllable>, TimingFileFault> {
+    let lyrics = Lyrics::parse(lyrics).map_err(|_| TimingFileFault {
+        line: None,
+        kind: TimingFileErrorKind::Lyrics,
+    })?;
+    let times = timing_file::parse(text, &lyrics)?;
+    Ok(times
+        .iter()
+        .map(|time| TimedSyllable {
+            start_ms: time.start_ms,
+            end_ms: time.end_ms,
+        })
+        .collect())
+}
+
+/// The onset error of every syllable, in lyric order, and its statistics.
+/// The definitions are in the core's `onset_error` module.
+#[wasm_bindgen]
+#[derive(Debug, Clone, PartialEq)]
+pub struct OnsetErrors {
+    #[wasm_bindgen(getter_with_clone, js_name = errorsMs)]
+    pub errors_ms: Vec<u32>,
+    #[wasm_bindgen(js_name = medianMs)]
+    pub median_ms: f64,
+    #[wasm_bindgen(js_name = p90Ms)]
+    pub p90_ms: f64,
+    /// The share of errors at or under 100 ms, from 0 to 1.
+    #[wasm_bindgen(js_name = within100Ms)]
+    pub within_100_ms: f64,
+}
+
+/// Why two timings were not measured: the syllable counts given. The
+/// counts differ, or both are 0 or over the limit of a song file.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MeasureFault {
+    hand_count: u32,
+    aligned_count: u32,
+}
+
+#[wasm_bindgen]
+impl MeasureFault {
+    #[wasm_bindgen(getter, js_name = handCount)]
+    pub fn hand_count(&self) -> u32 {
+        self.hand_count
+    }
+
+    #[wasm_bindgen(getter, js_name = alignedCount)]
+    pub fn aligned_count(&self) -> u32 {
+        self.aligned_count
+    }
+}
+
+/// Measures the onset error of `aligned_starts_ms` against
+/// `hand_starts_ms`, the starts written by hand. Both give one start per
+/// syllable, in milliseconds and lyric order.
+#[wasm_bindgen(js_name = measureOnsetError)]
+pub fn measure_onset_error(
+    hand_starts_ms: &[u32],
+    aligned_starts_ms: &[u32],
+) -> Result<OnsetErrors, MeasureFault> {
+    let measured = onset_error::measure(hand_starts_ms, aligned_starts_ms).map_err(|_| {
+        // WebAssembly memory holds under 4 GiB, so both counts fit.
+        MeasureFault {
+            hand_count: u32::try_from(hand_starts_ms.len()).unwrap_or(u32::MAX),
+            aligned_count: u32::try_from(aligned_starts_ms.len()).unwrap_or(u32::MAX),
+        }
+    })?;
+    Ok(OnsetErrors {
+        errors_ms: measured.errors_ms,
+        median_ms: measured.median_ms,
+        p90_ms: measured.p90_ms,
+        within_100_ms: measured.within_100_ms,
+    })
 }
 
 /// Reads a song file the way the format's reading model says: the header,
@@ -887,6 +1036,56 @@ mod tests {
         assert_eq!(fault.syllable(), Some(1));
         let fault = align_known_answer("").expect_err("there are no lyrics");
         assert_eq!(fault, REJECTED);
+    }
+
+    #[test]
+    fn parses_a_timing_file() {
+        let times = parse_timing_file(b"0 100 a\n100 200 b\n", b"a b").expect("it parses");
+        let times: Vec<_> = times.iter().map(|t| (t.start_ms, t.end_ms)).collect();
+        assert_eq!(times, vec![(0, 100), (100, 200)]);
+    }
+
+    #[test]
+    fn a_refused_timing_file_names_the_line_and_the_rule() {
+        let fault = parse_timing_file(b"100 200 a\n50 300 b\n", b"a b").expect_err("refused");
+        assert_eq!(fault.line(), Some(2));
+        assert_eq!(fault.kind(), TimingFileErrorKind::Backwards);
+        let fault = parse_timing_file(b"0 100 a\n50 200 b\n", b"a b").expect_err("refused");
+        assert_eq!(fault.line(), Some(2));
+        assert_eq!(fault.kind(), TimingFileErrorKind::Overlap);
+        let fault = parse_timing_file(b"0 100 a\n", b"a b").expect_err("refused");
+        assert_eq!(fault.line(), Some(2));
+        assert_eq!(fault.kind(), TimingFileErrorKind::MissingSyllable);
+    }
+
+    #[test]
+    fn a_timing_file_against_invalid_lyrics_is_refused_without_a_line() {
+        let fault = parse_timing_file(b"0 100 a\n", b"a\xFF").expect_err("refused");
+        assert_eq!(fault.line(), None);
+        assert_eq!(fault.kind(), TimingFileErrorKind::Lyrics);
+    }
+
+    #[test]
+    fn measures_the_known_answer_onset_error() {
+        let measured =
+            measure_onset_error(&[0, 1000, 2000, 3000, 4000], &[50, 1150, 1900, 3300, 4000])
+                .expect("it measures");
+        assert_eq!(
+            measured,
+            OnsetErrors {
+                errors_ms: vec![50, 150, 100, 300, 0],
+                median_ms: 100.0,
+                p90_ms: 240.0,
+                within_100_ms: 0.6,
+            }
+        );
+    }
+
+    #[test]
+    fn refuses_to_measure_timings_with_different_syllable_counts() {
+        let fault = measure_onset_error(&[0, 100], &[0, 100, 200]).expect_err("refused");
+        assert_eq!(fault.hand_count(), 2);
+        assert_eq!(fault.aligned_count(), 3);
     }
 
     #[test]

@@ -1,15 +1,15 @@
 //! The timing file: hand-written timing for a development song file.
 //!
-//! The format and its rules are in `docs/reference/lyre-cli.md`. Each timed
-//! line gives one syllable's start and end in milliseconds, then the
-//! syllable exactly as the lyrics have it. Blank lines and lines starting
+//! The format and its rules are in `docs/reference/lyre-cli.md#timing-file`.
+//! Each timed line gives one syllable's start and end in milliseconds, then
+//! the syllable exactly as the lyrics have it. Blank lines and lines starting
 //! with `#` are skipped. A file that breaks a rule is rejected at the first
 //! line that breaks it. No error message quotes the file or the lyrics.
 
 use std::fmt;
 
-use lyre_core::lyrics::Lyrics;
-use lyre_core::song_file::SyllableTime;
+use crate::lyrics::Lyrics;
+use crate::song_file::SyllableTime;
 
 /// The UTF-8 byte-order mark, skipped at the start of the file.
 const BOM: &[u8] = b"\xEF\xBB\xBF";
