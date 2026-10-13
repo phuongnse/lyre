@@ -144,4 +144,12 @@ export const messages = {
   modelCheckFailed: (id: string) => `The model file ${id} failed its check. It was deleted and not used.`,
   modelDownloadFailed: (id: string) => `The model file ${id} could not be downloaded. Nothing was kept.`,
   modelsMayBeCleared: 'Your browser did not allow lasting storage, so it may remove the downloaded models.',
+  separatorCheckAbout: "Checks the test separator's two files, then runs it once on silence in a Web Worker.",
+  runTestSeparator: 'Run the test separator',
+  separatorRunning: 'Running the test separator…',
+  // Keyed by Backend.
+  backendNames: { webgpu: 'WebGPU', wasm: 'WebAssembly' },
+  separatorRan: (backend: string, xOut: readonly number[], xtOut: readonly number[]) =>
+    `The test separator ran on ${backend}. x_out ${xOut.join('×')}, xt_out ${xtOut.join('×')}.`,
+  separatorFailed: 'The test separator could not run.',
 } as const

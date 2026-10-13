@@ -193,6 +193,12 @@ What was learned:
   covers only what comes after it. A `<meta>` policy cannot carry
   `frame-ancestors`, `sandbox`, `report-uri` or `report-to`. Another site can
   therefore frame the page, and policy violations are not reported.
+- **A worker gets no policy from the page.** A same-origin Web Worker takes
+  its Content Security Policy from its own response's headers, not from the
+  page's `<meta>` tag. GitHub Pages sends none, so code inside a worker, such
+  as ONNX Runtime Web, runs without one. The page's policy still decides
+  which worker URLs it may start: each comes from the `lyre#worker` Trusted
+  Types policy, which allows only the site's own origin.
 - **The page is not cross-origin isolated.** Without the COOP and COEP
   headers, the page has no `SharedArrayBuffer`. The WebAssembly fallback of
   ONNX Runtime Web then runs on one thread, much slower than WebGPU. The
