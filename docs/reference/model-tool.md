@@ -11,12 +11,14 @@ runs it by hand. It does two jobs for the
   checkpoint.
 
 A third job is for tests: it makes the
-[test separator](#make_test_separatorpy), a tiny stand-in for htdemucs.
+[test separator](#make_test_separatorpy), a tiny stand-in for htdemucs, and
+the [test aligners](#make_test_alignerspy), tiny stand-ins for Omnilingual
+and lyric-alignment.
 
 No check script runs these commands. `scripts/test.sh` runs only the tool's
-unit tests, which need nothing beyond Python's standard library. One of them
-rebuilds the test separator in a temporary folder and compares it with the
-committed files.
+unit tests, which need nothing beyond Python's standard library. Two of them
+rebuild the test separator and the test aligners in a temporary folder and
+compare them with the committed files.
 
 The terms in this doc are defined in the [concepts](../domain/concepts.md).
 
@@ -148,6 +150,42 @@ the 170 MB real model. Tests never use the real models
 - It needs only Python's standard library, and every run writes the same
   bytes. The core pins both files as `test-htdemucs-graph` and
   `test-htdemucs-weights`, so after changing the script, update those pins.
+
+### make_test_aligners.py
+
+```sh
+python3 tools/model-tool/make_test_aligners.py
+```
+
+It writes the test aligners, stand-ins for the
+[Omnilingual](models.md#omnilingual-ctc-300m) and
+[lyric-alignment](models.md#lyric-alignment) files. The alignment journeys
+can load them without the real models of several hundred MB. Tests never use
+the real models ([testing](../architecture.md#testing)).
+
+- It writes `omnilingual.onnx` with `omnilingual-tokens.txt`, and
+  `lyric-alignment.onnx` with `lyric-alignment-vocab.json`, to
+  `tests/fixtures/models/`, or to the folder given as its argument. It prints
+  each file's size and SHA-256.
+- Each graph has its real model's input and output names, all float32. The
+  Omnilingual stand-in takes `x` (1, samples) and gives raw `logits`
+  (1, frames, 25). The lyric-alignment stand-in takes `input_values`
+  (1, samples) and gives `log_probs` (1, frames, 25).
+- Both give one frame per 320 samples, as the real models do. Each frame has
+  one value per token of the graph's own vocabulary.
+- Each frame's values are the frame's average sample times a fixed weight
+  per token. The lyric-alignment stand-in then applies log-softmax inside
+  the file, as the real one does. It recognises nothing.
+- The vocabularies hold the lowercase letters of
+  `tests/fixtures/song/lyrics.txt`, and a unit test checks that they cover
+  it. `omnilingual-tokens.txt` has `<s>`, the blank, at index 0 and the space
+  at index 4. `lyric-alignment-vocab.json` has `|` at index 0 and `<pad>`, the
+  blank, last. The core adds `<s>` and `</s>` after it, as for the real file.
+- It needs only Python's standard library, and every run writes the same
+  bytes. The core pins the four files as `test-omnilingual-model`,
+  `test-omnilingual-tokens`, `test-lyric-alignment-model` and
+  `test-lyric-alignment-vocab`, so after changing the script, update those
+  pins.
 
 ## Pinned inputs
 

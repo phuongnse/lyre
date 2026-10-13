@@ -47,6 +47,10 @@ The aligner of D15, as sherpa-onnx's int8 export.
 - **Frame rate:** 50 frames per second (one frame per 320 samples).
 - **Vocabulary:** the 9,812 lines of `tokens.txt`, each a token and its index.
   Index 0, `<s>`, is the CTC blank. Index 4 is the space between words.
+- **Test stand-in:** tests use the
+  [test aligners](model-tool.md#make_test_alignerspy) instead. Their
+  Omnilingual stand-in has the same input and output names, and is pinned as
+  `test-omnilingual-model` and `test-omnilingual-tokens`.
 
 ## htdemucs
 
@@ -134,6 +138,10 @@ separate candidate on the measurement page.
   to its index. Its 96 entries give indexes 0 to 95, and `<s>` and `</s>`
   take 96 and 97. Index 95, `<pad>`, is the CTC blank. Index 0, `|`, is the
   space between words.
+- **Test stand-in:** tests use the
+  [test aligners](model-tool.md#make_test_alignerspy) instead. Their
+  lyric-alignment stand-in has the same input and output names, and is pinned
+  as `test-lyric-alignment-model` and `test-lyric-alignment-vocab`.
 
 The core's `aligner` module applies each aligner's input normalisation and
 log-softmax, and reads its vocabulary file. It refuses a vocabulary file

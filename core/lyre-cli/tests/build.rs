@@ -8,7 +8,7 @@ use std::process::Command;
 use lyre_core::song_file::{self, SyllableTime, VocalRole};
 
 /// The largest total size of every file under `tests/fixtures`, in bytes.
-const MAX_FIXTURES_BYTES: u64 = 65_536;
+const MAX_FIXTURES_BYTES: u64 = 73_728;
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures")
@@ -246,7 +246,7 @@ fn write_manifest(dir: &Path, manifest: &toml::Table) -> PathBuf {
 }
 
 #[test]
-fn fixtures_total_at_most_64_kib() {
+fn fixtures_total_at_most_72_kib() {
     fn total(dir: &Path) -> u64 {
         fs::read_dir(dir)
             .expect("fixture folder is readable")

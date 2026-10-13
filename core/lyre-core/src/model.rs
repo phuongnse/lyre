@@ -24,7 +24,8 @@ pub struct PinnedFile {
 // The real files are the rows of docs/reference/models.md, and a test keeps
 // them identical. Each `test-` entry is a file of tests/fixtures/models/. The
 // first two are SHA-256 test vectors of FIPS 180-2. The test separator's two
-// are made by tools/model-tool/make_test_separator.py. Their URLs are relative
+// are made by tools/model-tool/make_test_separator.py, and the test aligners'
+// four by tools/model-tool/make_test_aligners.py. Their URLs are relative
 // `test-models/` paths that only the e2e server serves, so no release site has
 // them.
 pub const PINNED_FILES: &[PinnedFile] = &[
@@ -93,6 +94,30 @@ pub const PINNED_FILES: &[PinnedFile] = &[
         url: "test-models/htdemucs_fwd.onnx.data",
         size: 4,
         sha256: "31b67dba7cfd6e2d7540f9c96d90a45b8f2d44956620723024d4e1beeacd4602",
+    },
+    PinnedFile {
+        id: "test-omnilingual-model",
+        url: "test-models/omnilingual.onnx",
+        size: 525,
+        sha256: "0d0de937b17c5848e5ae43056288f19e018ffdf54fea9aa3c113696c5b5a9d9c",
+    },
+    PinnedFile {
+        id: "test-omnilingual-tokens",
+        url: "test-models/omnilingual-tokens.txt",
+        size: 137,
+        sha256: "c3d2b0849a5d13362057a4adfc4ba66f5ca399d197db2828e95ffe6c12863c34",
+    },
+    PinnedFile {
+        id: "test-lyric-alignment-model",
+        url: "test-models/lyric-alignment.onnx",
+        size: 611,
+        sha256: "cd34cac739463129e43d515bcd868f5c03000e68441c6d2bd4617efcffa18e37",
+    },
+    PinnedFile {
+        id: "test-lyric-alignment-vocab",
+        url: "test-models/lyric-alignment-vocab.json",
+        size: 214,
+        sha256: "8c6e39d34b4d38349bfcec8aa261bf937e464b62b1c99732ea6a9296358e2aa0",
     },
 ];
 
@@ -238,6 +263,31 @@ mod tests {
     }
 
     #[test]
+    fn the_test_aligner_entries_pass_with_the_committed_files() {
+        let files: [(&str, &[u8]); 4] = [
+            (
+                "test-omnilingual-model",
+                include_bytes!("../../../tests/fixtures/models/omnilingual.onnx"),
+            ),
+            (
+                "test-omnilingual-tokens",
+                include_bytes!("../../../tests/fixtures/models/omnilingual-tokens.txt"),
+            ),
+            (
+                "test-lyric-alignment-model",
+                include_bytes!("../../../tests/fixtures/models/lyric-alignment.onnx"),
+            ),
+            (
+                "test-lyric-alignment-vocab",
+                include_bytes!("../../../tests/fixtures/models/lyric-alignment-vocab.json"),
+            ),
+        ];
+        for (id, bytes) in files {
+            assert_eq!(check(id, &[bytes]), passed(id));
+        }
+    }
+
+    #[test]
     fn the_empty_entry_passes_with_no_pieces() {
         assert_eq!(check("test-empty", &[]), passed("test-empty"));
     }
@@ -339,7 +389,7 @@ mod tests {
             .iter()
             .filter(|file| file.id.starts_with("test-"))
             .collect();
-        assert_eq!(tests.len(), 4);
+        assert_eq!(tests.len(), 8);
         for file in tests {
             assert!(file.url.starts_with("test-models/"), "{}", file.url);
             for part in [":", "..", "//"] {
