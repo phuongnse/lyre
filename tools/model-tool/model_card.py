@@ -45,8 +45,9 @@ weights are the original ones.
 - The three `feature_transform` layers of the author's model code
   (`model_handling.py`) are part of the graph, before the CTC head.
 - `model.int8.onnx` is made from `model.onnx` by ONNX Runtime's dynamic
-  quantization of the MatMul and Gemm operations to int8. The convolutions
-  stay fp32.
+  quantization of the MatMul and Gemm weights to int8, with one scale per
+  output channel. The three `feature_transform` layers and the CTC head stay
+  fp32, because they move the output most. The convolutions stay fp32 too.
 - `vocab.json` is the original vocabulary, unchanged. Tokens 96 and 97 are
   `<s>` and `</s>`, from the original `added_tokens.json`.
 

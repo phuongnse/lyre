@@ -10,6 +10,7 @@ See docs/reference/model-tool.md.
 import argparse
 import json
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,17 @@ FP32_MAX_DIFF = 1e-3
 # int8: on enough frames, the log-probability of PyTorch's top token stays this close.
 INT8_TOP_DIFF = 0.5
 INT8_MIN_FRAMES = 0.95
+# int8 quantizes the weights of these operations. One int8 scale per output channel, not one
+# per matrix: a single scale lost too much on the owner's audio (94.7% of frames, not 95%).
+INT8_OP_TYPES = ('MatMul', 'Gemm')
+INT8_PER_CHANNEL = True
+# The layers after wav2vec2 that move the output most. Kept in fp32 in the int8 file.
+INT8_FP32_LAYERS = (
+    '/aligner/feature_transform/linear1/',
+    '/aligner/feature_transform/linear2/',
+    '/aligner/feature_transform/linear3/',
+    '/aligner/lm_head/',
+)
 
 
 def build_aligner(config: dict, state_dict: dict) -> Any:
@@ -89,7 +101,35 @@ def exported_module(aligner: Any, do_normalize: bool) -> Any:
     return Exported().eval()
 
 
+def fp32_nodes(nodes: Iterable[tuple[str, str]]) -> list[str]:
+    """Returns the names of the MatMul and Gemm nodes of the layers kept in fp32.
+
+    Takes each node's name and operation type. Fails when a layer has no such node, so that a
+    change in how the exporter names nodes cannot quietly quantize every layer.
+    """
+    names = [name for name, op_type in nodes if op_type in INT8_OP_TYPES]
+    kept = []
+    for layer in INT8_FP32_LAYERS:
+        found = [name for name in names if name.startswith(layer)]
+        if not found:
+            raise ValueError(f'No MatMul or Gemm node of {layer} in the exported graph.')
+        kept += found
+    return kept
+
+
+def int8_options(nodes: Iterable[tuple[str, str]]) -> dict[str, Any]:
+    """Returns the settings for ONNX Runtime's quantize_dynamic, given the graph's nodes."""
+    return {
+        'op_types_to_quantize': list(INT8_OP_TYPES),
+        'per_channel': INT8_PER_CHANNEL,
+        'nodes_to_exclude': fp32_nodes(nodes),
+        # Only products with a constant weight. Attention's products of two activations stay fp32.
+        'extra_options': {'MatMulConstBOnly': True},
+    }
+
+
 def export(module: Any, fp32: Path, int8: Path) -> None:
+    import onnx
     import torch
     from onnxruntime.quantization import QuantType, quantize_dynamic
 
@@ -105,12 +145,11 @@ def export(module: Any, fp32: Path, int8: Path) -> None:
             output_names=['log_probs'],
             dynamic_axes={'input_values': {1: 'samples'}, 'log_probs': {1: 'frames'}},
         )
-    quantize_dynamic(
-        fp32,
-        int8,
-        weight_type=QuantType.QInt8,
-        op_types_to_quantize=['MatMul', 'Gemm'],
-    )
+    graph = onnx.load(str(fp32), load_external_data=False).graph
+    options = int8_options((node.name, node.op_type) for node in graph.node)
+    del graph
+    print(f'Kept in fp32: {", ".join(options["nodes_to_exclude"])}')
+    quantize_dynamic(fp32, int8, weight_type=QuantType.QInt8, **options)
 
 
 def reference_log_probs(aligner: Any, preprocessor: dict, audio: Any) -> Any:
