@@ -32,10 +32,12 @@ pub const MAX_ENTRY_COUNT: u32 = 16_384;
 pub const MAX_FILE_SIZE: u64 = 2_147_483_647;
 /// The largest title, artist or composer, in bytes.
 pub const MAX_FIELD_BYTES: usize = 1_024;
-/// The smallest song details chunk: a 1-byte title and two empty fields.
-pub const MIN_DETAILS_BYTES: usize = 7;
-/// The largest song details chunk: three full fields with their lengths.
-pub const MAX_DETAILS_BYTES: usize = 3 * (2 + MAX_FIELD_BYTES);
+/// The smallest song details chunk: a 1-byte title, two empty fields and
+/// the vocal role.
+pub const MIN_DETAILS_BYTES: usize = 8;
+/// The largest song details chunk: three full fields with their lengths, and
+/// the vocal role.
+pub const MAX_DETAILS_BYTES: usize = 3 * (2 + MAX_FIELD_BYTES) + 1;
 /// The largest thumbnail, in bytes.
 pub const MAX_THUMBNAIL_BYTES: usize = 1_048_576;
 /// The most syllables a timing chunk can hold.
@@ -238,12 +240,39 @@ impl Index {
     }
 }
 
-/// The song's title, artist and composer, each stored as supplied.
+/// Who sings the song. A song file records one role for the whole song, so
+/// this covers solo songs. Roles per lyric line are planned for M8.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum VocalRole {
+    Male = 1,
+    Female = 2,
+}
+
+impl VocalRole {
+    /// The vocal role stored as `code`, if there is one.
+    pub fn from_code(code: u8) -> Option<VocalRole> {
+        Some(match code {
+            1 => VocalRole::Male,
+            2 => VocalRole::Female,
+            _ => return None,
+        })
+    }
+
+    /// The number stored in the song details for this role.
+    pub fn code(self) -> u8 {
+        self as u8
+    }
+}
+
+/// The song's title, artist and composer, each stored as supplied, and its
+/// vocal role.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SongDetails {
     title: String,
     artist: String,
     composer: String,
+    vocal_role: VocalRole,
 }
 
 impl SongDetails {
@@ -254,6 +283,7 @@ impl SongDetails {
         title: String,
         artist: String,
         composer: String,
+        vocal_role: VocalRole,
     ) -> Result<SongDetails, SongFileError> {
         check_field(DetailField::Title, &title, 1)?;
         check_field(DetailField::Artist, &artist, 0)?;
@@ -262,6 +292,7 @@ impl SongDetails {
             title,
             artist,
             composer,
+            vocal_role,
         })
     }
 
@@ -277,6 +308,10 @@ impl SongDetails {
     /// The composer, or an empty string when not known.
     pub fn composer(&self) -> &str {
         &self.composer
+    }
+
+    pub fn vocal_role(&self) -> VocalRole {
+        self.vocal_role
     }
 }
 
@@ -557,6 +592,7 @@ pub enum DetailField {
     Title,
     Artist,
     Composer,
+    VocalRole,
 }
 
 impl fmt::Display for DetailField {
@@ -565,6 +601,7 @@ impl fmt::Display for DetailField {
             DetailField::Title => "title",
             DetailField::Artist => "artist",
             DetailField::Composer => "composer",
+            DetailField::VocalRole => "vocal role",
         })
     }
 }
@@ -637,8 +674,10 @@ pub enum SongFileError {
     },
     /// The song details chunk ends inside a field.
     DetailsTruncated { field: DetailField },
-    /// Bytes are left after the composer.
+    /// Bytes are left after the vocal role.
     DetailsTrailingBytes { count: usize },
+    /// The vocal role byte is not a known role.
+    UnknownVocalRole { value: u8 },
     /// A song details field has a length outside its limits.
     FieldLength { field: DetailField, len: usize },
     /// A song details field is not valid UTF-8. `offset` is the length of
@@ -776,7 +815,10 @@ impl fmt::Display for SongFileError {
                 write!(f, "song details end inside the {field}")
             }
             SongFileError::DetailsTrailingBytes { count } => {
-                write!(f, "song details have {count} bytes after the composer")
+                write!(f, "song details have {count} bytes after the vocal role")
+            }
+            SongFileError::UnknownVocalRole { value } => {
+                write!(f, "vocal role {value} is not known")
             }
             SongFileError::FieldLength { field, len } => write!(
                 f,
@@ -843,6 +885,10 @@ impl<'a> Reader<'a> {
 
     fn array<const N: usize>(&mut self) -> Option<[u8; N]> {
         self.take(N)?.try_into().ok()
+    }
+
+    fn u8(&mut self) -> Option<u8> {
+        self.array().map(u8::from_le_bytes)
     }
 
     fn u16(&mut self) -> Option<u16> {
@@ -1171,12 +1217,17 @@ fn parse_details(bytes: &[u8]) -> Result<SongDetails, SongFileError> {
     let title = read_field(DetailField::Title)?;
     let artist = read_field(DetailField::Artist)?;
     let composer = read_field(DetailField::Composer)?;
+    let code = reader.u8().ok_or(SongFileError::DetailsTruncated {
+        field: DetailField::VocalRole,
+    })?;
+    let vocal_role =
+        VocalRole::from_code(code).ok_or(SongFileError::UnknownVocalRole { value: code })?;
     if reader.remaining() != 0 {
         return Err(SongFileError::DetailsTrailingBytes {
             count: reader.remaining(),
         });
     }
-    SongDetails::new(title, artist, composer)
+    SongDetails::new(title, artist, composer, vocal_role)
 }
 
 fn encode_details(details: &SongDetails) -> Result<Vec<u8>, SongFileError> {
@@ -1194,6 +1245,7 @@ fn encode_details(details: &SongDetails) -> Result<Vec<u8>, SongFileError> {
         bytes.extend_from_slice(&len.to_le_bytes());
         bytes.extend_from_slice(value.as_bytes());
     }
+    bytes.push(details.vocal_role.code());
     Ok(bytes)
 }
 
@@ -1263,13 +1315,18 @@ mod tests {
                 }
             }
         }
-        assert_eq!(bytes.len(), 248);
+        assert_eq!(bytes.len(), 249);
         bytes
     }
 
-    fn details(title: &str, artist: &str, composer: &str) -> SongDetails {
-        SongDetails::new(title.to_owned(), artist.to_owned(), composer.to_owned())
-            .expect("details are accepted")
+    fn details(title: &str, artist: &str, composer: &str, vocal_role: VocalRole) -> SongDetails {
+        SongDetails::new(
+            title.to_owned(),
+            artist.to_owned(),
+            composer.to_owned(),
+            vocal_role,
+        )
+        .expect("details are accepted")
     }
 
     fn lyrics(text: &str) -> Lyrics {
@@ -1303,7 +1360,7 @@ mod tests {
     fn example_song() -> Song {
         Song {
             song_id: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-            details: details("Mưa", "", ""),
+            details: details("Mưa", "", "", VocalRole::Female),
             thumbnail: None,
             lyrics: lyrics("Mưa rơi\n"),
             timing: timing(&[(0, 500), (500, 1000)]),
@@ -1325,7 +1382,7 @@ mod tests {
         original: &[(usize, u32)],
     ) -> Parts {
         let mut parts = vec![
-            (ChunkType::SongDetails, 10, 0),
+            (ChunkType::SongDetails, 11, 0),
             (ChunkType::Lyrics, 10, 0),
             (ChunkType::Timing, 20, 0),
         ];
@@ -1391,6 +1448,7 @@ mod tests {
         }
     }
 
+    /// Song details with the given fields and the vocal role female.
     fn encoded_details(title: &[u8], artist: &[u8], composer: &[u8]) -> Vec<u8> {
         let mut bytes = Vec::new();
         for field in [title, artist, composer] {
@@ -1398,6 +1456,7 @@ mod tests {
             bytes.extend_from_slice(&len.to_le_bytes());
             bytes.extend_from_slice(field);
         }
+        bytes.push(VocalRole::Female.code());
         bytes
     }
 
@@ -1412,6 +1471,7 @@ mod tests {
         assert_eq!(song.details.title(), "Mưa");
         assert_eq!(song.details.artist(), "");
         assert_eq!(song.details.composer(), "");
+        assert_eq!(song.details.vocal_role(), VocalRole::Female);
         assert_eq!(song.lyrics.as_bytes(), "Mưa rơi\n".as_bytes());
         assert_eq!(song.lyrics.lines().len(), 1);
     }
@@ -1430,7 +1490,7 @@ mod tests {
         assert_eq!(header.index_len(), 168);
 
         let index_bytes = &file[HEADER_LEN..HEADER_LEN + header.index_len()];
-        let index = Index::parse(&header, index_bytes, 248).expect("the index is valid");
+        let index = Index::parse(&header, index_bytes, 249).expect("the index is valid");
         assert_eq!(index.duration_ms(), 1000);
         let types: Vec<_> = index.entries().iter().map(|e| e.chunk_type).collect();
         assert_eq!(
@@ -1481,7 +1541,7 @@ mod tests {
         let text = "\u{FEFF}Mưa rơi\r\nla";
         let song = Song {
             song_id: [0xAB; 16],
-            details: details("Mưa", "Ca sĩ", "Nhạc sĩ"),
+            details: details("Mưa", "Ca sĩ", "Nhạc sĩ", VocalRole::Male),
             thumbnail: Some(b"\xFF\xD8\xFF\xE0thumb".to_vec()),
             lyrics: lyrics(text),
             timing: timing(&[(0, 300), (300, 600), (700, 1000)]),
@@ -1535,8 +1595,8 @@ mod tests {
         assert_eq!(
             read(&truncated),
             Err(SongFileError::FileSize {
-                size: 247,
-                end: 248
+                size: 248,
+                end: 249
             })
         );
 
@@ -1545,13 +1605,13 @@ mod tests {
         assert_eq!(
             read(&padded),
             Err(SongFileError::FileSize {
-                size: 249,
-                end: 248
+                size: 250,
+                end: 249
             })
         );
 
         let mut timing_count_3 = example();
-        timing_count_3[220] = 0x03;
+        timing_count_3[221] = 0x03;
         assert_eq!(
             read(&timing_count_3),
             Err(SongFileError::TimingLength { len: 20, count: 3 })
@@ -1562,6 +1622,13 @@ mod tests {
         assert_eq!(
             read(&original_999),
             Err(SongFileError::SegmentMismatch { position: 6 })
+        );
+
+        let mut unknown_role = example();
+        unknown_role[210] = 0x03;
+        assert_eq!(
+            read(&unknown_role),
+            Err(SongFileError::UnknownVocalRole { value: 3 })
         );
     }
 
@@ -1609,14 +1676,14 @@ mod tests {
         let file = example();
         let header = Header::parse(&file).expect("the header is valid");
         assert_eq!(
-            Index::parse(&header, &file[32..199], 248),
+            Index::parse(&header, &file[32..199], 249),
             Err(SongFileError::IndexLength {
                 len: 167,
                 expected: 168
             })
         );
         assert_eq!(
-            Index::parse(&header, &file[32..201], 248),
+            Index::parse(&header, &file[32..201], 249),
             Err(SongFileError::IndexLength {
                 len: 169,
                 expected: 168
@@ -1673,17 +1740,17 @@ mod tests {
     }
 
     #[test]
-    fn song_details_chunk_is_7_to_3078_bytes() {
+    fn song_details_chunk_is_8_to_3079_bytes() {
         assert_eq!(
-            check(&with_length(ChunkType::SongDetails, 3_079)),
-            Err(chunk_length_error(ChunkType::SongDetails, 3_079))
+            check(&with_length(ChunkType::SongDetails, 3_080)),
+            Err(chunk_length_error(ChunkType::SongDetails, 3_080))
         );
         assert_eq!(
-            check(&with_length(ChunkType::SongDetails, 6)),
-            Err(chunk_length_error(ChunkType::SongDetails, 6))
+            check(&with_length(ChunkType::SongDetails, 7)),
+            Err(chunk_length_error(ChunkType::SongDetails, 7))
         );
-        assert!(check(&with_length(ChunkType::SongDetails, 3_078)).is_ok());
-        assert!(check(&with_length(ChunkType::SongDetails, 7)).is_ok());
+        assert!(check(&with_length(ChunkType::SongDetails, 3_079)).is_ok());
+        assert!(check(&with_length(ChunkType::SongDetails, 8)).is_ok());
 
         let full = encoded_details(&[b'a'; 1024], &[b'b'; 1024], &[b'c'; 1024]);
         assert_eq!(full.len(), MAX_DETAILS_BYTES);
@@ -1692,7 +1759,7 @@ mod tests {
         over.push(0);
         assert_eq!(
             read_details(&over),
-            Err(chunk_length_error(ChunkType::SongDetails, 3_079))
+            Err(chunk_length_error(ChunkType::SongDetails, 3_080))
         );
     }
 
@@ -1700,14 +1767,14 @@ mod tests {
     fn title_is_1_to_1024_bytes() {
         let over = "a".repeat(1_025);
         assert_eq!(
-            SongDetails::new(over.clone(), String::new(), String::new()),
+            SongDetails::new(over.clone(), String::new(), String::new(), VocalRole::Male),
             Err(SongFileError::FieldLength {
                 field: DetailField::Title,
                 len: 1_025
             })
         );
         assert_eq!(
-            SongDetails::new(String::new(), String::new(), String::new()),
+            SongDetails::new(String::new(), String::new(), String::new(), VocalRole::Male),
             Err(SongFileError::FieldLength {
                 field: DetailField::Title,
                 len: 0
@@ -1720,21 +1787,29 @@ mod tests {
                 len: 1_025
             })
         );
-        assert!(SongDetails::new("a".repeat(1_024), String::new(), String::new()).is_ok());
+        assert!(
+            SongDetails::new(
+                "a".repeat(1_024),
+                String::new(),
+                String::new(),
+                VocalRole::Male
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn artist_and_composer_are_at_most_1024_bytes() {
         let over = "a".repeat(1_025);
         assert_eq!(
-            SongDetails::new("t".to_owned(), over.clone(), String::new()),
+            SongDetails::new("t".to_owned(), over.clone(), String::new(), VocalRole::Male),
             Err(SongFileError::FieldLength {
                 field: DetailField::Artist,
                 len: 1_025
             })
         );
         assert_eq!(
-            SongDetails::new("t".to_owned(), String::new(), over.clone()),
+            SongDetails::new("t".to_owned(), String::new(), over.clone(), VocalRole::Male),
             Err(SongFileError::FieldLength {
                 field: DetailField::Composer,
                 len: 1_025
@@ -1755,7 +1830,7 @@ mod tests {
             })
         );
         let full = "a".repeat(1_024);
-        assert!(SongDetails::new("t".to_owned(), full.clone(), full).is_ok());
+        assert!(SongDetails::new("t".to_owned(), full.clone(), full, VocalRole::Male).is_ok());
     }
 
     #[test]
@@ -1786,6 +1861,35 @@ mod tests {
             read_details(&truncated),
             Err(SongFileError::DetailsTruncated {
                 field: DetailField::Composer
+            })
+        );
+    }
+
+    #[test]
+    fn song_details_end_with_a_known_vocal_role() {
+        for (code, role) in [(1, VocalRole::Male), (2, VocalRole::Female)] {
+            let mut bytes = encoded_details(b"t", b"", b"");
+            *bytes.last_mut().expect("a role byte") = code;
+            let Ok(Chunk::SongDetails(details)) = read_details(&bytes) else {
+                panic!("role {code} is accepted");
+            };
+            assert_eq!(details.vocal_role(), role);
+        }
+        for code in [0, 3] {
+            let mut bytes = encoded_details(b"t", b"", b"");
+            *bytes.last_mut().expect("a role byte") = code;
+            assert_eq!(
+                read_details(&bytes),
+                Err(SongFileError::UnknownVocalRole { value: code })
+            );
+        }
+        let mut no_role = encoded_details(b"title", b"", b"");
+        no_role.pop();
+        assert_eq!(no_role.len(), 11);
+        assert_eq!(
+            read_details(&no_role),
+            Err(SongFileError::DetailsTruncated {
+                field: DetailField::VocalRole
             })
         );
     }
@@ -2194,9 +2298,21 @@ mod tests {
         let word = "Xuânthì";
         let too_long = word.repeat(200);
         let errors = [
-            SongDetails::new(format!("{word}\0"), String::new(), String::new()).unwrap_err(),
-            SongDetails::new(too_long.clone(), String::new(), String::new()).unwrap_err(),
-            SongDetails::new("t".to_owned(), too_long, String::new()).unwrap_err(),
+            SongDetails::new(
+                format!("{word}\0"),
+                String::new(),
+                String::new(),
+                VocalRole::Male,
+            )
+            .unwrap_err(),
+            SongDetails::new(
+                too_long.clone(),
+                String::new(),
+                String::new(),
+                VocalRole::Male,
+            )
+            .unwrap_err(),
+            SongDetails::new("t".to_owned(), too_long, String::new(), VocalRole::Male).unwrap_err(),
             read_details(&encoded_details(
                 b"t",
                 b"",
@@ -2229,6 +2345,10 @@ mod tests {
             }
             .to_string(),
             "title is 1025 bytes, outside the limits for the title"
+        );
+        assert_eq!(
+            SongFileError::UnknownVocalRole { value: 3 }.to_string(),
+            "vocal role 3 is not known"
         );
         assert_eq!(
             SongFileError::Lyrics(LyricsError::NoLetters).to_string(),

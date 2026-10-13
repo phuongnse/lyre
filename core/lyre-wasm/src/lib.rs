@@ -112,14 +112,36 @@ impl TryFrom<&IndexEntry> for ChunkEntry {
     }
 }
 
+/// Who sings the song, with the numbers the song file stores.
+#[wasm_bindgen(js_name = VocalRole)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    Male = 1,
+    Female = 2,
+}
+
+impl From<song_file::VocalRole> for Role {
+    fn from(role: song_file::VocalRole) -> Role {
+        match role {
+            song_file::VocalRole::Male => Role::Male,
+            song_file::VocalRole::Female => Role::Female,
+        }
+    }
+}
+
 /// The song's title, artist and composer, exactly as the song file stores
-/// them. An empty artist or composer means not known.
-#[wasm_bindgen(getter_with_clone, js_name = SongDetails)]
+/// them, and its vocal role. An empty artist or composer means not known.
+#[wasm_bindgen(js_name = SongDetails)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Details {
+    #[wasm_bindgen(getter_with_clone)]
     pub title: String,
+    #[wasm_bindgen(getter_with_clone)]
     pub artist: String,
+    #[wasm_bindgen(getter_with_clone)]
     pub composer: String,
+    #[wasm_bindgen(js_name = vocalRole)]
+    pub vocal_role: Role,
 }
 
 impl From<&SongDetails> for Details {
@@ -128,6 +150,7 @@ impl From<&SongDetails> for Details {
             title: details.title().to_owned(),
             artist: details.artist().to_owned(),
             composer: details.composer().to_owned(),
+            vocal_role: details.vocal_role().into(),
         }
     }
 }
@@ -452,7 +475,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(bytes.len(), 248);
+        assert_eq!(bytes.len(), 249);
         bytes
     }
 
@@ -492,7 +515,7 @@ mod tests {
         let file = example();
         let header = &file[..32];
         assert_eq!(SongReader::index_length(header), Ok(7 * 24));
-        let reader = SongReader::new(header, &file[32..200], 248.0).expect("the example is valid");
+        let reader = SongReader::new(header, &file[32..200], 249.0).expect("the example is valid");
         assert_eq!(reader.duration_ms(), 1_000);
         let entries = reader.entries();
         assert_eq!(entries.len(), 7);
@@ -500,7 +523,7 @@ mod tests {
             entries[4],
             ChunkEntry {
                 kind: ChunkKind::KaraokeSegment,
-                offset: 242,
+                offset: 243,
                 length: 2,
                 start_ms: 0,
                 duration_ms: 1_000,
@@ -527,6 +550,7 @@ mod tests {
                 title: "Mưa".to_owned(),
                 artist: String::new(),
                 composer: String::new(),
+                vocal_role: Role::Female,
             })
         );
     }
@@ -534,7 +558,7 @@ mod tests {
     #[test]
     fn has_no_details_before_their_chunk_is_read() {
         let file = example();
-        let reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
+        let reader = SongReader::new(&file[..32], &file[32..200], 249.0).expect("valid");
         assert_eq!(reader.details(), None);
     }
 
@@ -601,7 +625,7 @@ mod tests {
     #[test]
     fn has_no_syllables_layout_sweep_or_countdown_before_the_lyrics_and_timing_are_read() {
         let file = example();
-        let mut reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
+        let mut reader = SongReader::new(&file[..32], &file[32..200], 249.0).expect("valid");
         assert_eq!(reader.syllables(), vec![]);
         assert_eq!(reader.lay_out(&[10.0, 10.0], 2.0, 100.0), vec![]);
         assert_eq!(reader.sweep_position(250.0), 0.0);
@@ -666,14 +690,14 @@ mod tests {
     #[test]
     fn a_truncated_file_is_damaged() {
         let file = example();
-        let fault = read(&file[..247]).expect_err("the last byte is missing");
+        let fault = read(&file[..248]).expect_err("the last byte is missing");
         assert!(!fault.not_a_song_file());
     }
 
     #[test]
     fn a_timing_that_does_not_match_the_lyrics_is_damaged() {
         let mut file = example();
-        file[220] = 0x03;
+        file[221] = 0x03;
         let fault = read(&file).expect_err("the timing count is wrong");
         assert!(!fault.not_a_song_file());
     }
@@ -689,14 +713,14 @@ mod tests {
     #[test]
     fn a_position_outside_the_index_is_damaged() {
         let file = example();
-        let mut reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
+        let mut reader = SongReader::new(&file[..32], &file[32..200], 249.0).expect("valid");
         assert_eq!(reader.read_chunk(7, b"os"), Err(DAMAGED));
     }
 
     #[test]
     fn a_chunk_of_the_wrong_length_is_damaged() {
         let file = example();
-        let mut reader = SongReader::new(&file[..32], &file[32..200], 248.0).expect("valid");
+        let mut reader = SongReader::new(&file[..32], &file[32..200], 249.0).expect("valid");
         assert_eq!(reader.read_chunk(4, b"k"), Err(DAMAGED));
     }
 }

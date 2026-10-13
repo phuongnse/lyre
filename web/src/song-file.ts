@@ -1,4 +1,4 @@
-import { ChunkKind, SongFileFault, SongReader } from './lyre-wasm/lyre_wasm.js'
+import { ChunkKind, VocalRole as CoreVocalRole, SongFileFault, SongReader } from './lyre-wasm/lyre_wasm.js'
 
 // Opens a song file through the core, following the reading model of
 // docs/reference/song-file-format-v0.md: the header, then the index, then one
@@ -37,12 +37,16 @@ export interface MediaTrack {
   segments: ChunkRef[]
 }
 
-// The song's title, artist and composer, exactly as the song file stores them.
-// An empty artist or composer means not known.
+// Who sings the song. A song file records one role for the whole song.
+export type VocalRole = 'male' | 'female'
+
+// The song's title, artist and composer, exactly as the song file stores them,
+// and its vocal role. An empty artist or composer means not known.
 export interface SongDetails {
   title: string
   artist: string
   composer: string
+  vocalRole: VocalRole
 }
 
 // One syllable of the lyrics, exactly as the song file stores it (D5), with its
@@ -136,7 +140,12 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
     }
     const read = reader.details()
     if (!read) throw new SongFileError('damaged')
-    const details = { title: read.title, artist: read.artist, composer: read.composer }
+    const details: SongDetails = {
+      title: read.title,
+      artist: read.artist,
+      composer: read.composer,
+      vocalRole: read.vocalRole === CoreVocalRole.Male ? 'male' : 'female',
+    }
     read.free()
     const track = (init: ChunkKind, segment: ChunkKind): MediaTrack | undefined => {
       const first = chunks.find((chunk) => chunk.kind === init)

@@ -15,7 +15,7 @@ function library(store: FakeLibraryStore): Library {
 function song(songId: string, title: string): OpenedSong {
   return {
     songId,
-    details: { title, artist: 'An artist', composer: '' },
+    details: { title, artist: 'An artist', composer: '', vocalRole: 'female' },
     durationMs: 1000,
     karaoke: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
     original: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },

@@ -18,10 +18,10 @@ See [the life of a milestone](../delivery.md#the-life-of-a-milestone).
 | **Display line** | A line as shown on screen. A long lyric line may be shown as several display lines; each one points back to its lyric line. | M1 |
 | **Karaoke track** | The music with the vocals removed. | M1 |
 | **Original track** | The song as it was in the source, vocals included. | M1 |
-| **Song** | One karaoke song: its media, both tracks, lyrics, timing, details (title, artist, composer) and thumbnail. | M1 |
+| **Song** | One karaoke song: its media, both tracks, lyrics, timing, details (title, artist, composer, vocal role) and thumbnail. | M1 |
 | **Song file** | A song stored as one `.lyre` file (D1). Encrypted from M3. | M1 |
 | **Section** | A part of a source, between a start and an end time, that becomes its own song. Cut in the clip editor. | M6 |
-| **Vocal role** | Who sings a lyric line or clause, for example male, female or duet. It sets the line's [colour](../ui-conventions.md#vocal-role-colours). | M8 |
+| **Vocal role** | Who sings a song, or a lyric line or clause: male, female or duet. A song file records one role for the whole song. Roles per line come with M8 and set each line's [colour](../ui-conventions.md#vocal-role-colours). | M1 |
 
 ## Processing
 

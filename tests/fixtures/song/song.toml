@@ -9,6 +9,7 @@ thumbnail = "thumbnail.jpg"
 title = "Mưa rơi nhẹ"
 artist = "Lyre fixtures"
 composer = "Lyre fixture composer"
+vocal_role = "female"
 
 # A segment's duration runs from its first Cluster's timestamp to the next
 # segment's, so each segment starts where its media does. The video Clusters
