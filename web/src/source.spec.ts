@@ -89,6 +89,7 @@ test('a source this browser plays is not refused', () => {
   })
   expect(details).not.toHaveProperty('cannotPlay')
   expect(details.audioType).toBe('audio/webm; codecs="opus"')
+  expect(details.videoType).toBe('video/webm; codecs="vp09.00.10.08"')
   expect(asked).toEqual(['video/webm; codecs="vp09.00.10.08"', 'audio/webm; codecs="opus"'])
 })
 
@@ -121,6 +122,7 @@ test('a track whose codec Mediabunny does not know is refused', () => {
 test('an audio-only source checks only its audio', () => {
   const details = sourceDetailsFrom(facts({ videoTracks: 0, videoCodec: null }), (type) => type.startsWith('audio/'))
   expect(details).not.toHaveProperty('cannotPlay')
+  expect(details).not.toHaveProperty('videoType')
 })
 
 test('a file that is not a readable source is refused with unreadable', async () => {

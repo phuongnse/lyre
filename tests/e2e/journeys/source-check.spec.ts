@@ -230,14 +230,14 @@ test('packaging song.webm shows an Opus WebM original track whose segments total
   expect(problems).toEqual([])
 })
 
-// Picks song.webm, then karaoke.webm with the karaoke button, and makes both audio tracks.
-async function makeAudioTracks(page: Page): Promise<void> {
-  await chooseSource(page, source('song.webm'))
+// Picks `file`, then karaoke.webm with the karaoke button, and makes the tracks.
+async function makeTracks(page: Page, file = 'song.webm'): Promise<void> {
+  await chooseSource(page, source(file))
   await expect(labelled(page, 'Source details')).toBeVisible()
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Choose a karaoke track' }).click()
   await (await chooser).setFiles(source('karaoke.webm'))
-  await page.getByRole('button', { name: 'Make the audio tracks' }).click()
+  await page.getByRole('button', { name: 'Make the tracks' }).click()
 }
 
 // The start and end of each segment in a list of rows such as "0–2000 ms".
@@ -252,7 +252,7 @@ async function segmentsIn(page: Page, name: string): Promise<[number, number][]>
 
 test('song.webm with karaoke.webm cuts both audio tracks at the same times, within 50 ms', async ({ page }) => {
   const problems = watchProblems(page)
-  await makeAudioTracks(page)
+  await makeTracks(page)
   await expect(labelled(page, 'Karaoke segments')).toBeVisible()
   const original = await segmentsIn(page, 'Original segments')
   const karaoke = await segmentsIn(page, 'Karaoke segments')
@@ -268,7 +268,7 @@ test('song.webm with karaoke.webm cuts both audio tracks at the same times, with
   expect(problems).toEqual([])
 })
 
-test('with Opus encoding unsupported, making the audio tracks shows only the cannot-encode message', async ({
+test('with Opus encoding unsupported, making the tracks shows only the cannot-encode message', async ({
   page,
 }) => {
   const problems = watchProblems(page)
@@ -278,12 +278,43 @@ test('with Opus encoding unsupported, making the audio tracks shows only the can
     AudioEncoder.isConfigSupported = async (config) =>
       config.codec.startsWith('opus') ? { supported: false, config } : isConfigSupported(config)
   })
-  await makeAudioTracks(page)
+  await makeTracks(page)
   await expect(page.getByRole('alert')).toHaveText('This browser cannot encode audio, so a song cannot be made in it.')
   await expect(page.getByRole('alert')).toHaveCount(1)
   await expect(labelled(page, 'Original segments')).toHaveCount(0)
   await expect(labelled(page, 'Karaoke segments')).toHaveCount(0)
   await expect(labelled(page, 'Song duration')).toHaveCount(0)
+  await expect(labelled(page, 'Video segments')).toHaveCount(0)
+  expect(problems).toEqual([])
+})
+
+test("song.webm gives video segments that follow on and end within 1,000 ms of the song's end", async ({ page }) => {
+  const problems = watchProblems(page)
+  await makeTracks(page)
+  await expect(labelled(page, 'Video segments')).toBeVisible()
+  const video = await segmentsIn(page, 'Video segments')
+  const karaoke = await segmentsIn(page, 'Karaoke segments')
+  expect(video.length).toBeGreaterThanOrEqual(1)
+  expect(video[0]![0]).toBeLessThanOrEqual(50)
+  for (const [index, [start, end]] of video.entries()) {
+    if (index > 0) expect(start).toBe(video[index - 1]![1])
+    expect(end - start).toBeGreaterThanOrEqual(1)
+    expect(end - start).toBeLessThanOrEqual(20_000)
+  }
+  // The song lasts as long as its karaoke track.
+  expect(Math.abs(video[video.length - 1]![1] - karaoke[karaoke.length - 1]![1])).toBeLessThanOrEqual(1_000)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(problems).toEqual([])
+})
+
+test('song.mp3 gives the audio tracks and no video segments', async ({ page }) => {
+  const problems = watchProblems(page)
+  await makeTracks(page, 'song.mp3')
+  await expect(labelled(page, 'Karaoke segments')).toBeVisible()
+  expect((await segmentsIn(page, 'Karaoke segments')).length).toBeGreaterThanOrEqual(1)
+  await expect(labelled(page, 'Video segments')).toHaveCount(0)
+  // A refused source can still be made on this test page.
+  await expectRefusal(page, await refusalOf(page, 'song.mp3'))
   expect(problems).toEqual([])
 })
 

@@ -25,6 +25,8 @@ export interface SourceDetails {
   // The stored type the core gives the primary audio track, even when this
   // browser cannot play it. Absent when the core gives none.
   audioType?: string
+  // The same for the primary video track. Absent too when there is no video.
+  videoType?: string
 }
 
 export type SourceTrack = 'video' | 'audio'
@@ -124,6 +126,8 @@ export function sourceDetailsFrom(facts: SourceFacts, canPlay: (type: string) =>
   if (composer !== undefined) details.composer = composer
   const audioType = facts.audioCodec === null ? undefined : typeOf(facts.audioCodec)
   if (audioType !== undefined) details.audioType = audioType
+  const videoType = facts.videoCodec === null ? undefined : typeOf(facts.videoCodec)
+  if (videoType !== undefined) details.videoType = videoType
   // The video is checked first, so it is named when both tracks fail, as in the Player.
   const tracks: [SourceTrack, TrackCodec | null][] = [
     ['video', facts.videoCodec],
