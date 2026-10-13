@@ -35,4 +35,27 @@ export const messages = {
   backedUp: (yes: boolean) => `Backed up: ${yes ? 'yes' : 'no'}`,
   passkeyLeftBehind:
     'The check leaves a passkey named "Lyre passkey check" on this device. Delete it in the device\'s passkey settings.',
+  taskCheckTitle: 'Task check',
+  taskCheckAbout: 'Runs a task of three test stages, about 2 s each, in a Web Worker.',
+  startTestTask: 'Start a test task',
+  cancelTask: 'Cancel',
+  taskProgress: 'Stage progress',
+  taskStage: (number: number, count: number, stage: string) => `Stage ${number} of ${count}: ${stage}`,
+  taskTimeLeft: (seconds: number) => `About ${seconds} s left`,
+  taskDone: 'Done',
+  taskCancelled: 'Cancelled',
+  taskFailed: (reason: string) => `Failed: ${reason}`,
+  taskFailedIn: (stage: string, reason: string) => `Failed in ${stage}: ${reason}`,
+  // Keyed by the stage's name in the task.
+  stageNames: {
+    'test-1': 'Test stage 1',
+    'test-2': 'Test stage 2',
+    'test-3': 'Test stage 3',
+  },
+  // Keyed by TaskFailure.
+  taskFailures: {
+    'test-stage-failed': 'a test stage failed.',
+    'another-task-running': 'another task is running.',
+    unexpected: 'something unexpected went wrong.',
+  },
 } as const

@@ -145,10 +145,21 @@ reference doc and reviewed before M3 implements them.
 - Each stage writes its output to the task's own working area. A task that
   fails, is cancelled or stops with the app removes that area and leaves no
   song behind. It can start again from the beginning.
-- The web client runs models in a Web Worker, so the page stays responsive.
-  The Android app runs them in a foreground service the user can see.
-- A client reports progress per stage, and a measured time left only once it
-  can measure it.
+- The web client runs a task's stages in a Web Worker, so the page stays
+  responsive. Cancel ends the worker at once, because a model run cannot stop
+  partway through when asked. The Android app runs them in a foreground
+  service the user can see *(planned for M4)*.
+- On the web, a task's working area is a `tasks/<task ID>` folder in the
+  browser's origin private file system (OPFS). The web client removes any
+  working area left behind each time it starts.
+- On the web, a browser lock named `lyre-task` keeps one task at a time across
+  tabs. The startup cleanup waits for it, so it never removes the area of a
+  task still running in another tab.
+- A client reports progress per stage, and a time left for the current stage
+  only once that stage has run 1 s and reported some progress.
+- The task logic is TypeScript in the web client, not part of the core: it is
+  all worker and storage work. The web client runs test stages until the real
+  stages exist *(planned for M2)*.
 
 ## Testing
 

@@ -4,7 +4,7 @@
     <!-- First in <head>: a <meta> policy covers only what comes after it. GitHub Pages sets no headers. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; require-trusted-types-for 'script'; trusted-types angular angular#bundler"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; require-trusted-types-for 'script'; trusted-types angular angular#bundler lyre#worker"
     />
     <!-- Relative asset paths, so the same build works at / and under a sub-path such as /lyre/. -->
     <base href="./" />
