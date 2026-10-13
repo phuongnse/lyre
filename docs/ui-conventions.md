@@ -119,8 +119,12 @@ from M1, except those marked *(planned for M8)*.
   the fill, so about 0.06 em shows outside the glyph. On the web this is
   `-webkit-text-stroke: 0.125em` with `paint-order: stroke fill`. In Compose
   the stroke layer is drawn first, then the fill *(planned for M4)*.
-- The shadow is crisp. It is offset 0.08 em to the right and 0.08 em down,
-  with a blur of 0.
+- The shadow is one layer under the whole glyph, outline included, so nothing
+  is drawn over the outline. It is crisp: offset 0.15 em to the right and
+  0.15 em down, with a blur of 0. On the web it is
+  `filter: drop-shadow(0.15em 0.15em 0 #000)` on each syllable and dot, not
+  `text-shadow`, which Chromium paints over the stroke. In Compose the shadow
+  is drawn first, then the stroke, then the fill *(planned for M4)*.
 - Outline width and shadow offset are given in em, so they scale with the font
   size.
 - As the sweep passes a syllable, its fill turns to the

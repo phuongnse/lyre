@@ -134,7 +134,8 @@ interface ShownLine {
       color: #fff;
       -webkit-text-stroke: 0.125em #000;
       paint-order: stroke fill;
-      text-shadow: 0.08em 0.08em 0 #000;
+      /* Not text-shadow: Chromium paints the fill's shadow over the stroke. */
+      filter: drop-shadow(0.15em 0.15em 0 #000);
     }
     .syllable.sung,
     .syllable[aria-current='true']::after,

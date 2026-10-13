@@ -141,7 +141,12 @@ test('sung syllables have the highlight fill and a white outline, unsung ones wh
   const style = (text: string) =>
     syllable(text).evaluate((element) => {
       const computed = getComputedStyle(element)
-      return { fill: computed.color, outline: computed.webkitTextStrokeColor, shadow: computed.textShadow }
+      return {
+        fill: computed.color,
+        outline: computed.webkitTextStrokeColor,
+        filter: computed.filter,
+        textShadow: computed.textShadow,
+      }
     })
   // #A100FB is the highlight colour from docs/ui-conventions.md#highlight-colour.
   const sung = await style('Mưa')
@@ -150,10 +155,13 @@ test('sung syllables have the highlight fill and a white outline, unsung ones wh
   const unsung = await style('Em')
   expect(unsung.fill).toBe('rgb(255, 255, 255)')
   expect(unsung.outline).toBe('rgb(0, 0, 0)')
-  // Both keep the crisp black shadow: black, with no blur.
-  for (const { shadow } of [sung, unsung]) {
-    expect(shadow.startsWith('rgb(0, 0, 0)'), shadow).toBe(true)
-    expect(shadow.endsWith(' 0px'), shadow).toBe(true)
+  // Both keep the same crisp black shadow, a drop-shadow filter with no blur.
+  // It lies under the outline, which text-shadow would not.
+  expect(sung.filter).toBe(unsung.filter)
+  for (const { filter, textShadow } of [sung, unsung]) {
+    expect(filter.startsWith('drop-shadow(rgb(0, 0, 0) '), filter).toBe(true)
+    expect(filter.endsWith(' 0px)'), filter).toBe(true)
+    expect(textShadow).toBe('none')
   }
 })
 
@@ -213,6 +221,10 @@ test('changed dots have the highlight fill and a white outline, the others white
       return { fill: computed.color, outline: computed.webkitTextStrokeColor }
     }),
   )
+  // The dots have the same shadow as the syllables.
+  const filters = await first.evaluate((element) => [...element.children].map((dot) => getComputedStyle(dot).filter))
+  const syllableFilter = await syllableIn(region)('Mưa').evaluate((element) => getComputedStyle(element).filter)
+  expect(filters).toEqual(Array(4).fill(syllableFilter))
   // #A100FB is the highlight colour from docs/ui-conventions.md#highlight-colour.
   const changed = { fill: 'rgb(161, 0, 251)', outline: 'rgb(255, 255, 255)' }
   const unchanged = { fill: 'rgb(255, 255, 255)', outline: 'rgb(0, 0, 0)' }
@@ -290,4 +302,122 @@ test('the sung part of "nhẹ" lies over its text, and does not move when it is 
     for (const text of ['Mưa', 'rơi', 'nhẹ']) await expect(syllableIn(region)(text)).not.toHaveAttribute('aria-current')
   })
   expect(shift).toBeLessThanOrEqual(0.01)
+})
+
+// What edgeScan measures, with widths in em.
+interface EdgeScan {
+  // The fraction of scanned lines whose first bright pixel from the edge is white.
+  whiteFraction: number
+  // The median width of the dark band past that pixel, to the right and below.
+  rightBand: number
+  bottomBand: number
+}
+
+// Screenshots `target` with 0.3 em more to the right and below, on a plain
+// green backdrop with everything else hidden, and scans in from the right edge
+// along every pixel row and from the bottom edge up every column. The first
+// bright pixel on a line is the outer edge of the white outline, or of the white
+// fill when the outline is black. A line is white when that pixel or the next
+// one in is white, which leaves out the blending at the glyph's edge. The dark pixels between it and the edge are
+// the shadow band, with the black outline outside the glyph for an unsung one.
+async function edgeScan(page: Page, region: Locator, video: Locator, target: Locator): Promise<EdgeScan> {
+  // The video's test pattern moves, and the neighbouring glyphs would fall
+  // inside the scanned area. The backdrop goes on the region and never on a
+  // syllable, as its shadow would lie over a syllable's background.
+  await video.evaluate((element) => (element.style.visibility = 'hidden'))
+  const handle = await target.elementHandle()
+  const em = await region.evaluate((section, keep) => {
+    section.style.background = 'rgb(0, 160, 0)'
+    for (const element of section.querySelectorAll<HTMLElement>('.syllable, .dot')) {
+      if (element !== keep) element.style.visibility = 'hidden'
+    }
+    return parseFloat(getComputedStyle(section).fontSize)
+  }, handle)
+  await target.scrollIntoViewIfNeeded()
+  const box = (await target.boundingBox())!
+  const area = (await region.boundingBox())!
+  const left = Math.max(box.x, area.x)
+  const top = Math.max(box.y, area.y)
+  const right = Math.min(box.x + box.width + 0.3 * em, area.x + area.width)
+  const bottom = Math.min(box.y + box.height + 0.3 * em, area.y + area.height)
+  const clip = { x: left, y: top, width: right - left, height: bottom - top }
+  const png = await page.screenshot({ clip })
+  const scan = await page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+    const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!
+    context.drawImage(bitmap, 0, 0)
+    const { data, width, height } = context.getImageData(0, 0, bitmap.width, bitmap.height)
+    const channels = (x: number, y: number) => {
+      const i = (y * width + x) * 4
+      return [data[i], data[i + 1], data[i + 2]]
+    }
+    // Scans the `length` pixels of one line from its end, as pixel positions.
+    const line = (at: (position: number) => number[], length: number) => {
+      for (let position = length - 1; position >= 0; position--) {
+        const pixel = at(position)
+        if (Math.max(...pixel) >= 200) {
+          let dark = 0
+          for (let after = position + 1; after < length; after++) {
+            if (Math.max(...at(after)) < 80) dark++
+          }
+          // Where the outline meets the backdrop instead of the shadow, the edge
+          // pixel is white blended with green, so the next one in is checked too.
+          const inner = position > 0 ? at(position - 1) : pixel
+          return { white: Math.max(Math.min(...pixel), Math.min(...inner)) >= 200, dark }
+        }
+      }
+      return undefined
+    }
+    const rows = Array.from({ length: height }, (_, y) => line((x) => channels(x, y), width))
+    const columns = Array.from({ length: width }, (_, x) => line((y) => channels(x, y), height))
+    const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0
+    const found = [...rows, ...columns].filter((result) => result !== undefined)
+    const darkOf = (results: typeof rows) => median(results.filter((result) => result !== undefined).map((result) => result.dark))
+    return {
+      whiteFraction: found.filter((result) => result.white).length / Math.max(found.length, 1),
+      rightBand: darkOf(rows),
+      bottomBand: darkOf(columns),
+    }
+  }, png.toString('base64'))
+  return { whiteFraction: scan.whiteFraction, rightBand: scan.rightBand / em, bottomBand: scan.bottomBand / em }
+}
+
+test('at 4.0 s the fully sung "Mưa" has an unbroken white outline and a black shadow band past it', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 4)
+  await expect(syllableIn(region)('Mưa')).toHaveClass(/sung/)
+  const scan = await edgeScan(page, region, video, syllableIn(region)('Mưa'))
+  expect(scan.whiteFraction).toBeGreaterThanOrEqual(0.95)
+  expect(scan.rightBand).toBeGreaterThanOrEqual(0.08)
+  expect(scan.bottomBand).toBeGreaterThanOrEqual(0.08)
+})
+
+test('at 4.0 s the unsung "bên" has a dark band of outline and shadow past its white fill', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 4)
+  await expect(syllableIn(region)('về')).toHaveAttribute('aria-current', 'true')
+  await expect(syllableIn(region)('bên')).not.toHaveClass(/sung/)
+  // The outline's 0.06 em outside the glyph, and at least 0.08 em of shadow.
+  const scan = await edgeScan(page, region, video, syllableIn(region)('bên'))
+  expect(scan.rightBand).toBeGreaterThanOrEqual(0.14)
+  expect(scan.bottomBand).toBeGreaterThanOrEqual(0.14)
+})
+
+// The line after the 5 s break has countdown steps ending at 8.4, 8.9, 9.4 and 9.9 s.
+test('at 9.5 s the third countdown dot has an unbroken white outline and a black shadow band past it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 9.5)
+  await expect(countdownsIn(region)).toHaveAttribute('aria-valuenow', '3')
+  const dot = countdownsIn(region).locator('.dot').nth(2)
+  await expect(dot).toHaveClass(/changed/)
+  const scan = await edgeScan(page, region, video, dot)
+  expect(scan.whiteFraction).toBeGreaterThanOrEqual(0.95)
+  expect(scan.rightBand).toBeGreaterThanOrEqual(0.08)
+  expect(scan.bottomBand).toBeGreaterThanOrEqual(0.08)
 })
