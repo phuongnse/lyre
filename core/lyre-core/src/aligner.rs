@@ -676,4 +676,40 @@ mod tests {
             assert!(!message.contains(secret), "{message}");
         }
     }
+
+    #[test]
+    fn the_committed_test_vocabularies_cover_the_fixture_lyrics() {
+        let lyrics =
+            crate::lyrics::Lyrics::parse(include_bytes!("../../../tests/fixtures/song/lyrics.txt"))
+                .expect("valid lyrics");
+        let files: [(AlignerKind, &[u8], usize, &str); 2] = [
+            (
+                OMNI,
+                include_bytes!("../../../tests/fixtures/models/omnilingual-tokens.txt"),
+                0,
+                "<s>",
+            ),
+            (
+                LYRIC,
+                include_bytes!("../../../tests/fixtures/models/lyric-alignment-vocab.json"),
+                22,
+                "<pad>",
+            ),
+        ];
+        for (kind, bytes, blank, blank_token) in files {
+            let vocabulary = kind.read_vocabulary(bytes).expect("valid");
+            assert_eq!(vocabulary.tokens.len(), 25, "{kind:?}");
+            assert_eq!(vocabulary.blank, blank, "{kind:?}");
+            assert_eq!(vocabulary.tokens[blank], blank_token, "{kind:?}");
+            let log_probs = vec![-(25f32).ln(); 200 * 25];
+            let emissions = crate::alignment::Emissions {
+                log_probs: &log_probs,
+                vocabulary: &vocabulary.tokens,
+                blank: vocabulary.blank,
+                frame_us: 20_000,
+            };
+            let aligned = crate::alignment::align(&lyrics, &emissions, 4_000);
+            assert!(aligned.is_ok(), "{kind:?}: {aligned:?}");
+        }
+    }
 }

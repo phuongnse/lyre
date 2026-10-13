@@ -170,5 +170,6 @@ or no reason in a browser that accepts the type. A last one makes Chromium
 report that it cannot encode Opus, and checks that making the audio tracks
 shows only the cannot-encode-audio message.
 
-The files under `tests/fixtures/` total about 61 KB. A test fails when they
-pass 64 KiB.
+The files under `tests/fixtures/` total about 67 KB. A test fails when they
+pass 72 KiB. The cap keeps the fixtures small and synthetic, so no source
+media, song files made from real media or model weights get committed.
