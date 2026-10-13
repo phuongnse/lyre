@@ -10,7 +10,8 @@ pub struct PinnedFile {
     /// The ID clients use to name the file.
     pub id: &'static str,
     /// Where the file is downloaded from, at a fixed revision. The tests
-    /// check that every URL names a full commit, never a branch or a tag.
+    /// check that every real file's URL names a full commit on Hugging Face,
+    /// never a branch or a tag. A test entry's URL is relative to the site.
     pub url: &'static str,
     /// The file's size in bytes.
     pub size: u64,
@@ -18,20 +19,64 @@ pub struct PinnedFile {
     pub sha256: &'static str,
 }
 
-/// Every pinned model file.
-// These are test entries only, built from the SHA-256 test vectors of
-// FIPS 180-2. Their host never resolves, so no client can download them. The
-// real models come with a later issue.
+/// Every pinned model file. Its `id` also names the file in a client's
+/// storage, so it uses only lowercase letters, digits and `-`.
+// The real files are the rows of docs/reference/models.md, and a test keeps
+// them identical. The `test-` entries are built from the SHA-256 test vectors
+// of FIPS 180-2. Their URLs are relative `test-models/` paths that only the
+// e2e server serves, so no release site has them.
 pub const PINNED_FILES: &[PinnedFile] = &[
     PinnedFile {
+        id: "omnilingual-int8-model",
+        url: "https://huggingface.co/csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/6fc542a3b0661c8278cca1230c34deb989f31202/model.int8.onnx",
+        size: 365_352_120,
+        sha256: "e7c4e54ee4c4c47829cc6667d5d00ed8ea7bef1dcfeef0fce766f77752a2726c",
+    },
+    PinnedFile {
+        id: "omnilingual-tokens",
+        url: "https://huggingface.co/csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/6fc542a3b0661c8278cca1230c34deb989f31202/tokens.txt",
+        size: 86_423,
+        sha256: "a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31",
+    },
+    PinnedFile {
+        id: "htdemucs-graph",
+        url: "https://huggingface.co/webnn/stem-separator/resolve/b56f9e66ceffca2401f83d2469dadaddd06e4994/onnx/htdemucs_fwd.onnx",
+        size: 2_385_507,
+        sha256: "555f511fb653348a1c9495ab6b6091767d1920798f3fba68629a1fe5b135a45f",
+    },
+    PinnedFile {
+        id: "htdemucs-weights",
+        url: "https://huggingface.co/webnn/stem-separator/resolve/b56f9e66ceffca2401f83d2469dadaddd06e4994/onnx/htdemucs_fwd.onnx.data",
+        size: 168_361_984,
+        sha256: "23a7c68669c041363caaef94641e961dc8c4e16b9891cb87f58f0e199a5e8820",
+    },
+    PinnedFile {
+        id: "lyric-alignment-fp32",
+        url: "https://huggingface.co/phuongnse/lyric-alignment-onnx/resolve/ec46b2179bfbe521e22c36d0c08bd3993c63fe71/model.onnx",
+        size: 1_275_253_998,
+        sha256: "02eda699db61269dc37620d3778fb8e8f88b67a95dbd1e0e60657dfc8afb6779",
+    },
+    PinnedFile {
+        id: "lyric-alignment-int8",
+        url: "https://huggingface.co/phuongnse/lyric-alignment-onnx/resolve/ec46b2179bfbe521e22c36d0c08bd3993c63fe71/model.int8.onnx",
+        size: 359_796_311,
+        sha256: "0071840476677e53e1cd9881246a3d2890bad812096282ebe1ac1bd676c23099",
+    },
+    PinnedFile {
+        id: "lyric-alignment-vocab",
+        url: "https://huggingface.co/phuongnse/lyric-alignment-onnx/resolve/ec46b2179bfbe521e22c36d0c08bd3993c63fe71/vocab.json",
+        size: 1_169,
+        sha256: "4339e2cb5c97554f089fe317120e794efce3f7626ad205fb496d34bddd2c6ae7",
+    },
+    PinnedFile {
         id: "test-empty",
-        url: "https://example.invalid/lyre-test/resolve/0123456789abcdef0123456789abcdef01234567/empty.bin",
+        url: "test-models/empty.bin",
         size: 0,
         sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     },
     PinnedFile {
         id: "test-two-block",
-        url: "https://example.invalid/lyre-test/resolve/0123456789abcdef0123456789abcdef01234567/two-block.bin",
+        url: "test-models/two-block.bin",
         size: 56,
         sha256: "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
     },
@@ -240,16 +285,58 @@ mod tests {
         assert_eq!(pinned_file("no-such-model"), None);
     }
 
+    /// The real model files: every entry but the test entries.
+    fn real_files() -> impl Iterator<Item = &'static PinnedFile> {
+        PINNED_FILES
+            .iter()
+            .filter(|file| !file.id.starts_with("test-"))
+    }
+
     #[test]
-    fn every_pinned_url_names_a_fixed_revision() {
-        for file in PINNED_FILES {
+    fn every_real_url_names_a_fixed_revision_on_hugging_face() {
+        assert!(real_files().count() > 0);
+        for file in real_files() {
+            assert!(
+                file.url.starts_with("https://huggingface.co/"),
+                "{}",
+                file.url
+            );
             assert!(names_fixed_revision(file.url), "{}", file.url);
         }
     }
 
     #[test]
+    fn every_test_url_is_a_plain_path_under_test_models() {
+        let tests: Vec<_> = PINNED_FILES
+            .iter()
+            .filter(|file| file.id.starts_with("test-"))
+            .collect();
+        assert_eq!(tests.len(), 2);
+        for file in tests {
+            assert!(file.url.starts_with("test-models/"), "{}", file.url);
+            for part in [":", "..", "//"] {
+                assert!(!file.url.contains(part), "{}", file.url);
+            }
+        }
+    }
+
+    #[test]
+    fn pinned_ids_use_only_lowercase_letters_digits_and_hyphens() {
+        for file in PINNED_FILES {
+            assert!(!file.id.is_empty());
+            assert!(
+                file.id
+                    .bytes()
+                    .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-')),
+                "{}",
+                file.id
+            );
+        }
+    }
+
+    #[test]
     fn a_branch_name_is_not_a_fixed_revision() {
-        let url = PINNED_FILES[0].url;
+        let url = real_files().next().expect("a real file").url;
         let revision = url
             .split("/resolve/")
             .nth(1)
@@ -258,6 +345,52 @@ mod tests {
         let on_main = url.replace(revision, "main");
         assert!(on_main.contains("/resolve/main/"));
         assert!(!names_fixed_revision(&on_main));
+    }
+
+    const MODELS_DOC: &str = include_str!("../../../docs/reference/models.md");
+
+    /// The (URL, size, SHA-256) of each table row of the models reference,
+    /// read as its "Checking the pins" command reads them.
+    fn documented_files() -> Vec<(String, u64, String)> {
+        let mut files = Vec::new();
+        for line in MODELS_DOC.lines() {
+            if !line.starts_with("| `") {
+                continue;
+            }
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            let [_, repo, revision, path, size, sha256, _] = cells[..] else {
+                continue;
+            };
+            let code = |cell: &str| cell.strip_prefix('`')?.strip_suffix('`').map(str::to_owned);
+            let (Some(repo), Some(revision), Some(path), Some(sha256)) =
+                (code(repo), code(revision), code(path), code(sha256))
+            else {
+                continue;
+            };
+            let Ok(size) = size.replace(',', "").parse::<u64>() else {
+                continue;
+            };
+            if revision.len() != 40 || sha256.len() != 64 {
+                continue;
+            }
+            files.push((
+                format!("https://huggingface.co/{repo}/resolve/{revision}/{path}"),
+                size,
+                sha256,
+            ));
+        }
+        files
+    }
+
+    #[test]
+    fn the_real_files_are_the_rows_of_the_models_reference() {
+        let documented = documented_files();
+        assert_eq!(documented.len(), 7);
+        let documented: std::collections::BTreeSet<_> = documented.into_iter().collect();
+        let pinned: std::collections::BTreeSet<_> = real_files()
+            .map(|file| (file.url.to_owned(), file.size, file.sha256.to_owned()))
+            .collect();
+        assert_eq!(pinned, documented);
     }
 
     #[test]

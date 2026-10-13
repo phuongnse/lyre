@@ -6,7 +6,13 @@ import { fileURLToPath } from 'node:url'
 
 // `paths` are the prefixes that make a part "checked". `needs` lists the parts it builds on.
 export const PARTS = [
-  { name: 'core', label: 'the core', paths: ['core/', 'tests/fixtures/'], needs: [] },
+  {
+    name: 'core',
+    label: 'the core',
+    // A core test checks the pinned model files against the models reference.
+    paths: ['core/', 'tests/fixtures/', 'docs/reference/models.md'],
+    needs: [],
+  },
   { name: 'web', label: 'the web client', paths: ['web/', 'core/', 'tests/fixtures/'], needs: ['core'] },
   {
     name: 'e2e',
