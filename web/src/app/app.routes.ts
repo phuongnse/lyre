@@ -20,5 +20,9 @@ export const routes: Routes = [
     path: 'model-check',
     loadComponent: () => import('./model-check/model-check.component').then((m) => m.ModelCheckPage),
   },
+  {
+    path: 'separation-check',
+    loadComponent: () => import('./separation-check/separation-check.component').then((m) => m.SeparationCheck),
+  },
   { path: '**', redirectTo: '' },
 ]

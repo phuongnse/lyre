@@ -1,6 +1,6 @@
 import { AudioSampleSink, BlobSource, Input, MP3, MP4, WEBM } from 'mediabunny'
 import { Resampler } from './resampler'
-import { SourceError } from './source'
+import { SourceError } from './source-error'
 
 // Decodes a source's audio: stage 2 of processing
 // (docs/domain/knowledge.md#processing). It decodes through WebCodecs, piece

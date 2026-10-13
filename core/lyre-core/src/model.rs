@@ -92,7 +92,7 @@ pub const PINNED_FILES: &[PinnedFile] = &[
         id: "test-htdemucs-weights",
         url: "test-models/htdemucs_fwd.onnx.data",
         size: 4,
-        sha256: "75e253f50979177eba47b2d0805ad36038789108924514d2a761a70de057d16f",
+        sha256: "31b67dba7cfd6e2d7540f9c96d90a45b8f2d44956620723024d4e1beeacd4602",
     },
 ];
 

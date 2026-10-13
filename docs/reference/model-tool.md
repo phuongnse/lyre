@@ -139,9 +139,10 @@ the 170 MB real model. Tests never use the real models
   (1, 4, 2048, 336) and `xt` (1, 2, 343980) in, `x_out` (1, 16, 2048, 336)
   and `xt_out` (1, 8, 343980) out.
 - Each output holds four copies of its input, one per stem, each multiplied
-  by 0.25. So the four stems add back up to the input, to float precision.
-  It separates nothing.
-- The 0.25 is the graph's only weight. It sits in the weights file, which the
+  by 0.125. So the four stems of each branch add up to half the input. The
+  core adds the spectrogram and waveform branches together, so the two give
+  back the input. It separates nothing.
+- The 0.125 is the graph's only weight. It sits in the weights file, which the
   graph names `htdemucs_fwd.onnx.data` as the real graph does. So a client
   loads the test separator as it loads the real one.
 - It needs only Python's standard library, and every run writes the same

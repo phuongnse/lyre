@@ -248,7 +248,8 @@ Compose uses the same three values *(planned for M4)*.
   the passkey check page and the model measurement page (see
   [early checks](roadmap.md#early-checks-on-real-devices)), the task
   check page at `#/task-check`, the source check page at
-  `#/source-check` and the model check page at `#/model-check`.
+  `#/source-check`, the model check page at `#/model-check` and the
+  separation check page at `#/separation-check`.
 - The task check page runs a task of test stages, with its progress and a
   Cancel button. The Playwright journeys use it to check cancel and the
   cleanup after a reload ([processing](architecture.md#processing-planned-for-m2)).
@@ -282,5 +283,18 @@ Compose uses the same three values *(planned for M4)*.
   `#/model-check?backend=wasm`, makes it run on WebAssembly even when the
   browser has a GPU. The Playwright journeys use it to check the run without
   a GPU, under the page's policy and from the site's own origin.
+- The separation check page separates a picked source's audio into vocals and
+  a karaoke track in a Web Worker
+  ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
+  progress bar and the status line show the backend and the windows done out
+  of the total. When it ends, the page shows the backend that ran and the
+  lengths of the source, the vocals and the karaoke track. A run that fails
+  the sum check names the rule and the value it measured. A source without
+  audio, or a file it cannot read, gets the source check page's messages, and
+  a separator that cannot be loaded gets its own. The page runs htdemucs.
+  `?model=test` runs the test separator instead, and `?backend=wasm` makes it
+  run on WebAssembly, as on the model check page. The Playwright journeys use
+  it to check a whole run of the test separator and that the page stays
+  responsive.
 - Each one is a lazy-loaded route with `loadComponent`, in the same build and
   deploy as the main app. This is agreed in D19.

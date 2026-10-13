@@ -977,6 +977,26 @@ mod tests {
     }
 
     #[test]
+    fn the_test_separator_s_scaling_passes_the_sum_check_on_a_tone() {
+        // 2 s of a 440 Hz tone at amplitude 0.125, as ffmpeg's sine source
+        // gives it.
+        let tone: Vec<f32> = (0..88_200)
+            .map(|n| (0.125 * (2.0 * PI * 440.0 * n as f64 / 44_100.0).sin()) as f32)
+            .collect();
+        let mut separation = Separation::new(&tone, &tone).unwrap();
+        assert_eq!(separation.window_count(), 1);
+        let input = separation.input(0).unwrap();
+        // 0.125 is SCALE in tools/model-tool/make_test_separator.py: every
+        // stem of both branches is the branch's input times 0.125.
+        let x_out = stems_of(&input.x, [0.125; 4]);
+        let xt_out = stems_of(&input.xt, [0.125; 4]);
+        separation.output(0, &x_out, &xt_out).unwrap();
+        let tracks = separation.finish().expect("the sum check passes");
+        assert_eq!(tracks.vocals.len(), 2 * 88_200);
+        assert_eq!(tracks.karaoke.len(), 2 * 88_200);
+    }
+
+    #[test]
     fn silence_passes_the_sum_check() {
         let silent = vec![0.0f32; 1000];
         let check = sum_check(&silent, &silent, &silent).expect("passes");

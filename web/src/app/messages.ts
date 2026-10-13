@@ -159,4 +159,27 @@ export const messages = {
   separatorRan: (backend: string, xOut: readonly number[], xtOut: readonly number[]) =>
     `The test separator ran on ${backend}. x_out ${xOut.join('×')}, xt_out ${xtOut.join('×')}.`,
   separatorFailed: 'The test separator could not run.',
+  separationCheckTitle: 'Separation check',
+  separationCheckAbout:
+    "Separates a source's audio into vocals and a karaoke track in a Web Worker. The source is not changed or sent anywhere.",
+  separationPreparing: 'Loading the separator and decoding the audio…',
+  separationProgress: 'Separation progress',
+  separationRunning: (backend: string, done: number, total: number) =>
+    `Separating on ${backend}: ${done} of ${total} windows done`,
+  separationDone: (backend: string, done: number, total: number) =>
+    `Separated on ${backend}: ${done} of ${total} windows done`,
+  separatedAudio: 'Separated audio',
+  separationBackend: 'Backend',
+  separationSourceLength: 'Source length',
+  separationVocalsLength: 'Vocals length',
+  separationKaraokeLength: 'Karaoke track length',
+  // Keyed by SumCheckRule. Each rule has its own sentence, so each translates whole.
+  sumCheckFailed: {
+    energy: (db: string) => `The separation failed the sum check's energy rule: ${db} dB, at least 10 dB needed.`,
+    'vocals-peak': (db: string) =>
+      `The separation failed the sum check's vocals peak rule: ${db} dB, more than 1 dB above the input.`,
+    'karaoke-peak': (db: string) =>
+      `The separation failed the sum check's karaoke track peak rule: ${db} dB, more than 1 dB above the input.`,
+  },
+  separatorNotLoaded: 'The separator could not be loaded.',
 } as const
