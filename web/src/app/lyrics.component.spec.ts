@@ -15,6 +15,7 @@ interface SongOptions {
   lyrics?: OpenedSong['lyrics']
   layOut?: OpenedSong['layOut']
   rows?: () => LyricsRows
+  vocalRole?: 'male' | 'female'
 }
 
 // A song whose lyrics are by default "Mưa\trơi  nhẹ", laid out as one display
@@ -28,11 +29,12 @@ function song({
   lyrics,
   layOut = () => [{ lyricLine: 0, start: 0, end: 3 }],
   rows = () => ({ top: 0, bottom: 1 }),
+  vocalRole = 'female',
 }: SongOptions = {}): OpenedSong {
   const timing = { lyricLine: 0, startMs: 0, endMs: 0 }
   return {
     songId: '00112233445566778899aabbccddeeff',
-    details: { title: 'Mưa', artist: '', composer: '', vocalRole: 'female' },
+    details: { title: 'Mưa', artist: '', composer: '', vocalRole },
     durationMs: 1000,
     karaoke: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
     original: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
@@ -83,6 +85,16 @@ test('a display line holds the exact text of its lyric line, tab and double spac
   expect(element.querySelector('section')?.getAttribute('aria-label')).toBe('Lyrics')
   expect(element.querySelector('p')?.textContent).toBe('Mưa\trơi  nhẹ')
 })
+
+test.each(['male', 'female'] as const)(
+  "sung text takes the colour token of a %s song's vocal role",
+  async (vocalRole) => {
+    const element = await render(song({ vocalRole }))
+    expect(element.querySelector<HTMLElement>('section')?.style.getPropertyValue('--sung')).toBe(
+      `var(--lyre-vocal-${vocalRole})`,
+    )
+  },
+)
 
 test('the syllable being sung is current, and the ones before it are sung', async () => {
   let position = 1.5

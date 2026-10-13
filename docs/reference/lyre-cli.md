@@ -33,7 +33,8 @@ From the repository root, this builds the fixture song:
 
 The built file is not committed. Tests build it from the fixtures when they
 run: `scripts/e2e.sh` builds it into `artifacts/e2e/fixture.lyre` for the
-Player journeys. The `inspect` command in the [repository
+Player journeys. It also builds `male.toml` into
+`artifacts/e2e/fixture-male.lyre`. The `inspect` command in the [repository
 layout](../architecture.md#repository-layout) is not built yet.
 
 ## Manifest
@@ -110,6 +111,9 @@ from real media.
   plays.
 - **Thumbnail.** A JPEG frame of the test pattern.
 - **Lyrics.** Three short made-up Vietnamese lines, not from any real song.
+- **Male variant.** `male.toml` is the same song with a male vocal role, for
+  the vocal role colour journey. A lyre-cli test keeps it equal to `song.toml`
+  apart from its header comment and vocal role.
 - **Timing.** Written by hand for those lyrics. The first lyric line starts
   at 2,000 ms, after a lead-in. The second follows a 300 ms break. The third
   starts 5,000 ms after the second ends. So the fixture has both gaps that
