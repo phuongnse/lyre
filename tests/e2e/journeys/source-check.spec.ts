@@ -75,7 +75,7 @@ async function reportUnplayable(page: Page, codec: string): Promise<void> {
 // The refusal `file` gets in this browser, if any. MP3 is stored as
 // `audio/mp4; codecs="mp4a.6B"`, which Playwright's Chromium does not accept.
 async function refusalOf(page: Page, file: string): Promise<string | undefined> {
-  if (file !== 'song.mp3') return undefined
+  if (file !== 'song.mp3' && file !== 'cover.mp3') return undefined
   const mp3 = await page.evaluate(() => MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.6B"'))
   return mp3 ? undefined : "This browser cannot play this source's audio (MP3), so a song cannot be made from it."
 }
@@ -347,4 +347,50 @@ test("the built web client ships Mediabunny's licence notice", async ({ request 
   const text = await response.text()
   expect(text).toContain('mediabunny')
   expect(text).toContain('Mozilla Public License Version 2.0')
+})
+
+// Picks `file`, makes its thumbnail with the button, and returns the page's
+// thumbnail image once the button's work is done.
+async function makeThumbnail(page: Page, file: string) {
+  await chooseSource(page, source(file))
+  await expect(labelled(page, 'Source details')).toBeVisible()
+  await page.getByRole('button', { name: 'Make the thumbnail' }).click()
+  return page.getByAltText('Thumbnail', { exact: true })
+}
+
+// Checks that `img` shows a JPEG of 1 to 1,048,576 bytes that the browser
+// decodes at `size`, and that the size row tells the byte count.
+async function expectJpeg(page: Page, img: ReturnType<Page['getByAltText']>, size: [number, number]): Promise<void> {
+  await expect(img).toBeVisible()
+  const src = (await img.getAttribute('src')) ?? ''
+  expect(src.startsWith('data:image/jpeg;base64,')).toBe(true)
+  const bytes = Buffer.from(src.slice('data:image/jpeg;base64,'.length), 'base64')
+  expect(bytes.length).toBeGreaterThanOrEqual(1)
+  expect(bytes.length).toBeLessThanOrEqual(1_048_576)
+  expect([...bytes.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff])
+  expect(await img.evaluate((el: HTMLImageElement) => el.decode().then(() => [el.naturalWidth, el.naturalHeight]))).toEqual(size)
+  await expect(labelled(page, 'Thumbnail size')).toHaveText(`${bytes.length} bytes`)
+}
+
+test('song.webm gives its middle frame as a JPEG thumbnail', async ({ page }) => {
+  const problems = watchProblems(page)
+  const img = await makeThumbnail(page, 'song.webm')
+  await expectJpeg(page, img, [64, 36])
+  expect(problems).toEqual([])
+})
+
+test('cover.mp3 gives its PNG cover art as a JPEG thumbnail scaled to 360x360', async ({ page }) => {
+  const problems = watchProblems(page)
+  const img = await makeThumbnail(page, 'cover.mp3')
+  await expectJpeg(page, img, [360, 360])
+  await expectRefusal(page, await refusalOf(page, 'cover.mp3'))
+  expect(problems).toEqual([])
+})
+
+test('song.mp3 has no cover art, so it gives no thumbnail', async ({ page }) => {
+  const problems = watchProblems(page)
+  const img = await makeThumbnail(page, 'song.mp3')
+  await expect(page.getByRole('status')).toHaveText('This source gives no thumbnail.')
+  await expect(img).toHaveCount(0)
+  expect(problems).toEqual([])
 })

@@ -147,8 +147,9 @@ durations in `song.toml`.
 
 `tests/fixtures/source/make.sh <out-dir>` makes small synthetic sources for
 the source check journeys: an MP4, a WebM and an MP3 with tags, a WebM with
-no audio, a WebM whose timeline starts at 1.5 s, and `karaoke.webm`, which
-stands in for a karaoke track. No real media is used.
+no audio, a WebM whose timeline starts at 1.5 s, `cover.mp3`, an MP3 whose
+cover art is a 1000×1000 PNG, and `karaoke.webm`, which stands in for a
+karaoke track. No real media is used.
 They are not committed: `scripts/e2e.sh` makes them into
 `artifacts/e2e/sources/`. It needs ffmpeg built with libx264, libvpx, libopus
 and libmp3lame. `scripts/setup.sh` installs ffmpeg for the journeys when it
@@ -169,6 +170,11 @@ not accept. So its journeys expect the MP3 audio reason next to its details,
 or no reason in a browser that accepts the type. A last one makes Chromium
 report that it cannot encode Opus, and checks that making the audio tracks
 shows only the cannot-encode-audio message.
+
+The thumbnail journeys check the thumbnail the web client makes. `song.webm`
+gives its middle frame as a JPEG of 64×36. `cover.mp3` gives its PNG cover
+art re-encoded as a JPEG and scaled down to 360×360. `song.mp3` has no cover
+art and gives no thumbnail.
 
 The files under `tests/fixtures/` total about 67 KB. A test fails when they
 pass 72 KiB. The cap keeps the fixtures small and synthetic, so no source

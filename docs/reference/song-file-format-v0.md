@@ -112,8 +112,11 @@ Chunks come in this order, and no other type or order is accepted:
 - **The video is optional.** The video init segment and the video media
   segments are both present or both absent. A song made from an audio file has
   no video.
-- **The thumbnail is optional.** Thumbnails are made by processing *(planned
-  for M2)*. Songs built by hand for tests may have none.
+- **The thumbnail is optional.** The web client makes it from the source: the
+  frame at the middle of a video, or the cover art of an audio source, fitted
+  within 640×360. An audio source without cover art has none. Writing it into
+  the song file is planned for M2. Songs built by hand for tests may have
+  none.
 - **Both audio tracks are cut at about the same times.** The original track
   has the same number of segments as the karaoke track. Each original
   segment's start and end (`start_ms + duration_ms`) are within 50 ms of those
