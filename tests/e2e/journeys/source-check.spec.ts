@@ -38,6 +38,31 @@ async function expectTag(page: Page, name: string, expected: string | undefined)
   expect(Buffer.from(text ?? '').toString('hex')).toBe(Buffer.from(expected).toString('hex'))
 }
 
+// Fails the journey on console errors, such as a CSP or Trusted Types violation.
+function watchProblems(page: Page): string[] {
+  const problems: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') problems.push(message.text())
+  })
+  page.on('pageerror', (error) => problems.push(error.message))
+  return problems
+}
+
+// The number in a row such as "440 Hz", "2" or "12".
+async function numberIn(page: Page, name: string, unit = ''): Promise<number> {
+  const text = (await labelled(page, name).textContent()) ?? ''
+  expect(text).toMatch(new RegExp(`^\\d+${unit}$`))
+  return parseInt(text, 10)
+}
+
+// Picks `file`, waits for its details, then decodes it with the button named `button`.
+async function decodeSource(page: Page, file: string, button: string): Promise<void> {
+  await chooseSource(page, source(file))
+  await expect(labelled(page, 'Source details')).toBeVisible()
+  await page.getByRole('button', { name: button }).click()
+  await expect(labelled(page, 'Decoded audio')).toBeVisible()
+}
+
 const cases = [
   { file: 'song.mp4', streams: 'Video and audio', tags: { Title: title, Artist: artist, Composer: composer } },
   { file: 'song.webm', streams: 'Video and audio', tags: { Title: undefined, Artist: artist, Composer: undefined } },
@@ -46,13 +71,7 @@ const cases = [
 
 for (const { file, streams, tags } of cases) {
   test(`${file} shows its duration, streams and exact tags`, async ({ page }) => {
-    // A CSP or Trusted Types violation is logged to the console as an error.
-    const problems: string[] = []
-    page.on('console', (message) => {
-      if (message.type() === 'error') problems.push(message.text())
-    })
-    page.on('pageerror', (error) => problems.push(error.message))
-
+    const problems = watchProblems(page)
     await chooseSource(page, source(file))
     await expect(labelled(page, 'Source details')).toBeVisible()
     expect(Math.abs((await secondsIn(page, 'Duration')) - 2)).toBeLessThanOrEqual(0.1)
@@ -84,6 +103,60 @@ test('a timeline that starts at 1.5 s shows its start offset and a duration coun
   await expect(labelled(page, 'Source details')).toBeVisible()
   expect(Math.abs((await secondsIn(page, 'Duration')) - 2)).toBeLessThanOrEqual(0.1)
   expect(Math.abs((await secondsIn(page, 'Timeline starts at')) - 1.5)).toBeLessThanOrEqual(0.05)
+})
+
+const formats = [
+  { button: 'Decode at 44.1 kHz stereo', rate: 44100, channels: 2 },
+  { button: 'Decode at 16 kHz mono', rate: 16000, channels: 1 },
+]
+
+for (const file of ['song.webm', 'song.mp3']) {
+  for (const { button, rate, channels } of formats) {
+    test(`${file} decodes at ${rate} Hz with ${channels} channels, its tone and its length`, async ({ page }) => {
+      const problems = watchProblems(page)
+      await decodeSource(page, file, button)
+      expect(await numberIn(page, 'Sample rate', ' Hz')).toBe(rate)
+      expect(await numberIn(page, 'Channels')).toBe(channels)
+      expect(Math.abs((await secondsIn(page, 'Length')) - 2)).toBeLessThanOrEqual(0.1)
+      expect(Math.abs((await numberIn(page, 'Tone', ' Hz')) - 440)).toBeLessThanOrEqual(5)
+      await expect(page.getByRole('alert')).toHaveCount(0)
+      expect(problems).toEqual([])
+    })
+  }
+}
+
+test('a timeline that starts at 1.5 s decodes to audio whose sound starts at sample zero', async ({ page }) => {
+  const problems = watchProblems(page)
+  await decodeSource(page, 'late.webm', 'Decode at 44.1 kHz stereo')
+  // Within 10 ms of sample zero.
+  expect(await numberIn(page, 'Sound starts at sample')).toBeLessThanOrEqual(441)
+  expect(Math.abs((await secondsIn(page, 'Length')) - 2)).toBeLessThanOrEqual(0.1)
+  expect(problems).toEqual([])
+})
+
+test('without an AAC decoder, decoding the MP4 shows only the no-audio message', async ({ page }) => {
+  const problems = watchProblems(page)
+  // Some Chromium builds decode AAC. This one is made to report that it cannot,
+  // as a browser without an AAC decoder does.
+  await page.addInitScript(() => {
+    const isConfigSupported = AudioDecoder.isConfigSupported.bind(AudioDecoder)
+    AudioDecoder.isConfigSupported = async (config) =>
+      config.codec.startsWith('mp4a.') ? { supported: false, config } : isConfigSupported(config)
+  })
+  await chooseSource(page, source('song.mp4'))
+  await expect(labelled(page, 'Source details')).toBeVisible()
+  const aac = await page.evaluate(async () => {
+    const support = await AudioDecoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 1 })
+    return support.supported === true
+  })
+  expect(aac).toBe(false)
+
+  await page.getByRole('button', { name: 'Decode at 44.1 kHz stereo' }).click()
+  await expect(page.getByRole('alert')).toHaveText('This file has no audio, so a song cannot be made from it.')
+  await expect(page.getByRole('alert')).toHaveCount(1)
+  await expect(labelled(page, 'Decoded audio')).toHaveCount(0)
+  await expect(details(page)).toHaveCount(0)
+  expect(problems).toEqual([])
 })
 
 test('reading a source sends nothing: every request is a same-origin GET with no body', async ({ page }) => {

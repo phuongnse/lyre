@@ -1,18 +1,34 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core'
 import { MatButton } from '@angular/material/button'
 import { SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
+import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
 import { messages } from '../messages'
+
+// What came out of decoding, measured without keeping the samples. The tone
+// and the first sound are absent when the audio is silent.
+interface DecodedAudio {
+  sampleRate: number
+  channels: number
+  seconds: number
+  toneHz?: number
+  firstSound?: number
+}
 
 type State =
   | { status: 'empty' }
   | { status: 'reading' }
-  | { status: 'ready'; details: SourceDetails }
+  | { status: 'ready'; file: File; details: SourceDetails; decoded?: DecodedAudio }
+  | { status: 'decoding'; file: File; details: SourceDetails }
   | { status: 'failed'; problem: SourceProblem }
 
+// A sample louder than this counts as sound.
+const LOUD = 0.01
+
 // The source check page (docs/ui-conventions.md#check-pages). It reads a
-// picked source's details, stage 1 of processing, until the real song-making
-// page exists. Opened by its URL, #/source-check. The route is lazy, so
-// Mediabunny stays out of the main app's initial load.
+// picked source's details, stage 1 of processing, and can decode its audio at
+// a stage's rate, stage 2, until the real song-making page exists. Opened by
+// its URL, #/source-check. The route is lazy, so Mediabunny stays out of the
+// main app's initial load.
 @Component({
   selector: 'lyre-source-check',
   imports: [MatButton],
@@ -40,29 +56,66 @@ type State =
           {{ current.problem === 'no-audio' ? messages.sourceNoAudio : messages.sourceUnreadable }}
         </p>
       }
-      @case ('ready') {
-        @let details = current.details;
-        <!-- Each tag is alone in its row, so the row's text is exactly the tag. -->
-        <dl [attr.aria-label]="messages.sourceDetails">
-          <dt id="source-duration">{{ messages.sourceDuration }}</dt>
-          <dd aria-labelledby="source-duration">{{ messages.seconds(details.duration.toFixed(2)) }}</dd>
-          @if (details.startOffset > 0) {
-            <dt id="source-start-offset">{{ messages.sourceStartOffset }}</dt>
-            <dd aria-labelledby="source-start-offset">{{ messages.seconds(details.startOffset.toFixed(2)) }}</dd>
+    }
+    @if (current.status === 'ready' || current.status === 'decoding') {
+      @let details = current.details;
+      <!-- Each tag is alone in its row, so the row's text is exactly the tag. -->
+      <dl [attr.aria-label]="messages.sourceDetails">
+        <dt id="source-duration">{{ messages.sourceDuration }}</dt>
+        <dd aria-labelledby="source-duration">{{ messages.seconds(details.duration.toFixed(2)) }}</dd>
+        @if (details.startOffset > 0) {
+          <dt id="source-start-offset">{{ messages.sourceStartOffset }}</dt>
+          <dd aria-labelledby="source-start-offset">{{ messages.seconds(details.startOffset.toFixed(2)) }}</dd>
+        }
+        <dt id="source-streams">{{ messages.sourceStreams }}</dt>
+        <dd aria-labelledby="source-streams">{{ details.hasVideo ? messages.videoAndAudio : messages.audioOnly }}</dd>
+        @if (details.title !== undefined) {
+          <dt id="source-title">{{ messages.songTitle }}</dt>
+          <dd aria-labelledby="source-title">{{ details.title }}</dd>
+        }
+        @if (details.artist !== undefined) {
+          <dt id="source-artist">{{ messages.artist }}</dt>
+          <dd aria-labelledby="source-artist">{{ details.artist }}</dd>
+        }
+        @if (details.composer !== undefined) {
+          <dt id="source-composer">{{ messages.composer }}</dt>
+          <dd aria-labelledby="source-composer">{{ details.composer }}</dd>
+        }
+      </dl>
+      <button
+        matButton="outlined"
+        type="button"
+        [disabled]="current.status === 'decoding'"
+        (click)="decode(current.file, details, separation)"
+      >
+        {{ messages.decodeForSeparation }}
+      </button>
+      <button
+        matButton="outlined"
+        type="button"
+        [disabled]="current.status === 'decoding'"
+        (click)="decode(current.file, details, alignment)"
+      >
+        {{ messages.decodeForAlignment }}
+      </button>
+      @if (current.status === 'decoding') {
+        <p role="status">{{ messages.sourceDecoding }}</p>
+      } @else if (current.decoded !== undefined) {
+        @let decoded = current.decoded;
+        <dl [attr.aria-label]="messages.decodedAudio">
+          <dt id="decoded-sample-rate">{{ messages.decodedSampleRate }}</dt>
+          <dd aria-labelledby="decoded-sample-rate">{{ messages.hertz(decoded.sampleRate.toString()) }}</dd>
+          <dt id="decoded-channels">{{ messages.decodedChannels }}</dt>
+          <dd aria-labelledby="decoded-channels">{{ decoded.channels }}</dd>
+          <dt id="decoded-length">{{ messages.decodedLength }}</dt>
+          <dd aria-labelledby="decoded-length">{{ messages.seconds(decoded.seconds.toFixed(2)) }}</dd>
+          @if (decoded.toneHz !== undefined) {
+            <dt id="decoded-tone">{{ messages.decodedTone }}</dt>
+            <dd aria-labelledby="decoded-tone">{{ messages.hertz(decoded.toneHz.toFixed(0)) }}</dd>
           }
-          <dt id="source-streams">{{ messages.sourceStreams }}</dt>
-          <dd aria-labelledby="source-streams">{{ details.hasVideo ? messages.videoAndAudio : messages.audioOnly }}</dd>
-          @if (details.title !== undefined) {
-            <dt id="source-title">{{ messages.songTitle }}</dt>
-            <dd aria-labelledby="source-title">{{ details.title }}</dd>
-          }
-          @if (details.artist !== undefined) {
-            <dt id="source-artist">{{ messages.artist }}</dt>
-            <dd aria-labelledby="source-artist">{{ details.artist }}</dd>
-          }
-          @if (details.composer !== undefined) {
-            <dt id="source-composer">{{ messages.composer }}</dt>
-            <dd aria-labelledby="source-composer">{{ details.composer }}</dd>
+          @if (decoded.firstSound !== undefined) {
+            <dt id="decoded-first-sound">{{ messages.decodedFirstSound }}</dt>
+            <dd aria-labelledby="decoded-first-sound">{{ decoded.firstSound }}</dd>
           }
         </dl>
       }
@@ -72,7 +125,9 @@ type State =
 export class SourceCheck {
   protected readonly messages = messages
   protected readonly state = signal<State>({ status: 'empty' })
-  // Counts the sources picked, so only the latest one shows.
+  protected readonly separation = SEPARATION_FORMAT
+  protected readonly alignment = ALIGNMENT_FORMAT
+  // Counts the sources picked and the decodes started, so only the latest one shows.
   private attempts = 0
 
   protected async read(input: HTMLInputElement): Promise<void> {
@@ -84,12 +139,74 @@ export class SourceCheck {
     this.state.set({ status: 'reading' })
     try {
       const details = await readSource(file)
-      if (attempt === this.attempts) this.state.set({ status: 'ready', details })
+      if (attempt === this.attempts) this.state.set({ status: 'ready', file, details })
     } catch (error) {
       if (attempt !== this.attempts) return
       // The error's own text is never shown: it is not meant for users.
       const problem = error instanceof SourceError ? error.problem : 'unreadable'
       this.state.set({ status: 'failed', problem })
     }
+  }
+
+  protected async decode(file: File, details: SourceDetails, format: AudioFormat): Promise<void> {
+    const attempt = ++this.attempts
+    this.state.set({ status: 'decoding', file, details })
+    try {
+      const measure = new AudioMeasure(format)
+      for await (const planes of decodeAudio(file, format)) {
+        // Leaving the loop stops decoding and closes the source.
+        if (attempt !== this.attempts) return
+        measure.add(planes)
+      }
+      if (attempt === this.attempts) this.state.set({ status: 'ready', file, details, decoded: measure.result() })
+    } catch (error) {
+      if (attempt !== this.attempts) return
+      // The error's own text is never shown: it is not meant for users.
+      const problem = error instanceof SourceError ? error.problem : 'unreadable'
+      this.state.set({ status: 'failed', problem })
+    }
+  }
+}
+
+// Measures decoded audio piece by piece. The tone counts the first channel's
+// upward zero crossings between the first and the last loud frame.
+class AudioMeasure {
+  private frames = 0
+  private firstLoud: number | undefined
+  private lastLoud: number | undefined
+  private previous = 0
+  private crossings = 0
+  private crossingsToLastLoud = 0
+
+  constructor(private readonly format: AudioFormat) {}
+
+  add(planes: Float32Array[]): void {
+    const first = planes[0]!
+    for (let i = 0; i < first.length; i++) {
+      const frame = this.frames + i
+      const sample = first[i]!
+      if (this.firstLoud !== undefined && this.previous < 0 && sample >= 0) this.crossings++
+      this.previous = sample
+      if (planes.some((plane) => Math.abs(plane[i]!) > LOUD)) {
+        this.firstLoud ??= frame
+        this.lastLoud = frame
+        this.crossingsToLastLoud = this.crossings
+      }
+    }
+    this.frames += first.length
+  }
+
+  result(): DecodedAudio {
+    const decoded: DecodedAudio = {
+      sampleRate: this.format.sampleRate,
+      channels: this.format.channels,
+      seconds: this.frames / this.format.sampleRate,
+    }
+    if (this.firstLoud !== undefined && this.lastLoud !== undefined) {
+      decoded.firstSound = this.firstLoud
+      const span = (this.lastLoud - this.firstLoud) / this.format.sampleRate
+      if (span > 0) decoded.toneHz = this.crossingsToLastLoud / span
+    }
+    return decoded
   }
 }

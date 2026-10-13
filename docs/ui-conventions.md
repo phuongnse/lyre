@@ -246,6 +246,9 @@ Compose uses the same three values *(planned for M4)*.
 - The source check page reads a picked source's details: its duration, its
   streams, its start offset, and its title, artist and composer, shown
   exactly as stored. A source without audio, or a file it cannot read, gets
-  one plain message. The Playwright journeys use it to check reading a source.
+  one plain message. It can also decode the audio at a stage's rate, and shows
+  what came out: its rate, channels, length, tone and where sound starts.
+  Audio the browser cannot decode gets the no-audio message. The Playwright
+  journeys use it to check reading a source and decoding its audio.
 - Each one is a lazy-loaded route with `loadComponent`, in the same build and
   deploy as the main app. This is agreed in D19.
