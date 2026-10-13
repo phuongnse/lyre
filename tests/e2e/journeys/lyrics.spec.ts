@@ -210,7 +210,7 @@ test('the line after the 5 s break has a countdown, and the line after the 300 m
   await expect(countdownsInParagraph(region, 0)).toHaveCount(1)
 })
 
-// The line after the 5 s break has countdown steps ending at 8.4, 8.9, 9.4 and 9.9 s.
+// The line after the 5 s break has a countdown sweep from 7.9 to 9.9 s, one dot every 0.5 s.
 test('after a seek forward into a countdown and then back, each countdown matches the new time', async ({ page }) => {
   const { region, video } = await openFixture(page)
   const countdowns = countdownsIn(region)
@@ -222,8 +222,8 @@ test('after a seek forward into a countdown and then back, each countdown matche
   await expect(countdowns).toHaveAttribute('aria-valuenow', '1')
 })
 
-// The line after the 5 s break has countdown steps ending at 8.4, 8.9, 9.4 and 9.9 s.
-test('changed dots have the vocal role fill and a white outline, the others white with a black outline', async ({
+// The line after the 5 s break has a countdown sweep from 7.9 to 9.9 s, one dot every 0.5 s.
+test('swept dots have the vocal role fill and a white outline, the others white with a black outline', async ({
   page,
 }) => {
   const { region, video } = await openFixture(page)
@@ -243,9 +243,9 @@ test('changed dots have the vocal role fill and a white outline, the others whit
   const syllableFilter = await syllableIn(region)('Trăng').evaluate((element) => getComputedStyle(element).filter)
   expect(filters).toEqual(Array(4).fill(syllableFilter))
   // #FF0000 is the female vocal role colour from docs/ui-conventions.md#vocal-role-colours.
-  const changed = { fill: 'rgb(255, 0, 0)', outline: 'rgb(255, 255, 255)' }
-  const unchanged = { fill: 'rgb(255, 255, 255)', outline: 'rgb(0, 0, 0)' }
-  expect(dots).toEqual([changed, changed, changed, unchanged])
+  const swept = { fill: 'rgb(255, 0, 0)', outline: 'rgb(255, 255, 255)' }
+  const ahead = { fill: 'rgb(255, 255, 255)', outline: 'rgb(0, 0, 0)' }
+  expect(dots).toEqual([swept, swept, swept, ahead])
 })
 
 // Returns the fraction of pixels that differ between two PNG screenshots. A
@@ -326,6 +326,101 @@ test('the sung part of "nhẹ" lies over its text, and does not move when it is 
   expect(shift).toBeLessThanOrEqual(0.01)
 })
 
+// Shows only `target` over a plain green backdrop, and returns the region's font
+// size in pixels. The video's test pattern moves, and the neighbouring glyphs
+// would fall inside the scanned area. The backdrop goes on the region and never
+// on a syllable, as its shadow would lie over a syllable's background.
+async function isolate(region: Locator, video: Locator, target: Locator): Promise<number> {
+  await video.evaluate((element) => (element.style.visibility = 'hidden'))
+  const handle = await target.elementHandle()
+  return region.evaluate((section, keep) => {
+    section.style.background = 'rgb(0, 160, 0)'
+    for (const element of section.querySelectorAll<HTMLElement>('.syllable, .dot')) {
+      if (element !== keep) element.style.visibility = 'hidden'
+    }
+    return parseFloat(getComputedStyle(section).fontSize)
+  }, handle)
+}
+
+// Screenshots `target` isolated as by `isolate`, with `extraLeft` em more to the
+// left, and returns the PNG.
+async function isolatedShot(
+  page: Page,
+  region: Locator,
+  video: Locator,
+  target: Locator,
+  extraLeft = 0,
+): Promise<Buffer> {
+  const em = await isolate(region, video, target)
+  await target.scrollIntoViewIfNeeded()
+  const box = (await target.boundingBox())!
+  const area = (await region.boundingBox())!
+  const left = Math.max(box.x - extraLeft * em, area.x)
+  const right = Math.min(box.x + box.width, area.x + area.width)
+  const top = Math.max(box.y, area.y)
+  const bottom = Math.min(box.y + box.height, area.y + area.height)
+  return page.screenshot({ clip: { x: left, y: top, width: right - left, height: bottom - top } })
+}
+
+// The fraction of red pixels (the female vocal role colour) in the left third
+// and in the right third of `dot`, shown alone on a plain backdrop.
+async function redThirds(
+  page: Page,
+  region: Locator,
+  video: Locator,
+  dot: Locator,
+): Promise<{ left: number; right: number }> {
+  const png = await isolatedShot(page, region, video, dot)
+  return page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+    const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!
+    context.drawImage(bitmap, 0, 0)
+    const { data, width, height } = context.getImageData(0, 0, bitmap.width, bitmap.height)
+    const third = (from: number, to: number) => {
+      let red = 0
+      for (let y = 0; y < height; y++) {
+        for (let x = from; x < to; x++) {
+          const i = (y * width + x) * 4
+          if (data[i] >= 200 && data[i + 1] < 80 && data[i + 2] < 80) red++
+        }
+      }
+      return red / Math.max((to - from) * height, 1)
+    }
+    const part = Math.floor(width / 3)
+    return { left: third(0, part), right: third(width - part, width) }
+  }, png.toString('base64'))
+}
+
+// The fraction of the middle rows of `dot`, shown alone on a plain backdrop and
+// with 0.3 em more to the left, that have a dark pixel before their first bright
+// one. The dot's left side has no shadow, so a dark pixel there is black outline.
+async function darkLeftOf(page: Page, region: Locator, video: Locator, dot: Locator): Promise<number> {
+  const png = await isolatedShot(page, region, video, dot, 0.3)
+  return page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+    const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!
+    context.drawImage(bitmap, 0, 0)
+    const { data, width, height } = context.getImageData(0, 0, bitmap.width, bitmap.height)
+    let rows = 0
+    let dark = 0
+    for (let y = Math.floor(height / 4); y < Math.ceil((height * 3) / 4); y++) {
+      rows++
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4
+        const brightest = Math.max(data[i], data[i + 1], data[i + 2])
+        if (brightest >= 200) break
+        if (brightest < 80) {
+          dark++
+          break
+        }
+      }
+    }
+    return dark / Math.max(rows, 1)
+  }, png.toString('base64'))
+}
+
 // What edgeScan measures, with widths in em.
 interface EdgeScan {
   // The fraction of scanned lines whose first bright pixel from the edge is white.
@@ -343,18 +438,7 @@ interface EdgeScan {
 // one in is white, which leaves out the blending at the glyph's edge. The dark pixels between it and the edge are
 // the shadow band, with the black outline outside the glyph for an unsung one.
 async function edgeScan(page: Page, region: Locator, video: Locator, target: Locator): Promise<EdgeScan> {
-  // The video's test pattern moves, and the neighbouring glyphs would fall
-  // inside the scanned area. The backdrop goes on the region and never on a
-  // syllable, as its shadow would lie over a syllable's background.
-  await video.evaluate((element) => (element.style.visibility = 'hidden'))
-  const handle = await target.elementHandle()
-  const em = await region.evaluate((section, keep) => {
-    section.style.background = 'rgb(0, 160, 0)'
-    for (const element of section.querySelectorAll<HTMLElement>('.syllable, .dot')) {
-      if (element !== keep) element.style.visibility = 'hidden'
-    }
-    return parseFloat(getComputedStyle(section).fontSize)
-  }, handle)
+  const em = await isolate(region, video, target)
   await target.scrollIntoViewIfNeeded()
   const box = (await target.boundingBox())!
   const area = (await region.boundingBox())!
@@ -438,7 +522,7 @@ test('at 4.0 s the unsung "bên" has a dark band of outline and shadow past its 
   expect(scan.bottomBand).toBeGreaterThanOrEqual(0.14)
 })
 
-// The line after the 5 s break has countdown steps ending at 8.4, 8.9, 9.4 and 9.9 s.
+// The line after the 5 s break has a countdown sweep from 7.9 to 9.9 s, one dot every 0.5 s.
 test('at 9.5 s the third countdown dot has an unbroken white outline and a black shadow band past it', async ({
   page,
 }) => {
@@ -447,9 +531,50 @@ test('at 9.5 s the third countdown dot has an unbroken white outline and a black
   await seek(video, 9.5)
   await expect(countdownsIn(region)).toHaveAttribute('aria-valuenow', '3')
   const dot = countdownsIn(region).locator('.dot').nth(2)
-  await expect(dot).toHaveClass(/changed/)
+  await expect(dot).toHaveClass(/swept/)
   const scan = await edgeScan(page, region, video, dot)
   expect(scan.whiteFraction).toBeGreaterThanOrEqual(0.95)
   expect(scan.rightBand).toBeGreaterThanOrEqual(0.08)
   expect(scan.bottomBand).toBeGreaterThanOrEqual(0.08)
+})
+
+// The fourth dot is swept from 9.4 to 9.9 s, so 9.65 s is half of it.
+test('at 9.65 s the fourth countdown dot is red on its left part only, and the Countdown is 3', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 9.65)
+  await expect(countdownsIn(region)).toHaveAttribute('aria-valuenow', '3')
+  const dot = countdownsIn(region).locator('.dot').nth(3)
+  const thirds = await redThirds(page, region, video, dot)
+  expect(thirds.left).toBeGreaterThan(0.1)
+  expect(thirds.right).toBeLessThan(0.01)
+})
+
+test('at 9.65 s no black outline shows left of the fourth countdown dot\'s swept part', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 9.65)
+  await expect(countdownsIn(region)).toHaveAttribute('aria-valuenow', '3')
+  const dot = countdownsIn(region).locator('.dot').nth(3)
+  expect(await darkLeftOf(page, region, video, dot)).toBeLessThanOrEqual(0.05)
+})
+
+test('after a seek back from 9.65 s to 8.65 s, the second dot is half swept and the others after it are white', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const { region, video } = await openFixture(page)
+  await seek(video, 9.65)
+  await expect(countdownsIn(region)).toHaveAttribute('aria-valuenow', '3')
+  await seek(video, 8.65)
+  await expect(countdownsIn(region)).toHaveAttribute('aria-valuenow', '1')
+  const dots = countdownsIn(region).locator('.dot')
+  const second = await redThirds(page, region, video, dots.nth(1))
+  expect(second.left).toBeGreaterThan(0.1)
+  expect(second.right).toBeLessThan(0.01)
+  for (const i of [2, 3]) {
+    const thirds = await redThirds(page, region, video, dots.nth(i))
+    expect(thirds.left).toBeLessThan(0.01)
+    expect(thirds.right).toBeLessThan(0.01)
+  }
 })

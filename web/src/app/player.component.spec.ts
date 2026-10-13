@@ -72,7 +72,7 @@ function openedSong(): OpenedSong {
     layOut: () => [],
     sweepPosition: () => 0,
     countdownLines: [],
-    dotsChanged: () => 0,
+    dotsSwept: () => 0,
     lyricsRows: () => ({ top: undefined, bottom: undefined }),
     read: () => Promise.reject(new Error('not read in these tests')),
     close: () => undefined,
