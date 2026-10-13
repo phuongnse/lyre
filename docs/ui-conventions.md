@@ -119,9 +119,9 @@ from M1, except those marked *(planned for M8)*.
   `-webkit-text-stroke: 0.125em` with `paint-order: stroke fill`. In Compose
   the stroke layer is drawn first, then the fill *(planned for M4)*.
 - The shadow is one layer under the whole glyph, outline included, so nothing
-  is drawn over the outline. It is crisp: offset 0.15 em to the right and
-  0.15 em down, with a blur of 0. On the web it is
-  `filter: drop-shadow(0.15em 0.15em 0 #000)` on each syllable and dot, not
+  is drawn over the outline. It is crisp: offset 0.1 em to the right and
+  0.1 em down, with a blur of 0. On the web it is
+  `filter: drop-shadow(0.1em 0.1em 0 #000)` on each syllable and dot, not
   `text-shadow`, which Chromium paints over the stroke. In Compose the shadow
   is drawn first, then the stroke, then the fill *(planned for M4)*.
 - Outline width and shadow offset are given in em, so they scale with the font
@@ -130,6 +130,9 @@ from M1, except those marked *(planned for M8)*.
   [vocal role colour](#vocal-role-colours) and its outline turns white,
   together.
   The shadow never changes.
+- The sung part of the syllable being sung is cut only at the sweep edge.
+  Behind it, the whole glyph is sung, including outline, overhangs and marks
+  that reach past the syllable's box.
 - Lyrics have no backdrop. The outline and shadow keep them readable over any
   video.
 
@@ -160,12 +163,22 @@ Compose uses the same three values *(planned for M4)*.
   phone.
 - Lyric text and the countdown dots are bold, weight 700. The core lays out the
   display lines with the bold font's widths.
-- The two rows, with their countdown dots, stay inside the video's box. One
-  gap of 0.3 times the lyric font size is used in four places: at the left
-  and right sides, below the bottom row and between the two rows. It is
-  measured between row boxes, not glyph ink. Each row is one line height tall,
-  1.25 times the font size, and keeps its place when the other row is empty.
-  The gap is a starting point to adjust after trying it.
+- The two rows, with their countdown dots, stay inside the video's box. Each
+  row is a box one line height tall, 1.25 times the font size, and keeps its
+  place when the other row is empty. The boxes are 0.3 times the font size
+  apart.
+- The visible gap between the rows runs from the top row's descender line to
+  the bottom row's cap-height line. Three margins equal it: the left margin,
+  from the video's left edge to the countdown dots, the right margin, from the
+  end of the bottom row's line to the video's right edge, and the space from
+  the bottom row's descender line to the video's bottom. They come from the
+  lyric font's metrics (ascent, descent and cap height), never from the glyphs
+  shown, so the rows never move with the text. The gap is a starting point to
+  adjust after trying it.
+- The two rows take at most 35% of the video's height. At the font size of
+  1/10 of the height they take about 34%. Nothing clamps them: only the 16 px
+  floor on the font size can push them past 35%, on videos under about 160 px
+  tall.
 - The Lyrics area has two rows. The top row's line is aligned left and the
   bottom row's line is aligned right. A row shows one display line or nothing.
 - A group of display lines starts at the first display line of each lyric
@@ -180,11 +193,11 @@ Compose uses the same three values *(planned for M4)*.
   start, a row shows the group's next display line not shown yet. So the line
   just sung stays during the gap between lines. If the group has none, the row
   keeps the finished line, fully sung, until the group's last line ends.
-- The countdown dots sit at the left gap, just left of the top row's line.
-  The area keeps a left margin as wide as the dots, so they stay inside it.
+- The countdown dots sit at the left margin, just left of the top row's line.
+  The area keeps a margin as wide as the dots, so they stay inside it.
 - The core lays out the display lines to fit the area's width less both side
-  gaps and the width of the dots margin. A full-width line then never runs
-  into the dots or the right gap.
+  margins and the width of the dots margin. A full-width line then never runs
+  into the dots or the right margin.
 - The rows depend only on the media time, so they follow seeks.
 - The core works out which display line each row shows, so both clients
   agree.
@@ -211,7 +224,7 @@ Compose uses the same three values *(planned for M4)*.
   got, so both clients agree.
 - The dots sit just left of the top row's line, which is always the first
   display line of their lyric line. They sit in the Lyrics area's left
-  margin, just inside the left gap, take no width from the line and add no text, so the line stays
+  margin, just inside the left margin, take no width from the line and add no text, so the line stays
   exact ([D5](decisions.md#d5-supplied-lyrics-are-authoritative--agreed)).
 - Swept dots stay swept after their line starts. A seek back undoes the sweep
   after the new time.

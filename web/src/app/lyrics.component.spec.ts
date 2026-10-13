@@ -2,7 +2,7 @@ import { provideZonelessChangeDetection } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { afterEach, expect, test, vi } from 'vitest'
 import { LyricsRows, OpenedSong } from '../song-file'
-import { Lyrics, lyricFontSize } from './lyrics.component'
+import { Lyrics, lyricFontSize, lyricsMargins } from './lyrics.component'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -216,4 +216,8 @@ test('the rows show the display lines the core picks, and follow when it picks o
 
 test('the lyric font size is 1/10 of the video height, never under 16 px', () => {
   expect([0, 140, 160, 720].map(lyricFontSize)).toEqual([16, 16, 16, 72])
+})
+
+test('the margins are the visible gap between the rows, and that gap less the half leading below', () => {
+  expect(lyricsMargins(100, { ascent: 90, descent: 25, capHeight: 70 })).toEqual({ side: 60, below: 55 })
 })
