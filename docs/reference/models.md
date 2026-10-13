@@ -39,7 +39,8 @@ The aligner of D15, as sherpa-onnx's int8 export.
   (x − mean) / √(variance + 1e-5). This is what sherpa-onnx does, in
   [`offline-omnilingual-asr-ctc-model.cc`](https://github.com/k2-fsa/sherpa-onnx/blob/6e7ea3e409f90aaf1541c87f21a013c4f20b9680/sherpa-onnx/csrc/offline-omnilingual-asr-ctc-model.cc)
   and [`test.py`](https://github.com/k2-fsa/sherpa-onnx/blob/6e7ea3e409f90aaf1541c87f21a013c4f20b9680/scripts/omnilingual-asr/test.py).
-- **Window length:** under 40 s (D15).
+- **Window length:** under 40 s (D15). Lyre uses 30 s windows with 2 s of
+  overlap, planned by the core.
 - **Output:** `logits`, shape (1, frames, 9812), float32. These are raw
   logits: the log-softmax is outside the file.
 - **Frame rate:** 50 frames per second (one frame per 320 samples).
@@ -119,7 +120,8 @@ separate candidate on the measurement page.
 - **Channels:** mono.
 - **Input:** `input_values`, shape (1, samples), float32: the raw samples.
 - **Input normalisation:** inside the file, so Lyre passes the raw samples.
-- **Window length:** under 40 s (D15).
+- **Window length:** under 40 s (D15). Lyre uses 30 s windows with 2 s of
+  overlap, planned by the core.
 - **Output:** `log_probs`, shape (1, frames, 98), float32: CTC
   log-probabilities. The log-softmax is inside the file.
 - **Frame rate:** 50 frames per second (one frame per 320 samples).

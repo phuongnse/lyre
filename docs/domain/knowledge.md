@@ -123,6 +123,11 @@ What was learned:
   Frames, vocabulary size, entry length, syllables and the work grid have
   limits. Each syllable also gets a confidence score, the model's average
   probability over its frames.
+- **The core aligns in 30 s windows with 2 s of overlap.** Every window
+  starts on the 20 ms frame grid, so its frames line up with the song's.
+  Each overlap is cut at its middle, so every frame comes from exactly one
+  window. The last window is padded with silence to 30 s. A window with too
+  few frames for its part of the song is refused, never padded or guessed.
 - **Distrust very long word spans.** The aligner can stretch the first word
   over a long instrumental intro and still report high confidence. Check long
   spans against the nearest sung onsets.

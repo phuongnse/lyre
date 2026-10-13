@@ -1,6 +1,7 @@
 //! WebAssembly bindings of the Lyre core, for the web client.
 
 use lyre_core::alignment::{self, AlignmentError, Emissions};
+use lyre_core::alignment_windows::{self, WindowError};
 use lyre_core::countdown;
 use lyre_core::display_lines::{self, DisplayLine, MeasuredSyllable};
 use lyre_core::highlight;
@@ -301,6 +302,99 @@ pub fn align(
             confidence,
         })
         .collect())
+}
+
+/// Why an aligner window step was refused. It holds no core message, because
+/// those are not meant for users. A refusal about one window names it. Any
+/// other refusal has none.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowFault {
+    window: Option<u32>,
+}
+
+#[wasm_bindgen]
+impl WindowFault {
+    /// The index of the window at fault, counting from 0.
+    #[wasm_bindgen(getter)]
+    pub fn window(&self) -> Option<u32> {
+        self.window
+    }
+}
+
+impl From<WindowError> for WindowFault {
+    fn from(error: WindowError) -> WindowFault {
+        let window = match error {
+            WindowError::WindowOutOfRange { window, .. }
+            | WindowError::OutOfOrder { window }
+            | WindowError::LogProbsLength { window, .. }
+            | WindowError::TooManyFrames { window, .. }
+            | WindowError::TooFewFrames { window, .. } => Some(window),
+            _ => None,
+        };
+        // Every index came from JavaScript as a u32, so it fits.
+        WindowFault {
+            window: window.map(|w| u32::try_from(w).unwrap_or(u32::MAX)),
+        }
+    }
+}
+
+/// The fault for a refusal with no window to name.
+const NO_WINDOW: WindowFault = WindowFault { window: None };
+
+/// The aligner windows of a whole song. The client gives the 16 kHz mono
+/// audio, runs the model on each window's audio, gives back its frames in
+/// order, and finally takes the joined frames for `align`.
+#[wasm_bindgen]
+pub struct AlignerWindows {
+    /// Gone once `finish` has taken it.
+    windows: Option<alignment_windows::AlignerWindows>,
+}
+
+#[wasm_bindgen]
+impl AlignerWindows {
+    /// Starts the windows of 16 kHz mono audio, for a model whose frames
+    /// hold `width` values: one per vocabulary entry.
+    #[wasm_bindgen(constructor)]
+    pub fn new(samples: &[f32], width: u32) -> Result<AlignerWindows, WindowFault> {
+        Ok(AlignerWindows {
+            windows: Some(alignment_windows::AlignerWindows::new(
+                samples,
+                width as usize,
+            )?),
+        })
+    }
+
+    /// The number of windows, or 0 once finished.
+    #[wasm_bindgen(getter, js_name = windowCount)]
+    pub fn window_count(&self) -> u32 {
+        self.windows
+            .as_ref()
+            // At most 129 windows fit the frame limit, so the count fits.
+            .map_or(0, |w| u32::try_from(w.window_count()).unwrap_or(u32::MAX))
+    }
+
+    /// The audio of the window `index`: 480,000 samples (30 s), padded with
+    /// silence past the end of the song.
+    pub fn window(&self, index: u32) -> Result<Vec<f32>, WindowFault> {
+        let windows = self.windows.as_ref().ok_or(NO_WINDOW)?;
+        Ok(windows.window(index as usize)?)
+    }
+
+    /// Takes the model's frames for the window `index`: `frames × width`
+    /// values, frame by frame. Windows must come in order.
+    #[wasm_bindgen(js_name = addFrames)]
+    pub fn add_frames(&mut self, index: u32, log_probs: &[f32]) -> Result<(), WindowFault> {
+        let windows = self.windows.as_mut().ok_or(NO_WINDOW)?;
+        Ok(windows.add_frames(index as usize, log_probs)?)
+    }
+
+    /// The joined frames of the whole song: `ceil(samples / 320) × width`
+    /// values. This ends the session, also when it is refused.
+    pub fn finish(&mut self) -> Result<Vec<f32>, WindowFault> {
+        let windows = self.windows.take().ok_or(NO_WINDOW)?;
+        Ok(windows.finish()?)
+    }
 }
 
 /// One syllable's start and end in a hand-written timing file.
@@ -1403,6 +1497,30 @@ mod tests {
         let fault = measure_onset_error(&[0, 100], &[0, 100, 200]).expect_err("refused");
         assert_eq!(fault.hand_count(), 2);
         assert_eq!(fault.aligned_count(), 3);
+    }
+
+    #[test]
+    fn aligner_windows_pad_a_short_song_and_name_a_short_window() {
+        let mut windows = AlignerWindows::new(&[1.0; 321], 2).expect("valid");
+        assert_eq!(windows.window_count(), 1);
+        let audio = windows.window(0).expect("window 0 exists");
+        assert_eq!(audio.len(), 480_000);
+        assert!(audio[..321].iter().all(|&v| v == 1.0));
+        assert!(audio[321..].iter().all(|&v| v == 0.0));
+        let fault = windows
+            .add_frames(0, &[0.0; 2])
+            .expect_err("2 frames are needed");
+        assert_eq!(fault.window(), Some(0));
+        windows.add_frames(0, &[0.0; 4]).expect("2 frames");
+        assert_eq!(windows.finish().expect("every window is in").len(), 4);
+        assert_eq!(windows.finish(), Err(NO_WINDOW));
+        assert_eq!(windows.window_count(), 0);
+        assert_eq!(windows.window(0), Err(NO_WINDOW));
+    }
+
+    #[test]
+    fn aligner_windows_refuse_empty_audio_naming_no_window() {
+        assert_eq!(AlignerWindows::new(&[], 2).err(), Some(NO_WINDOW));
     }
 
     #[test]
