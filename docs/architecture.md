@@ -33,7 +33,9 @@ flowchart LR
 - **The web client** is a static site (D9). Its UI, media playback and model
   runs are in TypeScript. The UI is Angular with Angular Material (D19),
   built by the rules in [UI conventions](ui-conventions.md). It calls the
-  core compiled to WebAssembly.
+  core compiled to WebAssembly. It reads sources with Mediabunny, which is
+  under MPL-2.0. Mediabunny is used unmodified from npm, and its licence
+  notice ships in the build's `3rdpartylicenses.txt`.
 - **The Android app** is native Kotlin. Its UI, media playback and model runs
   use the Android stack. It calls the core as a native library through
   UniFFI.
@@ -158,6 +160,10 @@ reference doc and reviewed before M3 implements them.
 - On the web, a browser lock named `lyre-task` keeps one task at a time across
   tabs. The startup cleanup waits for it, so it never removes the area of a
   task still running in another tab.
+- On the web, stage 1, reading the source, runs on the main thread as soon as
+  a source is picked, for now on the source check page. It reads only the
+  container and decodes nothing. Mediabunny reads MP4, WebM and MP3. It reads
+  a WebM's tags, but not the segment title where ffmpeg writes a WebM title.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is
