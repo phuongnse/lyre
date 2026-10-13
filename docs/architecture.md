@@ -86,7 +86,7 @@ the tool and the fixtures.
   client cannot read *(planned for M3)*. They never reach web UI state,
   Compose state, logs or error messages.
 
-## Song file *(planned for M1, encrypted from M3)*
+## Song file *(encrypted from M3)*
 
 A `.lyre` file holds one song:
 

@@ -32,8 +32,8 @@
 | | Milestone | Status | Done when |
 | --- | --- | --- | --- |
 | **M0** | Foundation | Done | The core, the web client and the Android app build; CI runs build, lint, unit and Playwright E2E for real; NexKit is installed with those checks. |
-| **M1** | Karaoke playback | Next | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
-| **M2** | Making songs on the device | Planned | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page compares the two aligners of D20 on real devices and confirms the separator. |
+| **M1** | Karaoke playback | Done | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
+| **M2** | Making songs on the device | Next | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page compares the two aligners of D20 on real devices and confirms the separator. |
 | **M3** | Devices, encryption and sharing | Planned | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
 | **M4** | Android | Planned | The Android app plays, makes and shares songs like the web client, with its device key in Android Keystore. Songs move between web and Android both ways. |
 | **M5** | Library and queue | Planned | Library, queue in order or shuffled, search by title, artist, composer and lyrics that ignores Vietnamese diacritics, thumbnails, lyric corrections. |
@@ -82,12 +82,12 @@ The first slice plays a song before Lyre can make one. Test songs are built
 from fixtures by `lyre-cli`, with timing written by hand, so playback can be
 built and tested without models.
 
-Outline, broken into issues when M0 is nearly done:
+M1 delivered, in this order:
 
 1. Reference doc for song file format version 0.
 2. Lyrics parsing in the core: exact bytes, limits, lyric lines and syllables.
 3. Song file version 0 in the core: write and read, with bounds; `lyre-cli`
-   builds one from a source, lyrics and a timing file.
+   builds one from prepared media, lyrics and a timing file.
 4. Display line layout in the core: splits at punctuation, pauses and width,
    never inside a Vietnamese word
    ([D18](decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed)).
@@ -99,6 +99,8 @@ Outline, broken into issues when M0 is nearly done:
 8. Web Player: switch between Karaoke and Original without losing position.
 9. A small library: the songs opened on this device, with their details.
 10. A passkey check page (see [early checks](#early-checks-on-real-devices)).
+
+Done when all ten were merged and the owner accepted the Player.
 
 ## Early checks on real devices
 

@@ -1,4 +1,4 @@
-# Song file format, version 0 *(planned for M1)*
+# Song file format, version 0
 
 A song file is one `.lyre` file that holds one song: its media, the lyrics,
 the timing, the song details and an optional thumbnail. The media is the
@@ -7,7 +7,7 @@ itself is not stored. Only what Lyre made from it is.
 
 Version 0 is unencrypted and for development only. It is used in M1 and M2,
 rejected from M3 and never published (see the
-[architecture](../architecture.md#song-file-planned-for-m1-encrypted-from-m3)).
+[architecture](../architecture.md#song-file-encrypted-from-m3)).
 It is not protection of any kind: anyone with the file can read every byte.
 
 The terms in this doc are defined in the [concepts](../domain/concepts.md).
