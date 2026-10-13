@@ -62,8 +62,8 @@ On Windows, use `.venv-models\Scripts\python`.
    returns CTC log-probabilities. The input normalisation from the model card
    and the log-softmax are inside the file, so no client has to repeat them.
 4. It writes `model.int8.onnx` with ONNX Runtime's dynamic quantization of the
-   matrix multiplications (MatMul and Gemm). The convolutions stay fp32,
-   because few ONNX Runtime backends run quantized convolutions.
+   matrix multiplications (MatMul and Gemm) to int8. See
+   [the int8 file](#the-int8-file).
 5. It copies `vocab.json` byte for byte, and prints each file's size and
    SHA-256.
 6. It compares both files with PyTorch on the first 30 s of the audio, as
@@ -76,6 +76,28 @@ On Windows, use `.venv-models\Scripts\python`.
 
 A run takes about 3 GB of disk: 1.2 GB of downloads and 1.6 GB of output. It
 needs about 6 GB of memory.
+
+#### The int8 file
+
+- **One scale per output channel.** Each output channel of a weight matrix
+  gets its own int8 scale, not one scale for the whole matrix.
+- **The last layers stay fp32.** The three `feature_transform` layers and the
+  CTC head are not quantized. The tool picks them by their node names in the
+  exported graph, and prints them. If it cannot find one of the four, it stops
+  before writing the int8 file.
+- **Only constant weights.** Only products with a constant weight matrix are
+  quantized. Attention's products of two activations stay fp32.
+- **The convolutions stay fp32,** because few ONNX Runtime backends run
+  quantized convolutions.
+
+Why: with one scale per matrix and every layer quantized, the int8 file
+failed on the owner's 207 s clip. PyTorch's top token was within 0.5 on
+94.7% of frames, where 95% is needed. The last layers feed the CTC output
+directly, so an int8 error there moves the output most. Keeping them fp32
+costs about 13 MB.
+
+The int8 file is expected to be about 370 MB, against about 1.28 GB for
+`model.onnx`.
 
 ### compare_htdemucs.py
 

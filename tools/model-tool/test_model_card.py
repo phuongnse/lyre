@@ -25,6 +25,11 @@ class ModelCardTest(unittest.TestCase):
         self.assertIn('converted to ONNX', self.card)
         self.assertIn('not an official release', self.card)
 
+    def test_it_states_how_the_int8_file_is_made(self) -> None:
+        text = ' '.join(self.card.split())
+        self.assertIn('with one scale per output channel', text)
+        self.assertIn('The three `feature_transform` layers and the CTC head stay fp32', text)
+
     def test_it_lists_each_file_with_its_size_and_hash(self) -> None:
         self.assertIn(f'| `model.onnx` | 1,275,253,998 | `{"a" * 64}` |', self.card)
         self.assertIn(f'| `vocab.json` | 1,169 | `{"b" * 64}` |', self.card)
