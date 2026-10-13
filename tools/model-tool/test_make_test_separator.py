@@ -112,7 +112,7 @@ class GraphTest(unittest.TestCase):
             self.assertEqual(every(mul, 5), [])
             self.assertEqual([value.decode('utf-8') for value in every(mul, 1)], [name, 'scale'])
 
-    def test_scale_is_float32_0_25_stored_in_the_weights_file(self) -> None:
+    def test_scale_is_float32_0_125_stored_in_the_weights_file(self) -> None:
         (initializer,) = every(graph(), 5)
         self.assertEqual(text(initializer, 8), 'scale')
         self.assertEqual(one(initializer, 2), 1)
@@ -121,7 +121,7 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(one(initializer, 14), 1)
         external = {text(entry, 1): text(entry, 2) for entry in every(initializer, 13)}
         self.assertEqual(external, {'location': 'htdemucs_fwd.onnx.data', 'offset': '0', 'length': '4'})
-        self.assertEqual(struct.unpack('<f', WEIGHTS.read_bytes()), (0.25,))
+        self.assertEqual(struct.unpack('<f', WEIGHTS.read_bytes()), (0.125,))
 
 
 if __name__ == '__main__':

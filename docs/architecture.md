@@ -187,7 +187,8 @@ reference doc and reviewed before M3 implements them.
   for separation or 16 kHz mono for alignment. Time counts from the
   timeline's start: audio that starts later gets leading silence. Audio the
   browser cannot decode gets the no-audio refusal. For now it runs on the main
-  thread from the source check page.
+  thread from the source check page, and in a Web Worker from the separation
+  check page.
 - On the web, stage 8 repackages the source's primary audio into the
   original track with Mediabunny, in a Web Worker, for now from the source
   check page. The coded packets are copied as they are. The track is WebM or
@@ -201,9 +202,16 @@ reference doc and reviewed before M3 implements them.
   adapter and the session opens on it, and otherwise WebAssembly on one
   thread. The worker gets only model bytes that already passed their check.
   ONNX Runtime's WebAssembly file is served from the site itself, at `ort/`,
-  never from a CDN. For now only the model check page runs a model, the
-  [test separator](reference/model-tool.md#make_test_separatorpy). The
-  separation stage itself is still planned.
+  never from a CDN.
+- On the web, stage 3, separation, runs in a Web Worker, for now from the
+  separation check page. The worker decodes the whole source at 44.1 kHz
+  stereo, because the core's separation needs all of it. The core cuts the
+  audio into windows, the model runs on each, and the core joins them and
+  checks the sum. Progress counts the windows done out of the total. The page
+  runs htdemucs, or the
+  [test separator](reference/model-tool.md#make_test_separatorpy) when its
+  URL asks for it. The vocals and the karaoke track are not kept yet: only
+  their lengths reach the page.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is

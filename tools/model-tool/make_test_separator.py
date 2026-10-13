@@ -4,9 +4,10 @@
 
 Writes htdemucs_fwd.onnx and htdemucs_fwd.onnx.data, by default to tests/fixtures/models/.
 The graph has the inputs and outputs of the pinned htdemucs export. Each output holds four
-copies of its input, one per stem, each multiplied by 0.25, so the stems add back up to the
-input. The 0.25 is the only weight, and it is kept in the weights file, so the test separator
-loads as the real one does. It is not a model: it separates nothing.
+copies of its input, one per stem, each multiplied by 0.125. So each branch's four stems add
+up to half the input, and the core's sum of the spectrogram and waveform branches gives back
+the input. The 0.125 is the only weight, and it is kept in the weights file, so the test
+separator loads as the real one does. It is not a model: it separates nothing.
 
 It needs only Python's standard library, and every run writes the same bytes.
 See docs/reference/model-tool.md.
@@ -27,7 +28,7 @@ DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / 'tests' / 'fixtures' / '
 STEMS = 4
 INPUTS = {'x': (1, 4, 2048, 336), 'xt': (1, 2, 343_980)}
 OUTPUTS = {'x_out': (1, 16, 2048, 336), 'xt_out': (1, 8, 343_980)}
-SCALE = 0.25
+SCALE = 0.125
 
 IR_VERSION = 8
 OPSET_VERSION = 17
