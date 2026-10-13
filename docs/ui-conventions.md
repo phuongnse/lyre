@@ -237,6 +237,10 @@ Compose uses the same three values *(planned for M4)*.
 
 - Check pages keep their code out of the main app's initial load. Examples are
   the passkey check page and the model measurement page (see
-  [early checks](roadmap.md#early-checks-on-real-devices)).
+  [early checks](roadmap.md#early-checks-on-real-devices)), and the task
+  check page at `#/task-check`.
+- The task check page runs a task of test stages, with its progress and a
+  Cancel button. The Playwright journeys use it to check cancel and the
+  cleanup after a reload ([processing](architecture.md#processing-planned-for-m2)).
 - Each one is a lazy-loaded route with `loadComponent`, in the same build and
   deploy as the main app. This is agreed in D19.

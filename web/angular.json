@@ -19,6 +19,7 @@
             "browser": "src/main.ts",
             "index": "src/index.html",
             "tsConfig": "tsconfig.app.json",
+            "webWorkerTsConfig": "tsconfig.worker.json",
             "inlineStyleLanguage": "scss",
             "styles": ["src/styles.scss"],
             "assets": [{ "glob": "lyre_wasm_bg.wasm", "input": "src/lyre-wasm", "output": "lyre-wasm" }],
