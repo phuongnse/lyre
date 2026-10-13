@@ -146,8 +146,9 @@ What was learned:
 
 ## Running on the user's device
 
-- **Models are large.** Separation and alignment models are tens to hundreds
-  of megabytes each (about 81 MB and 365 MB in D15). They are downloaded once, checked against their pinned
+- **Models are large.** Separation and alignment model files are hundreds
+  of megabytes to more than a gigabyte each (see the
+  [models reference](../reference/models.md)). They are downloaded once, checked against their pinned
   SHA-256 hash, and kept. A model that fails the check is deleted, never run.
 - **The web has hard limits.** WebGPU runs on the machine's real GPU, but
   slower than native code, and a browser tab has limited memory. Long songs
@@ -174,15 +175,17 @@ What was learned:
 ## Models and licences
 
 [D15](../decisions.md#d15-models-for-separation-and-alignment--agreed) and
-[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) chose the models for separation and alignment:
+[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) chose the models for separation and alignment.
+[D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)
+pinned their files, which the [models reference](../reference/models.md) lists:
 
 | Purpose | Model | Status | Licence |
 | --- | --- | --- | --- |
-| Separation | Demucs v4 `htdemucs` (fp16 ONNX, about 81 MB) | chosen (D15) | code MIT, no separate grant stated for the weights |
-| Alignment | Meta Omnilingual ASR CTC-300M (int8 ONNX, about 365 MB) | candidate (D20) | Apache-2.0 for code and models |
+| Separation | Demucs v4 `htdemucs` (community fp32 ONNX export, STFT outside the file) | chosen (D15, D21) | code MIT, no separate grant stated for the weights |
+| Alignment | Meta Omnilingual ASR CTC-300M (sherpa-onnx int8 ONNX export) | candidate (D20, D21) | Apache-2.0 for code and models |
 | Separation | UVR MDX-Net Inst HQ 4 | fallback | not yet confirmed in writing |
 | Alignment on weak devices | Whisper base multilingual with forced decoding | fallback | MIT |
-| Alignment | `nguyenvulebinh/lyric-alignment` (wav2vec2, Vietnamese lyrics) | candidate (D20) | CC-BY-NC-4.0 |
+| Alignment | `nguyenvulebinh/lyric-alignment` (wav2vec2 for Vietnamese lyrics, as Lyre's fp32 and int8 ONNX export) | candidate (D20, D21) | CC-BY-NC-4.0 |
 | Alignment | other Vietnamese wav2vec2 fine-tunes and MMS | not a candidate | CC-BY-NC-4.0 |
 | Separation | RoFormer separators | not used (heavy) | unclear for some |
 
