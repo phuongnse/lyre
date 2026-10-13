@@ -139,5 +139,9 @@ They are not committed: `scripts/e2e.sh` makes them into
 and libmp3lame. `scripts/setup.sh` installs ffmpeg for the journeys when it
 is missing.
 
+Every source holds a 2 s sine at 440 Hz and 48 kHz. The WebM (Opus) and MP3
+fixtures check decoding. The MP4 holds AAC audio, which Playwright's Chromium
+cannot decode, so there it checks the no-audio refusal instead.
+
 The files under `tests/fixtures/` total about 61 KB. A test fails when they
 pass 64 KiB.

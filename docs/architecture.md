@@ -33,9 +33,9 @@ flowchart LR
 - **The web client** is a static site (D9). Its UI, media playback and model
   runs are in TypeScript. The UI is Angular with Angular Material (D19),
   built by the rules in [UI conventions](ui-conventions.md). It calls the
-  core compiled to WebAssembly. It reads sources with Mediabunny, which is
-  under MPL-2.0. Mediabunny is used unmodified from npm, and its licence
-  notice ships in the build's `3rdpartylicenses.txt`.
+  core compiled to WebAssembly. It reads and decodes sources with
+  Mediabunny, which is under MPL-2.0. Mediabunny is used unmodified from npm,
+  and its licence notice ships in the build's `3rdpartylicenses.txt`.
 - **The Android app** is native Kotlin. Its UI, media playback and model runs
   use the Android stack. It calls the core as a native library through
   UniFFI.
@@ -164,6 +164,13 @@ reference doc and reviewed before M3 implements them.
   a source is picked, for now on the source check page. It reads only the
   container and decodes nothing. Mediabunny reads MP4, WebM and MP3. It reads
   a WebM's tags, but not the segment title where ffmpeg writes a WebM title.
+- On the web, stage 2 decodes the source's audio with Mediabunny through
+  WebCodecs, piece by piece, so neither the source nor the decoded audio is
+  held whole. A streaming resampler in the web client gives 44.1 kHz stereo
+  for separation or 16 kHz mono for alignment. Time counts from the
+  timeline's start: audio that starts later gets leading silence. Audio the
+  browser cannot decode gets the no-audio refusal. For now it runs on the main
+  thread from the source check page.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is

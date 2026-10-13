@@ -41,7 +41,7 @@ See [D10](docs/decisions.md#d10-technology-stack--agreed) and
 
 - Shared core: Rust, compiled to WebAssembly and to a native Android library.
 - Web: TypeScript, Angular, Angular Material, ONNX Runtime Web on WebGPU,
-  and Mediabunny to read sources.
+  and Mediabunny to read and decode sources.
 - Android: Kotlin, Jetpack Compose, Media3, ONNX Runtime for Android.
 
 ## Licence
@@ -58,9 +58,9 @@ their own licences. For example:
   [D20](docs/decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
   allows stay under their CC-BY-NC licence.
 
-Mediabunny, which the web client uses to read sources, is under MPL-2.0. It
-is used unmodified from npm, and the web build ships its licence notice in
-`3rdpartylicenses.txt`.
+Mediabunny, which the web client uses to read and decode sources, is under
+MPL-2.0. It is used unmodified from npm, and the web build ships its licence
+notice in `3rdpartylicenses.txt`.
 
 See [models and licences](docs/domain/knowledge.md#models-and-licences) for
 the models Lyre uses.
