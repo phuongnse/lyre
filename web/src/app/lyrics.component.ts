@@ -154,13 +154,16 @@ interface ShownLine {
     }
     /* The sung part of the syllable being sung, drawn over it up to the sweep.
        The layer is a block box, so without the normal line height it takes the
-       section's taller one and its text sits lower than the syllable's. */
+       section's taller one and its text sits lower than the syllable's. The
+       layer is clipped only at the sweep. At the other sides the clip reaches
+       1 em past the box, so the outline, overhanging glyphs and marks above the
+       box are covered too. */
     .syllable[aria-current='true']::after {
       content: attr(data-text) / '';
       position: absolute;
       inset: 0;
       line-height: normal;
-      clip-path: inset(0 calc(100% - (var(--sweep) - var(--start))) 0 0);
+      clip-path: inset(-1em calc(100% - (var(--sweep) - var(--start))) -1em -1em);
     }
     /* The countdown dots take no width, so they sit just left of the line. Their
        box includes the gap to the line, so it is as wide as the margin. */
