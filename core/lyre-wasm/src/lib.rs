@@ -681,7 +681,8 @@ impl SongReader {
         })
     }
 
-    /// The song's duration: the total of the karaoke track's segments.
+    /// The song's duration: the karaoke track's end, its last segment's
+    /// start plus its duration.
     #[wasm_bindgen(getter, js_name = durationMs)]
     pub fn duration_ms(&self) -> u32 {
         self.index.duration_ms()

@@ -65,13 +65,16 @@ pub const MAX_VIDEO_SEGMENT_MS: u32 = 20_000;
 /// How far each original segment's start and end may be from those of the
 /// karaoke segment at the same position, in milliseconds.
 pub const AUDIO_CUT_TOLERANCE_MS: u32 = 50;
+/// The latest a track's first media segment may start, in milliseconds.
+pub const MAX_FIRST_SEGMENT_START_MS: u32 = 50;
 /// The karaoke track's stored type: the only one it may have.
 pub const KARAOKE_TYPE: &str = "audio/webm; codecs=\"opus\"";
 /// The most media segments in one track.
 pub const MAX_SEGMENTS: usize = 4_096;
 /// The longest song, in milliseconds (1 hour).
 pub const MAX_SONG_MS: u32 = 3_600_000;
-/// How far the video's duration may differ from the song's, in milliseconds.
+/// How far the video's end may differ from the song's duration, in
+/// milliseconds.
 pub const VIDEO_TOLERANCE_MS: u32 = 1_000;
 
 /// The parsed header of a song file.
@@ -249,7 +252,8 @@ impl Index {
         &self.entries
     }
 
-    /// The song's duration: the total of the karaoke track's segments.
+    /// The song's duration: the karaoke track's end, its last segment's
+    /// start plus its duration.
     pub fn duration_ms(&self) -> u32 {
         self.duration_ms
     }
@@ -370,8 +374,8 @@ impl Timing {
     }
 }
 
-/// One media segment of a track. Its start is the total of the durations of
-/// the segments before it.
+/// One media segment of a track. Its start is the track's `start_ms` plus
+/// the durations of the segments before it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segment {
     pub duration_ms: u32,
@@ -383,6 +387,9 @@ pub struct Segment {
 /// and treats the bytes as opaque.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Track {
+    /// The first media segment's start, 0 to 50 ms. Each later segment
+    /// starts where the previous one ends.
+    pub start_ms: u32,
     /// The track's MSE type, such as `video/webm; codecs="vp09.00.40.08"`.
     pub stored_type: String,
     /// The container's init bytes, without the stored type.
@@ -508,6 +515,9 @@ pub fn read(file: &[u8]) -> Result<Song, SongFileError> {
             }
             Chunk::Media(bytes) => {
                 let track = track_of(entry.chunk_type, &mut video, &mut karaoke, &mut original);
+                if track.segments.is_empty() {
+                    track.start_ms = entry.start_ms;
+                }
                 track.segments.push(Segment {
                     duration_ms: entry.duration_ms,
                     bytes,
@@ -629,7 +639,7 @@ fn push_track<'a>(
     (init_type, init): (ChunkType, &'a [u8]),
     segment: ChunkType,
 ) {
-    chunks.push((init_type, init, 0));
+    chunks.push((init_type, init, track.start_ms));
     for part in &track.segments {
         chunks.push((segment, &part.bytes, part.duration_ms));
     }
@@ -710,6 +720,8 @@ pub enum SongFileError {
         start_ms: u32,
         expected: u64,
     },
+    /// A track's first media segment starts after 50 ms.
+    FirstSegmentStart { position: usize, start_ms: u32 },
     /// The original track has a different number of segments than the
     /// karaoke track.
     TrackLengths { karaoke: usize, original: usize },
@@ -718,7 +730,7 @@ pub enum SongFileError {
     SegmentMismatch { position: usize },
     /// The song's duration is outside 1 to 3,600,000 ms.
     SongDuration { duration_ms: u64 },
-    /// The video's duration is more than 1,000 ms from the song's.
+    /// The video's end is more than 1,000 ms from the song's duration.
     VideoDuration { video_ms: u64, song_ms: u64 },
     /// An init segment chunk's stored type length is outside 1 to 255, or
     /// the chunk ends inside the type.
@@ -854,6 +866,10 @@ impl fmt::Display for SongFileError {
                 f,
                 "index entry {position} starts at {start_ms} ms, not at {expected} ms"
             ),
+            SongFileError::FirstSegmentStart { position, start_ms } => write!(
+                f,
+                "index entry {position} is a track's first segment and starts at {start_ms} ms, after {MAX_FIRST_SEGMENT_START_MS} ms"
+            ),
             SongFileError::TrackLengths { karaoke, original } => write!(
                 f,
                 "original track has {original} segments, but the karaoke track has {karaoke}"
@@ -868,7 +884,7 @@ impl fmt::Display for SongFileError {
             ),
             SongFileError::VideoDuration { video_ms, song_ms } => write!(
                 f,
-                "video lasts {video_ms} ms, more than {VIDEO_TOLERANCE_MS} ms from the song's {song_ms} ms"
+                "video ends at {video_ms} ms, more than {VIDEO_TOLERANCE_MS} ms from the song's end at {song_ms} ms"
             ),
             SongFileError::StoredTypeLength { chunk_type, len } => write!(
                 f,
@@ -1019,10 +1035,12 @@ fn decode_entry(position: usize, raw: &[u8]) -> Result<IndexEntry, SongFileError
     })
 }
 
-/// Lays out chunks of the given (type, length, duration) one after another
-/// after the header and the index. Each media segment starts where the
-/// previous segment of its track ends. Returns the index entries and the
-/// file size.
+/// Lays out chunks of the given (type, length, time) one after another after
+/// the header and the index. The time is a media segment's duration. For an
+/// init chunk it is the start of its track's first segment, and for any
+/// other chunk it is 0. Chunks that are not media segments still get a start
+/// and a duration of 0. Each later media segment starts where the previous
+/// segment of its track ends. Returns the index entries and the file size.
 fn layout(parts: &[(ChunkType, usize, u32)]) -> Result<(Vec<IndexEntry>, u64), SongFileError> {
     let count = parts.len() as u64;
     if !(u64::from(MIN_ENTRY_COUNT)..=u64::from(MAX_ENTRY_COUNT)).contains(&count) {
@@ -1031,7 +1049,7 @@ fn layout(parts: &[(ChunkType, usize, u32)]) -> Result<(Vec<IndexEntry>, u64), S
     let mut offset = (HEADER_LEN + INDEX_ENTRY_LEN * parts.len()) as u64;
     let mut start_ms = 0u64;
     let mut entries = Vec::with_capacity(parts.len());
-    for &(chunk_type, len, duration_ms) in parts {
+    for &(chunk_type, len, value) in parts {
         let length = u32::try_from(len).map_err(|_| SongFileError::ChunkLength {
             chunk_type: chunk_type.code(),
             length: len as u64,
@@ -1040,16 +1058,16 @@ fn layout(parts: &[(ChunkType, usize, u32)]) -> Result<(Vec<IndexEntry>, u64), S
             // A start that does not fit follows a segment that is too long,
             // which `validate` rejects first.
             let start = u32::try_from(start_ms).unwrap_or(u32::MAX);
-            start_ms += u64::from(duration_ms);
+            start_ms += u64::from(value);
             IndexEntry {
                 chunk_type,
                 length,
                 offset,
                 start_ms: start,
-                duration_ms,
+                duration_ms: value,
             }
         } else {
-            start_ms = 0;
+            start_ms = u64::from(value);
             IndexEntry {
                 chunk_type,
                 length,
@@ -1171,13 +1189,15 @@ fn check_length(chunk_type: ChunkType, length: u32) -> Result<(), SongFileError>
     }
 }
 
-/// Checks that a track's segments last 1 to `max_ms` each and follow on
-/// from 0 without gaps. Returns the track's total duration.
+/// Checks that a track's segments last 1 to `max_ms` each, that the first
+/// starts at 0 to 50 ms and that each next one follows on without a gap.
+/// Returns the track's end: the last segment's start plus its duration.
 fn track_ms(
     entries: &[IndexEntry],
     segments: Range<usize>,
     max_ms: u32,
 ) -> Result<u64, SongFileError> {
+    let first = segments.start;
     let mut end = 0u64;
     for (position, entry) in segments.clone().zip(&entries[segments]) {
         if !(1..=max_ms).contains(&entry.duration_ms) {
@@ -1186,6 +1206,15 @@ fn track_ms(
                 duration_ms: entry.duration_ms,
                 max_ms,
             });
+        }
+        if position == first {
+            if entry.start_ms > MAX_FIRST_SEGMENT_START_MS {
+                return Err(SongFileError::FirstSegmentStart {
+                    position,
+                    start_ms: entry.start_ms,
+                });
+            }
+            end = u64::from(entry.start_ms);
         }
         if u64::from(entry.start_ms) != end {
             return Err(SongFileError::SegmentStart {
@@ -1532,6 +1561,7 @@ mod tests {
 
     fn track(stored_type: &str, init: &[u8], segments: &[(u32, &[u8])]) -> Track {
         Track {
+            start_ms: 0,
             stored_type: stored_type.to_owned(),
             init: init.to_vec(),
             segments: segments
@@ -1865,9 +1895,73 @@ mod tests {
                 }
             }
         }
-        // Only a segment lasting 1,001 ms instead of 1,000 is still valid,
-        // because the original's cuts may be 50 ms from the karaoke track's.
-        assert_eq!(accepted, [(148, 0x01), (196, 0x01)]);
+        // Only a karaoke or original track starting at 1 ms instead of 0,
+        // or a segment lasting 1,001 ms instead of 1,000, is still valid:
+        // a first segment may start up to 50 ms late, and the original's
+        // cuts may be 50 ms from the karaoke track's.
+        assert_eq!(
+            accepted,
+            [(144, 0x01), (148, 0x01), (192, 0x01), (196, 0x01)]
+        );
+    }
+
+    #[test]
+    fn first_segment_starts_at_0_to_50_ms() {
+        // The video, karaoke and original init chunks, and the song's
+        // duration when that track starts at 50 ms.
+        for (init, song_ms) in [(3, 1000), (5, 1050), (7, 1000)] {
+            let mut late = parts(Some(&[(2, 1000)]), &[(2, 1000)], &[(2, 1000)]);
+            late[init].2 = 50;
+            assert_eq!(check(&late), Ok(song_ms), "init at {init}");
+            late[init].2 = 51;
+            assert_eq!(
+                check(&late),
+                Err(SongFileError::FirstSegmentStart {
+                    position: init + 1,
+                    start_ms: 51
+                }),
+                "init at {init}"
+            );
+        }
+    }
+
+    #[test]
+    fn song_lasts_until_the_karaoke_track_ends() {
+        let mut late = parts(None, &[(2, 1000)], &[(2, 1000)]);
+        late[3].2 = 30;
+        assert_eq!(check(&late), Ok(1030));
+
+        let mut song = example_song();
+        song.karaoke.start_ms = 30;
+        let file = write(&song).expect("the song is valid");
+        let header = Header::parse(&file).expect("the header is valid");
+        let index = Index::parse(&header, &file[HEADER_LEN..200], 307).expect("the index is valid");
+        assert_eq!(index.duration_ms(), 1030);
+        assert_eq!(read(&file), Ok(song));
+    }
+
+    #[test]
+    fn writes_and_reads_a_track_that_starts_late() {
+        let mut song = example_song();
+        song.karaoke = track(KARAOKE_TYPE, b"ki", &[(600, b"ks1"), (400, b"ks2")]);
+        song.original = track(AAC_TYPE, b"oi", &[(600, b"os1"), (400, b"os2")]);
+        song.original.start_ms = 21;
+        let file = write(&song).expect("the song is valid");
+        let header = Header::parse(&file).expect("the header is valid");
+        let index = Index::parse(
+            &header,
+            &file[HEADER_LEN..HEADER_LEN + header.index_len()],
+            file.len() as u64,
+        )
+        .expect("the index is valid");
+        let times: Vec<_> = index
+            .entries()
+            .iter()
+            .filter(|entry| entry.chunk_type == ChunkType::OriginalSegment)
+            .map(|entry| (entry.start_ms, entry.duration_ms))
+            .collect();
+        assert_eq!(times, [(21, 600), (621, 400)]);
+        assert_eq!(read(&file), Ok(song));
     }
 
     #[test]
@@ -2885,6 +2979,14 @@ mod tests {
         assert_eq!(
             SongFileError::SegmentMismatch { position: 6 }.to_string(),
             "original segment at index entry 6 starts or ends more than 50 ms from the karaoke segment's"
+        );
+        assert_eq!(
+            SongFileError::FirstSegmentStart {
+                position: 4,
+                start_ms: 51
+            }
+            .to_string(),
+            "index entry 4 is a track's first segment and starts at 51 ms, after 50 ms"
         );
         assert_eq!(
             SongFileError::StoredTypeLength {

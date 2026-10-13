@@ -106,6 +106,8 @@ pub fn build(manifest: &Path) -> Result<Vec<u8>, BuildError> {
             })
             .collect::<Result<_, BuildError>>()?;
         Ok(Track {
+            // lyre-cli writes every track from 0.
+            start_ms: 0,
             stored_type: spec.stored_type.clone(),
             init: read(&spec.init)?,
             segments,

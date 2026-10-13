@@ -79,10 +79,15 @@ Rules:
 - **The file ends at the last chunk.** The last chunk's offset plus its length
   equals the file size. So the index alone shows a truncated or padded file.
 - **Segments are contiguous within a track.** A track's first segment starts
-  at 0, and each next one starts where the previous one ended
-  (`start_ms + duration_ms`).
+  at 0 to 50 ms, and each next one starts where the previous one ended
+  (`start_ms + duration_ms`). This applies to the video, karaoke and original
+  tracks.
 - **Unused fields are zero.** `start_ms` and `duration_ms` are 0 on every
   chunk that is not a media segment.
+
+*Why a first segment may start late:* in some sources the audio starts a few
+milliseconds after the video. Letting that track start up to 50 ms late keeps
+it in sync, and the index still records each segment's true time.
 
 *Why fixed sizes:* a fixed grammar is simple to bound and to fuzz *(planned
 for M3)*, and a reader finds any chunk without scanning.
@@ -115,10 +120,10 @@ Chunks come in this order, and no other type or order is accepted:
   of the karaoke segment at the same position, because the original keeps its
   own codec's frame length. Switching between Karaoke and Original then keeps
   the position.
-- **The song's duration is the karaoke track's total**, the sum of its
-  segments' `duration_ms`.
-- **The video matches the song.** The video's total duration is within
-  1,000 ms of the song's duration. Video segments may be cut at other times
+- **The song's duration is the karaoke track's end**, its last segment's
+  `start_ms + duration_ms`.
+- **The video matches the song.** The video's end, its last segment's
+  `start_ms + duration_ms`, is within 1,000 ms of the song's duration. Video segments may be cut at other times
   than the audio, because they must start on a keyframe.
 
 ### Song details
@@ -254,7 +259,8 @@ browser appends each chunk to a `SourceBuffer` as it reads it.
   or more whole `moof` and `mdat` box pairs. It starts
   on a keyframe that needs no earlier frame. Its first frame's presentation
   time, rounded down to a whole millisecond, equals the index entry's
-  `start_ms`.
+  `start_ms`. A writer never puts a track's first segment at 0 when its
+  first frame is later.
 - **Video.** The video is the source's coded frames, at any codec,
   resolution and frame rate the device plays. A video segment runs from one
   keyframe to a later one, and lasts at most 20,000 ms.
@@ -304,8 +310,9 @@ A reader rejects the whole file when any value is outside these limits.
 | Video media segment `duration_ms` | 1 to 20,000 |
 | Audio cut tolerance | 50 ms between each original segment's start and end and those of the karaoke segment at the same position |
 | Media segments per track | 1 to 4,096 |
+| First media segment `start_ms` | 0 to 50 ms in each track |
 | Song duration | 1 to 3,600,000 ms (1 hour) |
-| Video duration | within 1,000 ms of the song duration |
+| Video end | within 1,000 ms of the song duration |
 
 Some limits, such as 1 hour, are working values for development.
 A later format version may raise them.
