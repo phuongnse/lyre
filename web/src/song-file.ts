@@ -33,6 +33,9 @@ export interface ChunkRef {
 }
 
 export interface MediaTrack {
+  // The MSE type the song file stores for the track, such as
+  // 'video/webm; codecs="vp09.00.40.08"'.
+  type: string
   init: ChunkRef
   segments: ChunkRef[]
 }
@@ -105,7 +108,8 @@ export interface OpenedSong {
   // latest `layOut`. Both rows are empty before a layout, after the core refused
   // one, and once closed.
   lyricsRows(ms: number): LyricsRows
-  // Reads one media chunk and returns its bytes as the core gives them back.
+  // Reads one media chunk and returns its bytes as the core gives them back. For
+  // an init segment, these are the container's init bytes, without the stored type.
   read(chunk: ChunkRef): Promise<Uint8Array<ArrayBuffer>>
   // Frees the core's reader. Reading after this fails.
   close(): void
@@ -129,11 +133,20 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
       entry.free()
       return chunk
     })
-    // The song details, the lyrics and the timing are checked before anything
-    // plays. The thumbnail is not shown yet, and the original track is read only when the
-    // singer switches to it.
+    // The song details, the lyrics, the timing and each track's init chunk, which
+    // holds its stored type, are checked before anything plays. The thumbnail is not
+    // shown yet, and the original track's segments are read only when the singer
+    // switches to it.
+    const checked = [
+      ChunkKind.SongDetails,
+      ChunkKind.Lyrics,
+      ChunkKind.Timing,
+      ChunkKind.VideoInit,
+      ChunkKind.KaraokeInit,
+      ChunkKind.OriginalInit,
+    ]
     for (const chunk of chunks) {
-      if ([ChunkKind.SongDetails, ChunkKind.Lyrics, ChunkKind.Timing].includes(chunk.kind)) {
+      if (checked.includes(chunk.kind)) {
         const bytes = await readRange(source, chunk.offset, chunk.offset + chunk.length)
         core(() => reader.readChunk(chunk.position, bytes))
       }
@@ -149,8 +162,12 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
     read.free()
     const track = (init: ChunkKind, segment: ChunkKind): MediaTrack | undefined => {
       const first = chunks.find((chunk) => chunk.kind === init)
-      return first && { init: first, segments: chunks.filter((chunk) => chunk.kind === segment) }
+      if (!first) return undefined
+      const type = reader.storedType(first.position)
+      if (type === undefined) throw new SongFileError('damaged')
+      return { type, init: first, segments: chunks.filter((chunk) => chunk.kind === segment) }
     }
+    const video = track(ChunkKind.VideoInit, ChunkKind.VideoSegment)
     const karaoke = track(ChunkKind.KaraokeInit, ChunkKind.KaraokeSegment)
     const original = track(ChunkKind.OriginalInit, ChunkKind.OriginalSegment)
     if (!karaoke || !original) throw new SongFileError('damaged')
@@ -170,7 +187,7 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
       songId: reader.songId,
       details,
       durationMs: reader.durationMs,
-      video: track(ChunkKind.VideoInit, ChunkKind.VideoSegment),
+      video,
       karaoke,
       original,
       lyrics,

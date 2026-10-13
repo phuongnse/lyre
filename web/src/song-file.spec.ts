@@ -21,7 +21,7 @@ function example(): Uint8Array<ArrayBuffer> {
     .replaceAll(' ', '')
   const bytes = new Uint8Array(hex.length / 2)
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16)
-  expect(bytes.length).toBe(249)
+  expect(bytes.length).toBe(307)
   return bytes
 }
 
@@ -63,19 +63,44 @@ test('opening the example reads the header, the index and single chunks, never t
   expect(media).toEqual(['ki', 'ks'])
 
   // From the example's annotated bytes: the header, the index, the song
-  // details, the lyrics, the timing, then the karaoke init and segment.
+  // details, the lyrics, the timing, the karaoke init and the original init
+  // when opening, then the karaoke init and segment when playing.
   expect(ranges).toEqual([
     [0, 32],
     [32, 200],
     [200, 211],
     [211, 221],
     [221, 241],
-    [241, 243],
-    [243, 245],
+    [241, 270],
+    [272, 305],
+    [241, 270],
+    [270, 272],
   ])
   expect(ranges).not.toContainEqual([0, file.length])
-  // The original track's init and segment are at [245, 247) and [247, 249).
-  for (const [start, end] of ranges) expect(end <= 245 || start >= 249).toBe(true)
+  // The original track's segment is at [305, 307).
+  for (const [, end] of ranges) expect(end).toBeLessThanOrEqual(305)
+})
+
+test('each track gives the type its song file stores', async () => {
+  const song = await openSongFile(new Blob([example()]))
+  expect(song.karaoke.type).toBe('audio/webm; codecs="opus"')
+  expect(song.original.type).toBe('audio/mp4; codecs="mp4a.40.2"')
+  song.close()
+})
+
+test('the fixture song gives the types of its video and audio tracks', async () => {
+  const song = await openSongFile(new Blob([fixtureSong()]))
+  expect(song.video?.type).toBe('video/webm; codecs="vp09.00.40.08"')
+  expect(song.karaoke.type).toBe('audio/webm; codecs="opus"')
+  expect(song.original.type).toBe('audio/webm; codecs="opus"')
+  song.close()
+})
+
+test('the original init is read for its type, and gives its container init bytes when read again', async () => {
+  const song = await openSongFile(new Blob([example()]))
+  expect(text(await song.read(song.original.init))).toBe('oi')
+  expect(text(await song.read(song.original.segments[0]))).toBe('os')
+  song.close()
 })
 
 test('the example gives its song ID and its details as stored', async () => {
@@ -138,33 +163,27 @@ test('the example has a countdown before its first lyric line', async () => {
   expect(song.dotsSwept(0)).toBe(0)
 })
 
+const ref = (position: number, offset: number, length: number, startMs: number, durationMs: number): ChunkRef => ({
+  position,
+  offset,
+  length,
+  startMs,
+  durationMs,
+})
+
 test('the karaoke track lists its chunks with their times', async () => {
   const song = await openSongFile(new Blob([example()]))
-  const ref = (position: number, offset: number, startMs: number, durationMs: number): ChunkRef => ({
-    position,
-    offset,
-    length: 2,
-    startMs,
-    durationMs,
-  })
-  expect(song.karaoke.init).toMatchObject(ref(3, 241, 0, 0))
+  expect(song.karaoke.init).toMatchObject(ref(3, 241, 29, 0, 0))
   expect(song.karaoke.segments).toHaveLength(1)
-  expect(song.karaoke.segments[0]).toMatchObject(ref(4, 243, 0, 1000))
+  expect(song.karaoke.segments[0]).toMatchObject(ref(4, 270, 2, 0, 1000))
   song.close()
 })
 
 test('the original track lists its chunks with their times', async () => {
   const song = await openSongFile(new Blob([example()]))
-  const ref = (position: number, offset: number, startMs: number, durationMs: number): ChunkRef => ({
-    position,
-    offset,
-    length: 2,
-    startMs,
-    durationMs,
-  })
-  expect(song.original.init).toMatchObject(ref(5, 245, 0, 0))
+  expect(song.original.init).toMatchObject(ref(5, 272, 33, 0, 0))
   expect(song.original.segments).toHaveLength(1)
-  expect(song.original.segments[0]).toMatchObject(ref(6, 247, 0, 1000))
+  expect(song.original.segments[0]).toMatchObject(ref(6, 305, 2, 0, 1000))
   song.close()
 })
 
@@ -179,7 +198,7 @@ test('a file with the wrong magic is not a song file', async () => {
 })
 
 test('the example without its last byte is damaged', async () => {
-  expect(await problemOf(new Blob([example().slice(0, 248)]))).toBe('damaged')
+  expect(await problemOf(new Blob([example().slice(0, 306)]))).toBe('damaged')
 })
 
 test('a file that ends inside its index is damaged', async () => {
@@ -192,9 +211,22 @@ test('a timing that does not match the lyrics is damaged', async () => {
   expect(await problemOf(new Blob([file]))).toBe('damaged')
 })
 
+test('a karaoke type other than Opus in WebM is damaged', async () => {
+  const file = example()
+  file[243] = 0x41
+  expect(await problemOf(new Blob([file]))).toBe('damaged')
+})
+
+test('an original type in the wrong container is damaged, though its segments are not read', async () => {
+  const file = example()
+  // Byte 274 starts the original track's type: 'audio/mp4' becomes 'video/mp4'.
+  file.set(new TextEncoder().encode('video'), 274)
+  expect(await problemOf(new Blob([file]))).toBe('damaged')
+})
+
 test('a source that fails to read is damaged', async () => {
   const failing: ByteSource = {
-    size: 249,
+    size: 307,
     slice: () => ({ arrayBuffer: () => Promise.reject(new Error('read failed')) }) as unknown as Blob,
   }
   expect(await problemOf(failing)).toBe('damaged')

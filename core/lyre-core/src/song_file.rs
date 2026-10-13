@@ -28,8 +28,8 @@ pub const INDEX_ENTRY_LEN: usize = 24;
 pub const MIN_ENTRY_COUNT: u32 = 7;
 /// The most index entries a song file can have.
 pub const MAX_ENTRY_COUNT: u32 = 16_384;
-/// The largest song file, in bytes (2³¹ − 1).
-pub const MAX_FILE_SIZE: u64 = 2_147_483_647;
+/// The largest song file, in bytes (2³² − 1).
+pub const MAX_FILE_SIZE: u64 = 4_294_967_295;
 /// The largest title, artist or composer, in bytes.
 pub const MAX_FIELD_BYTES: usize = 1_024;
 /// The smallest song details chunk: a 1-byte title, two empty fields and
@@ -46,12 +46,27 @@ pub const MAX_SYLLABLES: usize = 65_536;
 pub const MIN_TIMING_BYTES: usize = 4 + 8;
 /// The largest timing chunk: a count and [`MAX_SYLLABLES`] syllables.
 pub const MAX_TIMING_BYTES: usize = 4 + 8 * MAX_SYLLABLES;
-/// The largest init segment chunk, in bytes.
-pub const MAX_INIT_BYTES: usize = 65_536;
-/// The largest media segment chunk, in bytes (16 MiB).
-pub const MAX_SEGMENT_BYTES: usize = 16_777_216;
-/// The longest media segment, in milliseconds.
-pub const MAX_SEGMENT_MS: u32 = 10_000;
+/// The longest stored type, in bytes.
+pub const MAX_STORED_TYPE_BYTES: usize = 255;
+/// The largest container init bytes in an init segment chunk.
+pub const MAX_CONTAINER_INIT_BYTES: usize = 65_536;
+/// The smallest init segment chunk: the type length, a 1-byte type and 1
+/// byte of container init.
+pub const MIN_INIT_CHUNK_BYTES: usize = 2 + 1 + 1;
+/// The largest init segment chunk: the type length, the longest type and the
+/// largest container init.
+pub const MAX_INIT_CHUNK_BYTES: usize = 2 + MAX_STORED_TYPE_BYTES + MAX_CONTAINER_INIT_BYTES;
+/// The largest media segment chunk, in bytes (64 MiB).
+pub const MAX_SEGMENT_BYTES: usize = 67_108_864;
+/// The longest audio media segment, in milliseconds.
+pub const MAX_AUDIO_SEGMENT_MS: u32 = 10_000;
+/// The longest video media segment, in milliseconds.
+pub const MAX_VIDEO_SEGMENT_MS: u32 = 20_000;
+/// How far each original segment's start and end may be from those of the
+/// karaoke segment at the same position, in milliseconds.
+pub const AUDIO_CUT_TOLERANCE_MS: u32 = 50;
+/// The karaoke track's stored type: the only one it may have.
+pub const KARAOKE_TYPE: &str = "audio/webm; codecs=\"opus\"";
 /// The most media segments in one track.
 pub const MAX_SEGMENTS: usize = 4_096;
 /// The longest song, in milliseconds (1 hour).
@@ -175,7 +190,7 @@ impl ChunkType {
             ChunkType::Lyrics => (1, MAX_LYRICS_BYTES),
             ChunkType::Timing => (MIN_TIMING_BYTES, MAX_TIMING_BYTES),
             ChunkType::VideoInit | ChunkType::KaraokeInit | ChunkType::OriginalInit => {
-                (1, MAX_INIT_BYTES)
+                (MIN_INIT_CHUNK_BYTES, MAX_INIT_CHUNK_BYTES)
             }
             ChunkType::VideoSegment | ChunkType::KaraokeSegment | ChunkType::OriginalSegment => {
                 (1, MAX_SEGMENT_BYTES)
@@ -363,10 +378,14 @@ pub struct Segment {
     pub bytes: Vec<u8>,
 }
 
-/// One media track: its init segment and its media segments, in order. The
-/// core treats the bytes as opaque.
+/// One media track: its stored type, its container init bytes and its media
+/// segments, in order. The core checks only the container part of the type,
+/// and treats the bytes as opaque.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Track {
+    /// The track's MSE type, such as `video/webm; codecs="vp09.00.40.08"`.
+    pub stored_type: String,
+    /// The container's init bytes, without the stored type.
     pub init: Vec<u8>,
     pub segments: Vec<Segment>,
 }
@@ -391,7 +410,13 @@ pub enum Chunk {
     Thumbnail(Vec<u8>),
     Lyrics(Lyrics),
     Timing(Timing),
-    /// An init segment or a media segment, as opaque bytes.
+    /// An init segment: the track's stored type and the container's init
+    /// bytes, which are opaque.
+    Init {
+        stored_type: String,
+        init: Vec<u8>,
+    },
+    /// A media segment, as opaque bytes.
     Media(Vec<u8>),
 }
 
@@ -413,7 +438,13 @@ pub fn read_chunk(entry: &IndexEntry, bytes: &[u8]) -> Result<Chunk, SongFileErr
             .map(Chunk::Lyrics)
             .map_err(SongFileError::Lyrics),
         ChunkType::Timing => parse_timing(bytes).map(Chunk::Timing),
-        _ => Ok(Chunk::Media(bytes.to_vec())),
+        ChunkType::VideoInit | ChunkType::KaraokeInit | ChunkType::OriginalInit => {
+            parse_init(entry.chunk_type, bytes)
+                .map(|(stored_type, init)| Chunk::Init { stored_type, init })
+        }
+        ChunkType::VideoSegment | ChunkType::KaraokeSegment | ChunkType::OriginalSegment => {
+            Ok(Chunk::Media(bytes.to_vec()))
+        }
     }
 }
 
@@ -470,22 +501,17 @@ pub fn read(file: &[u8]) -> Result<Song, SongFileError> {
             Chunk::Thumbnail(chunk) => thumbnail = Some(chunk),
             Chunk::Lyrics(chunk) => lyrics = Some(chunk),
             Chunk::Timing(chunk) => timing = Some(chunk),
+            Chunk::Init { stored_type, init } => {
+                let track = track_of(entry.chunk_type, &mut video, &mut karaoke, &mut original);
+                track.stored_type = stored_type;
+                track.init = init;
+            }
             Chunk::Media(bytes) => {
-                let track = match entry.chunk_type {
-                    ChunkType::VideoInit | ChunkType::VideoSegment => {
-                        video.get_or_insert_with(Track::default)
-                    }
-                    ChunkType::KaraokeInit | ChunkType::KaraokeSegment => &mut karaoke,
-                    _ => &mut original,
-                };
-                if entry.chunk_type.is_segment() {
-                    track.segments.push(Segment {
-                        duration_ms: entry.duration_ms,
-                        bytes,
-                    });
-                } else {
-                    track.init = bytes;
-                }
+                let track = track_of(entry.chunk_type, &mut video, &mut karaoke, &mut original);
+                track.segments.push(Segment {
+                    duration_ms: entry.duration_ms,
+                    bytes,
+                });
             }
         }
     }
@@ -507,11 +533,33 @@ pub fn read(file: &[u8]) -> Result<Song, SongFileError> {
     })
 }
 
+/// The track that a media chunk of `chunk_type` belongs to.
+fn track_of<'a>(
+    chunk_type: ChunkType,
+    video: &'a mut Option<Track>,
+    karaoke: &'a mut Track,
+    original: &'a mut Track,
+) -> &'a mut Track {
+    match chunk_type {
+        ChunkType::VideoInit | ChunkType::VideoSegment => video.get_or_insert_with(Track::default),
+        ChunkType::KaraokeInit | ChunkType::KaraokeSegment => karaoke,
+        _ => original,
+    }
+}
+
 /// Writes `song` as a song file. A song that the reader would reject is
 /// refused before any file bytes are written.
 pub fn write(song: &Song) -> Result<Vec<u8>, SongFileError> {
     let details = encode_details(&song.details)?;
     let timing = encode_timing(&song.timing)?;
+    // Each init chunk is checked as the reader would check it.
+    let video_init = song
+        .video
+        .as_ref()
+        .map(|video| encode_init(ChunkType::VideoInit, video))
+        .transpose()?;
+    let karaoke_init = encode_init(ChunkType::KaraokeInit, &song.karaoke)?;
+    let original_init = encode_init(ChunkType::OriginalInit, &song.original)?;
     let mut chunks: Vec<(ChunkType, &[u8], u32)> =
         vec![(ChunkType::SongDetails, details.as_slice(), 0)];
     if let Some(thumbnail) = &song.thumbnail {
@@ -519,24 +567,24 @@ pub fn write(song: &Song) -> Result<Vec<u8>, SongFileError> {
     }
     chunks.push((ChunkType::Lyrics, song.lyrics.as_bytes(), 0));
     chunks.push((ChunkType::Timing, &timing, 0));
-    if let Some(video) = &song.video {
+    if let (Some(video), Some(init)) = (&song.video, &video_init) {
         push_track(
             &mut chunks,
             video,
-            ChunkType::VideoInit,
+            (ChunkType::VideoInit, init),
             ChunkType::VideoSegment,
         );
     }
     push_track(
         &mut chunks,
         &song.karaoke,
-        ChunkType::KaraokeInit,
+        (ChunkType::KaraokeInit, &karaoke_init),
         ChunkType::KaraokeSegment,
     );
     push_track(
         &mut chunks,
         &song.original,
-        ChunkType::OriginalInit,
+        (ChunkType::OriginalInit, &original_init),
         ChunkType::OriginalSegment,
     );
 
@@ -573,14 +621,15 @@ pub fn write(song: &Song) -> Result<Vec<u8>, SongFileError> {
     Ok(file)
 }
 
-/// Adds a track's init segment and media segments to the chunks to write.
+/// Adds a track's encoded init segment and its media segments to the chunks
+/// to write.
 fn push_track<'a>(
     chunks: &mut Vec<(ChunkType, &'a [u8], u32)>,
     track: &'a Track,
-    init: ChunkType,
+    (init_type, init): (ChunkType, &'a [u8]),
     segment: ChunkType,
 ) {
-    chunks.push((init, &track.init, 0));
+    chunks.push((init_type, init, 0));
     for part in &track.segments {
         chunks.push((segment, &part.bytes, part.duration_ms));
     }
@@ -623,7 +672,7 @@ pub enum SongFileError {
     EntryCount { count: u64 },
     /// The index bytes are not `entry_count × 24` long.
     IndexLength { len: usize, expected: usize },
-    /// The file is larger than 2,147,483,647 bytes.
+    /// The file is larger than 4,294,967,295 bytes.
     FileTooLarge { size: u64 },
     /// An index entry has a chunk type the format does not define.
     UnknownChunkType { position: usize, chunk_type: u16 },
@@ -647,8 +696,13 @@ pub enum SongFileError {
     FileSize { size: u64, end: u64 },
     /// A chunk that is not a media segment has a nonzero start or duration.
     UnusedTimes { position: usize },
-    /// A media segment's duration is outside 1 to 10,000 ms.
-    SegmentDuration { position: usize, duration_ms: u32 },
+    /// A media segment's duration is outside 1 to `max_ms`: 10,000 ms for
+    /// audio and 20,000 ms for video.
+    SegmentDuration {
+        position: usize,
+        duration_ms: u32,
+        max_ms: u32,
+    },
     /// A media segment does not start where the previous one in its track
     /// ends.
     SegmentStart {
@@ -659,13 +713,25 @@ pub enum SongFileError {
     /// The original track has a different number of segments than the
     /// karaoke track.
     TrackLengths { karaoke: usize, original: usize },
-    /// An original segment's start or duration differs from its karaoke
-    /// segment's.
+    /// An original segment's start or end is more than 50 ms from those of
+    /// the karaoke segment at the same position.
     SegmentMismatch { position: usize },
     /// The song's duration is outside 1 to 3,600,000 ms.
     SongDuration { duration_ms: u64 },
     /// The video's duration is more than 1,000 ms from the song's.
     VideoDuration { video_ms: u64, song_ms: u64 },
+    /// An init segment chunk's stored type length is outside 1 to 255, or
+    /// the chunk ends inside the type.
+    StoredTypeLength { chunk_type: u16, len: usize },
+    /// An init segment chunk's stored type has a byte that is not printable
+    /// ASCII at byte `offset` of the type.
+    StoredTypeByte { chunk_type: u16, offset: usize },
+    /// An init segment chunk's stored type is not in a container its track
+    /// may use.
+    StoredTypeContainer { chunk_type: u16 },
+    /// An init segment chunk's container init bytes are outside 1 to 65,536
+    /// bytes.
+    InitLength { chunk_type: u16, len: usize },
     /// The bytes given for a chunk are not its stored length.
     ChunkBytes {
         chunk_type: u16,
@@ -775,9 +841,10 @@ impl fmt::Display for SongFileError {
             SongFileError::SegmentDuration {
                 position,
                 duration_ms,
+                max_ms,
             } => write!(
                 f,
-                "index entry {position} lasts {duration_ms} ms, outside 1 to {MAX_SEGMENT_MS} ms"
+                "index entry {position} lasts {duration_ms} ms, outside 1 to {max_ms} ms"
             ),
             SongFileError::SegmentStart {
                 position,
@@ -793,7 +860,7 @@ impl fmt::Display for SongFileError {
             ),
             SongFileError::SegmentMismatch { position } => write!(
                 f,
-                "original segment at index entry {position} is not cut at the karaoke segment's times"
+                "original segment at index entry {position} starts or ends more than {AUDIO_CUT_TOLERANCE_MS} ms from the karaoke segment's"
             ),
             SongFileError::SongDuration { duration_ms } => write!(
                 f,
@@ -802,6 +869,22 @@ impl fmt::Display for SongFileError {
             SongFileError::VideoDuration { video_ms, song_ms } => write!(
                 f,
                 "video lasts {video_ms} ms, more than {VIDEO_TOLERANCE_MS} ms from the song's {song_ms} ms"
+            ),
+            SongFileError::StoredTypeLength { chunk_type, len } => write!(
+                f,
+                "chunk of type {chunk_type} has a stored type of {len} bytes, outside 1 to {MAX_STORED_TYPE_BYTES}"
+            ),
+            SongFileError::StoredTypeByte { chunk_type, offset } => write!(
+                f,
+                "chunk of type {chunk_type} has a stored type that is not printable ASCII at byte {offset}"
+            ),
+            SongFileError::StoredTypeContainer { chunk_type } => write!(
+                f,
+                "chunk of type {chunk_type} has a stored type in a container its track may not use"
+            ),
+            SongFileError::InitLength { chunk_type, len } => write!(
+                f,
+                "chunk of type {chunk_type} has {len} bytes of container init, outside 1 to {MAX_CONTAINER_INIT_BYTES}"
             ),
             SongFileError::ChunkBytes {
                 chunk_type,
@@ -1088,15 +1171,20 @@ fn check_length(chunk_type: ChunkType, length: u32) -> Result<(), SongFileError>
     }
 }
 
-/// Checks that a track's segments last 1 to 10,000 ms each and follow on
+/// Checks that a track's segments last 1 to `max_ms` each and follow on
 /// from 0 without gaps. Returns the track's total duration.
-fn track_ms(entries: &[IndexEntry], segments: Range<usize>) -> Result<u64, SongFileError> {
+fn track_ms(
+    entries: &[IndexEntry],
+    segments: Range<usize>,
+    max_ms: u32,
+) -> Result<u64, SongFileError> {
     let mut end = 0u64;
     for (position, entry) in segments.clone().zip(&entries[segments]) {
-        if !(1..=MAX_SEGMENT_MS).contains(&entry.duration_ms) {
+        if !(1..=max_ms).contains(&entry.duration_ms) {
             return Err(SongFileError::SegmentDuration {
                 position,
                 duration_ms: entry.duration_ms,
+                max_ms,
             });
         }
         if u64::from(entry.start_ms) != end {
@@ -1147,8 +1235,8 @@ fn validate(entries: &[IndexEntry], file_size: u64) -> Result<u32, SongFileError
         });
     }
 
-    let song_ms = track_ms(entries, tracks.karaoke.clone())?;
-    track_ms(entries, tracks.original.clone())?;
+    let song_ms = track_ms(entries, tracks.karaoke.clone(), MAX_AUDIO_SEGMENT_MS)?;
+    track_ms(entries, tracks.original.clone(), MAX_AUDIO_SEGMENT_MS)?;
     if tracks.karaoke.len() != tracks.original.len() {
         return Err(SongFileError::TrackLengths {
             karaoke: tracks.karaoke.len(),
@@ -1160,7 +1248,13 @@ fn validate(entries: &[IndexEntry], file_size: u64) -> Result<u32, SongFileError
             .iter()
             .zip(&entries[tracks.original]),
     ) {
-        if karaoke.start_ms != original.start_ms || karaoke.duration_ms != original.duration_ms {
+        // The original keeps its own codec's frame length, so its cuts may
+        // be a little off the karaoke track's.
+        let end = |entry: &IndexEntry| u64::from(entry.start_ms) + u64::from(entry.duration_ms);
+        let tolerance = u64::from(AUDIO_CUT_TOLERANCE_MS);
+        if u64::from(karaoke.start_ms.abs_diff(original.start_ms)) > tolerance
+            || end(karaoke).abs_diff(end(original)) > tolerance
+        {
             return Err(SongFileError::SegmentMismatch { position });
         }
     }
@@ -1170,7 +1264,7 @@ fn validate(entries: &[IndexEntry], file_size: u64) -> Result<u32, SongFileError
         });
     }
     if let Some(video) = tracks.video {
-        let video_ms = track_ms(entries, video)?;
+        let video_ms = track_ms(entries, video, MAX_VIDEO_SEGMENT_MS)?;
         if video_ms.abs_diff(song_ms) > u64::from(VIDEO_TOLERANCE_MS) {
             return Err(SongFileError::VideoDuration { video_ms, song_ms });
         }
@@ -1283,6 +1377,69 @@ fn encode_timing(timing: &Timing) -> Result<Vec<u8>, SongFileError> {
     Ok(bytes)
 }
 
+/// Parses an init segment chunk of `chunk_type`: the stored type, checked
+/// for its length, its bytes and its container, then the container's init
+/// bytes. The `codecs` value is never read.
+fn parse_init(chunk_type: ChunkType, bytes: &[u8]) -> Result<(String, Vec<u8>), SongFileError> {
+    let code = chunk_type.code();
+    let mut reader = Reader::new(bytes);
+    let len = reader.u16().map_or(0, usize::from);
+    let raw = reader
+        .take(len)
+        .filter(|_| (1..=MAX_STORED_TYPE_BYTES).contains(&len))
+        .ok_or(SongFileError::StoredTypeLength {
+            chunk_type: code,
+            len,
+        })?;
+    if let Some(offset) = raw.iter().position(|byte| !(0x20..=0x7E).contains(byte)) {
+        return Err(SongFileError::StoredTypeByte {
+            chunk_type: code,
+            offset,
+        });
+    }
+    let stored_type: String = raw.iter().copied().map(char::from).collect();
+    let container_fits = match chunk_type {
+        ChunkType::VideoInit => {
+            stored_type.starts_with("video/webm;") || stored_type.starts_with("video/mp4;")
+        }
+        ChunkType::OriginalInit => {
+            stored_type.starts_with("audio/webm;") || stored_type.starts_with("audio/mp4;")
+        }
+        ChunkType::KaraokeInit => stored_type == KARAOKE_TYPE,
+        _ => false,
+    };
+    if !container_fits {
+        return Err(SongFileError::StoredTypeContainer { chunk_type: code });
+    }
+    let init = reader.take(reader.remaining()).unwrap_or_default();
+    if !(1..=MAX_CONTAINER_INIT_BYTES).contains(&init.len()) {
+        return Err(SongFileError::InitLength {
+            chunk_type: code,
+            len: init.len(),
+        });
+    }
+    Ok((stored_type, init.to_vec()))
+}
+
+/// Encodes `track`'s init segment chunk of `chunk_type` and checks it as
+/// the reader does.
+fn encode_init(chunk_type: ChunkType, track: &Track) -> Result<Vec<u8>, SongFileError> {
+    let len = track.stored_type.len();
+    let type_length = u16::try_from(len)
+        .ok()
+        .filter(|_| len <= MAX_STORED_TYPE_BYTES)
+        .ok_or(SongFileError::StoredTypeLength {
+            chunk_type: chunk_type.code(),
+            len,
+        })?;
+    let mut bytes = Vec::with_capacity(2 + len + track.init.len());
+    bytes.extend_from_slice(&type_length.to_le_bytes());
+    bytes.extend_from_slice(track.stored_type.as_bytes());
+    bytes.extend_from_slice(&track.init);
+    parse_init(chunk_type, &bytes)?;
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1315,7 +1472,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(bytes.len(), 249);
+        assert_eq!(bytes.len(), 307);
         bytes
     }
 
@@ -1343,8 +1500,12 @@ mod tests {
         .expect("timing is accepted")
     }
 
-    fn track(init: &[u8], segments: &[(u32, &[u8])]) -> Track {
+    /// The known-answer example's original track type.
+    const AAC_TYPE: &str = "audio/mp4; codecs=\"mp4a.40.2\"";
+
+    fn track(stored_type: &str, init: &[u8], segments: &[(u32, &[u8])]) -> Track {
         Track {
+            stored_type: stored_type.to_owned(),
             init: init.to_vec(),
             segments: segments
                 .iter()
@@ -1365,8 +1526,8 @@ mod tests {
             lyrics: lyrics("Mưa rơi\n"),
             timing: timing(&[(0, 500), (500, 1000)]),
             video: None,
-            karaoke: track(b"ki", &[(1000, b"ks")]),
-            original: track(b"oi", &[(1000, b"os")]),
+            karaoke: track(KARAOKE_TYPE, b"ki", &[(1000, b"ks")]),
+            original: track(AAC_TYPE, b"oi", &[(1000, b"os")]),
         }
     }
 
@@ -1374,8 +1535,9 @@ mod tests {
     /// chunks themselves.
     type Parts = Vec<(ChunkType, usize, u32)>;
 
-    /// The parts of a song with the example's first chunks and the given
-    /// tracks, each segment as (length, duration).
+    /// The parts of a song with the example's first chunks and init chunks,
+    /// and the given tracks, each segment as (length, duration). The video
+    /// init chunk has the smallest length.
     fn parts(
         video: Option<&[(usize, u32)]>,
         karaoke: &[(usize, u32)],
@@ -1387,7 +1549,12 @@ mod tests {
             (ChunkType::Timing, 20, 0),
         ];
         let mut push = |init, segment, segments: &[(usize, u32)]| {
-            parts.push((init, 2, 0));
+            let init_len = match init {
+                ChunkType::KaraokeInit => 29,
+                ChunkType::OriginalInit => 33,
+                _ => MIN_INIT_CHUNK_BYTES,
+            };
+            parts.push((init, init_len, 0));
             for &(len, duration_ms) in segments {
                 parts.push((segment, len, duration_ms));
             }
@@ -1490,7 +1657,7 @@ mod tests {
         assert_eq!(header.index_len(), 168);
 
         let index_bytes = &file[HEADER_LEN..HEADER_LEN + header.index_len()];
-        let index = Index::parse(&header, index_bytes, 249).expect("the index is valid");
+        let index = Index::parse(&header, index_bytes, 307).expect("the index is valid");
         assert_eq!(index.duration_ms(), 1000);
         let types: Vec<_> = index.entries().iter().map(|e| e.chunk_type).collect();
         assert_eq!(
@@ -1524,9 +1691,15 @@ mod tests {
                 Chunk::SongDetails(song.details),
                 Chunk::Lyrics(song.lyrics.clone()),
                 Chunk::Timing(song.timing.clone()),
-                Chunk::Media(b"ki".to_vec()),
+                Chunk::Init {
+                    stored_type: KARAOKE_TYPE.to_owned(),
+                    init: b"ki".to_vec()
+                },
                 Chunk::Media(b"ks".to_vec()),
-                Chunk::Media(b"oi".to_vec()),
+                Chunk::Init {
+                    stored_type: AAC_TYPE.to_owned(),
+                    init: b"oi".to_vec()
+                },
                 Chunk::Media(b"os".to_vec()),
             ]
         );
@@ -1545,9 +1718,13 @@ mod tests {
             thumbnail: Some(b"\xFF\xD8\xFF\xE0thumb".to_vec()),
             lyrics: lyrics(text),
             timing: timing(&[(0, 300), (300, 600), (700, 1000)]),
-            video: Some(track(b"vi", &[(700, b"vs1"), (800, b"vs2")])),
-            karaoke: track(b"ki", &[(600, b"ks1"), (400, b"ks2")]),
-            original: track(b"oi", &[(600, b"os1"), (400, b"os2")]),
+            video: Some(track(
+                "video/mp4; codecs=\"avc1.640028\"",
+                b"vi",
+                &[(700, b"vs1"), (800, b"vs2")],
+            )),
+            karaoke: track(KARAOKE_TYPE, b"ki", &[(600, b"ks1"), (400, b"ks2")]),
+            original: track(AAC_TYPE, b"oi", &[(600, b"os1"), (400, b"os2")]),
         };
         let file = write(&song).expect("the song is valid");
         let read_back = read(&file).expect("the written file is valid");
@@ -1595,8 +1772,8 @@ mod tests {
         assert_eq!(
             read(&truncated),
             Err(SongFileError::FileSize {
-                size: 248,
-                end: 249
+                size: 306,
+                end: 307
             })
         );
 
@@ -1605,8 +1782,8 @@ mod tests {
         assert_eq!(
             read(&padded),
             Err(SongFileError::FileSize {
-                size: 250,
-                end: 249
+                size: 308,
+                end: 307
             })
         );
 
@@ -1617,11 +1794,18 @@ mod tests {
             Err(SongFileError::TimingLength { len: 20, count: 3 })
         );
 
-        let mut original_999 = example();
-        original_999[196] = 0xE7;
+        let mut original_949 = example();
+        original_949[196] = 0xB5;
         assert_eq!(
-            read(&original_999),
+            read(&original_949),
             Err(SongFileError::SegmentMismatch { position: 6 })
+        );
+
+        let mut karaoke_type = example();
+        karaoke_type[243] = b'A';
+        assert_eq!(
+            read(&karaoke_type),
+            Err(SongFileError::StoredTypeContainer { chunk_type: 18 })
         );
 
         let mut unknown_role = example();
@@ -1644,13 +1828,19 @@ mod tests {
     fn rejects_any_changed_header_or_index_byte() {
         let file = example();
         let header_and_index = (0..16).chain(HEADER_LEN..200);
+        let mut accepted = Vec::new();
         for offset in header_and_index {
             for mask in [0x01, 0xFF] {
                 let mut changed = file.clone();
                 changed[offset] ^= mask;
-                assert!(read(&changed).is_err(), "byte {offset} ^ {mask:#04x}");
+                if read(&changed).is_ok() {
+                    accepted.push((offset, mask));
+                }
             }
         }
+        // Only a segment lasting 1,001 ms instead of 1,000 is still valid,
+        // because the original's cuts may be 50 ms from the karaoke track's.
+        assert_eq!(accepted, [(148, 0x01), (196, 0x01)]);
     }
 
     #[test]
@@ -1676,14 +1866,14 @@ mod tests {
         let file = example();
         let header = Header::parse(&file).expect("the header is valid");
         assert_eq!(
-            Index::parse(&header, &file[32..199], 249),
+            Index::parse(&header, &file[32..199], 307),
             Err(SongFileError::IndexLength {
                 len: 167,
                 expected: 168
             })
         );
         assert_eq!(
-            Index::parse(&header, &file[32..201], 249),
+            Index::parse(&header, &file[32..201], 307),
             Err(SongFileError::IndexLength {
                 len: 169,
                 expected: 168
@@ -1711,14 +1901,14 @@ mod tests {
     }
 
     #[test]
-    fn file_size_is_at_most_2_gib_minus_1() {
-        // 128 segments in each track, with the karaoke track's last segment
+    fn file_size_is_at_most_4_gib_minus_1() {
+        // 64 segments of 64 MiB in the karaoke track, with its last segment
         // sized so the file ends 1 byte past the limit.
-        let mut karaoke = vec![(MAX_SEGMENT_BYTES, 1000); 128];
-        let original = vec![(1, 1000); 128];
+        let mut karaoke = vec![(MAX_SEGMENT_BYTES, 1000); 64];
+        let original = vec![(1, 1000); 64];
         let (_, size) = layout(&parts(None, &karaoke, &original)).expect("laid out");
         let over = usize::try_from(size - (MAX_FILE_SIZE + 1)).expect("small");
-        karaoke[127].0 -= over;
+        karaoke[63].0 -= over;
         let over_limit = parts(None, &karaoke, &original);
         assert_eq!(
             check(&over_limit),
@@ -1726,8 +1916,8 @@ mod tests {
                 size: MAX_FILE_SIZE + 1
             })
         );
-        karaoke[127].0 -= 1;
-        assert_eq!(check(&parts(None, &karaoke, &original)), Ok(128_000));
+        karaoke[63].0 -= 1;
+        assert_eq!(check(&parts(None, &karaoke, &original)), Ok(64_000));
 
         let file = example();
         let header = Header::parse(&file).expect("the header is valid");
@@ -2057,29 +2247,182 @@ mod tests {
         );
     }
 
+    /// An init segment chunk with a type of `stored_type` and `init` as the
+    /// container's init bytes.
+    fn init_chunk(stored_type: &[u8], init: &[u8]) -> Vec<u8> {
+        let len = u16::try_from(stored_type.len()).expect("a u16 length");
+        [&len.to_le_bytes()[..], stored_type, init].concat()
+    }
+
+    fn read_init(chunk_type: ChunkType, bytes: &[u8]) -> Result<Chunk, SongFileError> {
+        read_chunk(&entry(chunk_type, bytes.len()), bytes)
+    }
+
     #[test]
-    fn init_segment_chunk_is_1_to_65536_bytes() {
+    fn init_segment_chunk_is_4_to_65793_bytes() {
         for chunk_type in [ChunkType::KaraokeInit, ChunkType::OriginalInit] {
             assert_eq!(
-                check(&with_length(chunk_type, MAX_INIT_BYTES + 1)),
-                Err(chunk_length_error(chunk_type, MAX_INIT_BYTES + 1))
+                check(&with_length(chunk_type, MAX_INIT_CHUNK_BYTES + 1)),
+                Err(chunk_length_error(chunk_type, MAX_INIT_CHUNK_BYTES + 1))
             );
             assert_eq!(
-                check(&with_length(chunk_type, 0)),
-                Err(chunk_length_error(chunk_type, 0))
+                check(&with_length(chunk_type, 3)),
+                Err(chunk_length_error(chunk_type, 3))
             );
-            assert!(check(&with_length(chunk_type, MAX_INIT_BYTES)).is_ok());
+            assert!(check(&with_length(chunk_type, MAX_INIT_CHUNK_BYTES)).is_ok());
+            assert!(check(&with_length(chunk_type, MIN_INIT_CHUNK_BYTES)).is_ok());
         }
         let mut video = parts(Some(&[(1, 1000)]), &[(2, 1000)], &[(2, 1000)]);
-        video[3].1 = MAX_INIT_BYTES + 1;
+        video[3].1 = MAX_INIT_CHUNK_BYTES + 1;
         assert_eq!(
             check(&video),
-            Err(chunk_length_error(ChunkType::VideoInit, MAX_INIT_BYTES + 1))
+            Err(chunk_length_error(
+                ChunkType::VideoInit,
+                MAX_INIT_CHUNK_BYTES + 1
+            ))
         );
     }
 
     #[test]
-    fn media_segment_chunk_is_1_to_16_mib() {
+    fn stored_type_is_1_to_255_bytes() {
+        let longest = format!("video/mp4; codecs=\"{}\"", "a".repeat(235));
+        assert_eq!(longest.len(), 255);
+        assert_eq!(
+            read_init(ChunkType::VideoInit, &init_chunk(longest.as_bytes(), b"vi")),
+            Ok(Chunk::Init {
+                stored_type: longest.clone(),
+                init: b"vi".to_vec()
+            })
+        );
+        let over = format!("{longest}a");
+        assert_eq!(
+            read_init(ChunkType::VideoInit, &init_chunk(over.as_bytes(), b"vi")),
+            Err(SongFileError::StoredTypeLength {
+                chunk_type: 16,
+                len: 256
+            })
+        );
+        assert_eq!(
+            read_init(ChunkType::VideoInit, &init_chunk(b"", b"vi")),
+            Err(SongFileError::StoredTypeLength {
+                chunk_type: 16,
+                len: 0
+            })
+        );
+        // The type length runs past the end of the chunk.
+        let mut past_end = init_chunk(b"video/mp4;", b"");
+        past_end[0] = 20;
+        assert_eq!(
+            read_init(ChunkType::VideoInit, &past_end),
+            Err(SongFileError::StoredTypeLength {
+                chunk_type: 16,
+                len: 20
+            })
+        );
+
+        let mut song = example_song();
+        song.original.stored_type = format!("audio/mp4; codecs=\"{}\"", "a".repeat(236));
+        assert_eq!(
+            write(&song),
+            Err(SongFileError::StoredTypeLength {
+                chunk_type: 20,
+                len: 256
+            })
+        );
+    }
+
+    #[test]
+    fn stored_type_is_printable_ascii() {
+        for (byte, offset) in [(0x7F, 19), (0x1F, 0), (0xC6, 24)] {
+            let mut stored_type = AAC_TYPE.as_bytes().to_vec();
+            stored_type[offset] = byte;
+            assert_eq!(
+                read_init(ChunkType::OriginalInit, &init_chunk(&stored_type, b"oi")),
+                Err(SongFileError::StoredTypeByte {
+                    chunk_type: 20,
+                    offset
+                }),
+                "byte {byte:#04x}"
+            );
+        }
+        let all_printable: String = (0x20..=0x7E).map(char::from).collect();
+        let stored_type = format!("audio/webm; {all_printable}");
+        assert!(
+            read_init(
+                ChunkType::OriginalInit,
+                &init_chunk(stored_type.as_bytes(), b"oi")
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn stored_type_is_in_a_container_its_track_may_use() {
+        let accepted: [(ChunkType, &str); 5] = [
+            (ChunkType::VideoInit, "video/webm; codecs=\"vp09.00.40.08\""),
+            (
+                ChunkType::VideoInit,
+                "video/mp4; codecs=\"hvc1.1.6.L93.B0\"",
+            ),
+            (ChunkType::OriginalInit, "audio/webm; codecs=\"opus\""),
+            (ChunkType::OriginalInit, AAC_TYPE),
+            (ChunkType::KaraokeInit, KARAOKE_TYPE),
+        ];
+        for (chunk_type, stored_type) in accepted {
+            assert!(
+                read_init(chunk_type, &init_chunk(stored_type.as_bytes(), b"in")).is_ok(),
+                "{stored_type}"
+            );
+        }
+        let rejected: [(ChunkType, &str); 9] = [
+            (ChunkType::VideoInit, "audio/webm; codecs=\"opus\""),
+            (ChunkType::VideoInit, "video/x-matroska; codecs=\"vp9\""),
+            (ChunkType::VideoInit, "video/mp4"),
+            (ChunkType::OriginalInit, "video/mp4; codecs=\"avc1.640028\""),
+            (ChunkType::OriginalInit, "audio/mpeg; codecs=\"mp3\""),
+            (ChunkType::OriginalInit, "Audio/mp4; codecs=\"mp4a.40.2\""),
+            (ChunkType::KaraokeInit, AAC_TYPE),
+            (ChunkType::KaraokeInit, "audio/webm; codecs=\"vorbis\""),
+            (ChunkType::KaraokeInit, "audio/webm; codecs=opus"),
+        ];
+        for (chunk_type, stored_type) in rejected {
+            assert_eq!(
+                read_init(chunk_type, &init_chunk(stored_type.as_bytes(), b"in")),
+                Err(SongFileError::StoredTypeContainer {
+                    chunk_type: chunk_type.code()
+                }),
+                "{stored_type}"
+            );
+        }
+    }
+
+    #[test]
+    fn container_init_is_1_to_65536_bytes() {
+        let longest = "v".repeat(MAX_STORED_TYPE_BYTES - "video/webm;".len());
+        let longest = format!("video/webm;{longest}");
+        let full = init_chunk(longest.as_bytes(), &[0; MAX_CONTAINER_INIT_BYTES]);
+        assert_eq!(full.len(), MAX_INIT_CHUNK_BYTES);
+        assert!(read_init(ChunkType::VideoInit, &full).is_ok());
+        let mut over = init_chunk(AAC_TYPE.as_bytes(), &[0; MAX_CONTAINER_INIT_BYTES + 1]);
+        assert_eq!(
+            read_init(ChunkType::OriginalInit, &over),
+            Err(SongFileError::InitLength {
+                chunk_type: 20,
+                len: MAX_CONTAINER_INIT_BYTES + 1
+            })
+        );
+        over.truncate(over.len() - MAX_CONTAINER_INIT_BYTES - 1);
+        assert_eq!(
+            read_init(ChunkType::OriginalInit, &over),
+            Err(SongFileError::InitLength {
+                chunk_type: 20,
+                len: 0
+            })
+        );
+    }
+
+    #[test]
+    fn media_segment_chunk_is_1_to_64_mib() {
         assert_eq!(
             check(&parts(None, &[(MAX_SEGMENT_BYTES + 1, 1000)], &[(2, 1000)])),
             Err(chunk_length_error(
@@ -2106,31 +2449,63 @@ mod tests {
     }
 
     #[test]
-    fn media_segment_lasts_1_to_10000_ms() {
+    fn audio_segment_lasts_1_to_10000_ms() {
         assert_eq!(
             check(&parts(None, &[(2, 10_001)], &[(2, 10_001)])),
             Err(SongFileError::SegmentDuration {
                 position: 4,
-                duration_ms: 10_001
+                duration_ms: 10_001,
+                max_ms: 10_000
+            })
+        );
+        assert_eq!(
+            check(&parts(None, &[(2, 10_000)], &[(2, 10_001)])),
+            Err(SongFileError::SegmentDuration {
+                position: 6,
+                duration_ms: 10_001,
+                max_ms: 10_000
             })
         );
         assert_eq!(
             check(&parts(None, &[(2, 1000), (2, 0)], &[(2, 1000), (2, 0)])),
             Err(SongFileError::SegmentDuration {
                 position: 5,
-                duration_ms: 0
-            })
-        );
-        assert_eq!(
-            check(&parts(Some(&[(2, 10_001)]), &[(2, 10_000)], &[(2, 10_000)])),
-            Err(SongFileError::SegmentDuration {
-                position: 4,
-                duration_ms: 10_001
+                duration_ms: 0,
+                max_ms: 10_000
             })
         );
         assert_eq!(
             check(&parts(None, &[(2, 10_000)], &[(2, 10_000)])),
             Ok(10_000)
+        );
+    }
+
+    #[test]
+    fn video_segment_lasts_1_to_20000_ms() {
+        let song = [(2, 10_000), (2, 10_000)];
+        assert_eq!(
+            check(&parts(Some(&[(2, 20_001)]), &song, &song)),
+            Err(SongFileError::SegmentDuration {
+                position: 4,
+                duration_ms: 20_001,
+                max_ms: 20_000
+            })
+        );
+        assert_eq!(
+            check(&parts(
+                Some(&[(2, 1000), (2, 0)]),
+                &[(2, 1000)],
+                &[(2, 1000)]
+            )),
+            Err(SongFileError::SegmentDuration {
+                position: 5,
+                duration_ms: 0,
+                max_ms: 20_000
+            })
+        );
+        assert_eq!(
+            check(&parts(Some(&[(2, 20_000)]), &song, &song)),
+            Ok(20_000)
         );
     }
 
@@ -2178,7 +2553,7 @@ mod tests {
 
     #[test]
     fn song_lasts_at_most_one_hour() {
-        let mut over = vec![(1, MAX_SEGMENT_MS); 360];
+        let mut over = vec![(1, MAX_AUDIO_SEGMENT_MS); 360];
         over.push((1, 1));
         assert_eq!(
             check(&parts(None, &over, &over)),
@@ -2211,7 +2586,7 @@ mod tests {
     }
 
     #[test]
-    fn both_tracks_are_cut_at_the_same_times() {
+    fn both_tracks_are_cut_at_about_the_same_times() {
         assert_eq!(
             check(&parts(None, &[(2, 500), (2, 500)], &[(2, 1000)])),
             Err(SongFileError::TrackLengths {
@@ -2231,6 +2606,42 @@ mod tests {
                 &[(2, 500), (2, 500)]
             )),
             Ok(1000)
+        );
+    }
+
+    #[test]
+    fn original_cuts_are_within_50_ms_of_the_karaoke_cuts() {
+        let karaoke = [(2, 500), (2, 500)];
+        // The second original segment starts 50 ms early, and the song ends
+        // 50 ms after the original track.
+        assert_eq!(
+            check(&parts(None, &karaoke, &[(2, 450), (2, 500)])),
+            Ok(1000)
+        );
+        assert_eq!(
+            check(&parts(None, &karaoke, &[(2, 550), (2, 500)])),
+            Ok(1000)
+        );
+        assert_eq!(
+            check(&parts(None, &karaoke, &[(2, 449), (2, 551)])),
+            Err(SongFileError::SegmentMismatch { position: 7 })
+        );
+        assert_eq!(
+            check(&parts(None, &karaoke, &[(2, 551), (2, 449)])),
+            Err(SongFileError::SegmentMismatch { position: 7 })
+        );
+        // Only the end of the last segment is off.
+        assert_eq!(
+            check(&parts(None, &karaoke, &[(2, 500), (2, 550)])),
+            Ok(1000)
+        );
+        assert_eq!(
+            check(&parts(None, &karaoke, &[(2, 500), (2, 449)])),
+            Err(SongFileError::SegmentMismatch { position: 8 })
+        );
+        assert_eq!(
+            check(&parts(None, &karaoke, &[(2, 500), (2, 551)])),
+            Err(SongFileError::SegmentMismatch { position: 8 })
         );
     }
 
@@ -2269,7 +2680,7 @@ mod tests {
         );
 
         let mut no_video_segments = example_song();
-        no_video_segments.video = Some(track(b"vi", &[]));
+        no_video_segments.video = Some(track("video/webm; codecs=\"vp9\"", b"vi", &[]));
         assert_eq!(
             write(&no_video_segments),
             Err(SongFileError::SegmentCount {
@@ -2282,11 +2693,21 @@ mod tests {
         empty_init.karaoke.init.clear();
         assert_eq!(
             write(&empty_init),
-            Err(chunk_length_error(ChunkType::KaraokeInit, 0))
+            Err(SongFileError::InitLength {
+                chunk_type: 18,
+                len: 0
+            })
+        );
+
+        let mut wrong_container = example_song();
+        wrong_container.original.stored_type = "video/mp4; codecs=\"avc1.640028\"".to_owned();
+        assert_eq!(
+            write(&wrong_container),
+            Err(SongFileError::StoredTypeContainer { chunk_type: 20 })
         );
 
         let mut original_differs = example_song();
-        original_differs.original.segments[0].duration_ms = 999;
+        original_differs.original.segments[0].duration_ms = 949;
         assert!(matches!(
             write(&original_differs),
             Err(SongFileError::SegmentMismatch { .. })
@@ -2349,6 +2770,18 @@ mod tests {
         assert_eq!(
             SongFileError::UnknownVocalRole { value: 3 }.to_string(),
             "vocal role 3 is not known"
+        );
+        assert_eq!(
+            SongFileError::SegmentMismatch { position: 6 }.to_string(),
+            "original segment at index entry 6 starts or ends more than 50 ms from the karaoke segment's"
+        );
+        assert_eq!(
+            SongFileError::StoredTypeLength {
+                chunk_type: 16,
+                len: 256
+            }
+            .to_string(),
+            "chunk of type 16 has a stored type of 256 bytes, outside 1 to 255"
         );
         assert_eq!(
             SongFileError::Lyrics(LyricsError::NoLetters).to_string(),

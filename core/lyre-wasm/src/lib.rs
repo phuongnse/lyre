@@ -105,7 +105,7 @@ impl TryFrom<&IndexEntry> for ChunkEntry {
     type Error = SongFileFault;
 
     fn try_from(entry: &IndexEntry) -> Result<ChunkEntry, SongFileFault> {
-        // A checked index ends within MAX_FILE_SIZE, 2³¹ − 1, so offsets fit.
+        // A checked index ends within MAX_FILE_SIZE, 2³² − 1, so offsets fit.
         Ok(ChunkEntry {
             kind: entry.chunk_type.into(),
             offset: u32::try_from(entry.offset).map_err(|_| DAMAGED)?,
@@ -453,6 +453,8 @@ pub struct SongReader {
     details: Option<SongDetails>,
     lyrics: Option<Lyrics>,
     timing: Option<Timing>,
+    /// The stored type of each init segment chunk read so far, by position.
+    stored_types: Vec<Option<String>>,
     /// The display lines of the latest layout. Empty if there is none, or
     /// the core refused it.
     display_lines: Vec<DisplayLine>,
@@ -478,10 +480,11 @@ impl SongReader {
             .entries()
             .iter()
             .map(ChunkEntry::try_from)
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(SongReader {
             song_id: header.song_id(),
             index,
+            stored_types: vec![None; entries.len()],
             entries,
             details: None,
             lyrics: None,
@@ -666,20 +669,32 @@ impl SongReader {
         }
     }
 
+    /// The stored type of the init segment chunk at `position`, once that
+    /// chunk is read.
+    #[wasm_bindgen(js_name = storedType)]
+    pub fn stored_type(&self, position: u32) -> Option<String> {
+        let position = usize::try_from(position).ok()?;
+        self.stored_types.get(position)?.clone()
+    }
+
     /// Checks the `bytes` of the chunk at `position` in the index. Returns
-    /// the bytes of a media chunk, and nothing for any other chunk. Once the
-    /// lyrics and the timing are both read, it checks one against the other.
+    /// the bytes of a media segment, or an init segment's container init
+    /// bytes, and nothing for any other chunk. An init segment's stored type
+    /// is kept for `storedType`. Once the lyrics and the timing are both
+    /// read, it checks one against the other.
     #[wasm_bindgen(js_name = readChunk)]
     pub fn read_chunk(
         &mut self,
         position: u32,
         bytes: &[u8],
     ) -> Result<Option<Vec<u8>>, SongFileFault> {
-        let entry = usize::try_from(position)
-            .ok()
-            .and_then(|position| self.index.entries().get(position))
-            .ok_or(DAMAGED)?;
+        let position = usize::try_from(position).map_err(|_| DAMAGED)?;
+        let entry = self.index.entries().get(position).ok_or(DAMAGED)?;
         match song_file::read_chunk(entry, bytes)? {
+            Chunk::Init { stored_type, init } => {
+                self.stored_types[position] = Some(stored_type);
+                return Ok(Some(init));
+            }
             Chunk::Media(bytes) => return Ok(Some(bytes)),
             Chunk::Lyrics(lyrics) => self.lyrics = Some(lyrics),
             Chunk::Timing(timing) => self.timing = Some(timing),
@@ -791,7 +806,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(bytes.len(), 249);
+        assert_eq!(bytes.len(), 307);
         bytes
     }
 
@@ -873,7 +888,7 @@ mod tests {
         let file = example();
         let header = &file[..32];
         assert_eq!(SongReader::index_length(header), Ok(7 * 24));
-        let reader = SongReader::new(header, &file[32..200], 249.0).expect("the example is valid");
+        let reader = SongReader::new(header, &file[32..200], 307.0).expect("the example is valid");
         assert_eq!(reader.duration_ms(), 1_000);
         let entries = reader.entries();
         assert_eq!(entries.len(), 7);
@@ -881,7 +896,7 @@ mod tests {
             entries[4],
             ChunkEntry {
                 kind: ChunkKind::KaraokeSegment,
-                offset: 243,
+                offset: 270,
                 length: 2,
                 start_ms: 0,
                 duration_ms: 1_000,
@@ -896,6 +911,40 @@ mod tests {
                 b"os".to_vec()
             ])
         );
+    }
+
+    #[test]
+    fn gives_the_stored_type_of_each_init_chunk_once_read() {
+        let file = example();
+        let mut reader = SongReader::new(&file[..32], &file[32..200], 307.0).expect("valid");
+        assert_eq!(reader.stored_type(3), None);
+        assert_eq!(
+            reader.read_chunk(3, &file[241..270]),
+            Ok(Some(b"ki".to_vec()))
+        );
+        assert_eq!(
+            reader.stored_type(3),
+            Some("audio/webm; codecs=\"opus\"".to_owned())
+        );
+        assert_eq!(reader.stored_type(5), None);
+
+        let (reader, _) = read_all(&file).expect("the example is valid");
+        assert_eq!(
+            reader.stored_type(5),
+            Some("audio/mp4; codecs=\"mp4a.40.2\"".to_owned())
+        );
+        // Chunks that are not init segments, and positions outside the
+        // index, have no stored type.
+        assert_eq!(reader.stored_type(4), None);
+        assert_eq!(reader.stored_type(7), None);
+    }
+
+    #[test]
+    fn a_wrong_karaoke_type_is_damaged() {
+        let mut file = example();
+        file[243] = b'A';
+        let fault = read(&file).expect_err("the karaoke type is wrong");
+        assert!(!fault.not_a_song_file());
     }
 
     #[test]
@@ -916,7 +965,7 @@ mod tests {
     #[test]
     fn has_no_details_before_their_chunk_is_read() {
         let file = example();
-        let reader = SongReader::new(&file[..32], &file[32..200], 249.0).expect("valid");
+        let reader = SongReader::new(&file[..32], &file[32..200], 307.0).expect("valid");
         assert_eq!(reader.details(), None);
     }
 
@@ -983,7 +1032,7 @@ mod tests {
     #[test]
     fn has_no_syllables_layout_sweep_or_countdown_before_the_lyrics_and_timing_are_read() {
         let file = example();
-        let mut reader = SongReader::new(&file[..32], &file[32..200], 249.0).expect("valid");
+        let mut reader = SongReader::new(&file[..32], &file[32..200], 307.0).expect("valid");
         assert_eq!(reader.syllables(), vec![]);
         assert_eq!(reader.lay_out(&[10.0, 10.0], 2.0, 100.0), vec![]);
         assert_eq!(reader.sweep_position(250.0), 0.0);
@@ -1165,14 +1214,14 @@ mod tests {
     #[test]
     fn a_position_outside_the_index_is_damaged() {
         let file = example();
-        let mut reader = SongReader::new(&file[..32], &file[32..200], 249.0).expect("valid");
+        let mut reader = SongReader::new(&file[..32], &file[32..200], 307.0).expect("valid");
         assert_eq!(reader.read_chunk(7, b"os"), Err(DAMAGED));
     }
 
     #[test]
     fn a_chunk_of_the_wrong_length_is_damaged() {
         let file = example();
-        let mut reader = SongReader::new(&file[..32], &file[32..200], 249.0).expect("valid");
+        let mut reader = SongReader::new(&file[..32], &file[32..200], 307.0).expect("valid");
         assert_eq!(reader.read_chunk(4, b"k"), Err(DAMAGED));
     }
 }

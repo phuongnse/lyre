@@ -49,10 +49,13 @@ fn fixture_song_reads_back_with_its_lyrics_and_timing() {
     assert_eq!(song.details.composer(), "Lyre fixture composer");
     assert_eq!(song.details.vocal_role(), VocalRole::Female);
     assert_eq!(song.thumbnail, Some(read("thumbnail.jpg")));
+    assert_eq!(song.karaoke.stored_type, r#"audio/webm; codecs="opus""#);
     assert_eq!(song.karaoke.init, read("karaoke/init.webm"));
+    assert_eq!(song.original.stored_type, r#"audio/webm; codecs="opus""#);
     assert_eq!(song.original.init, read("original/init.webm"));
 
     let video = song.video.expect("the fixture has a video");
+    assert_eq!(video.stored_type, r#"video/webm; codecs="vp09.00.40.08""#);
     assert_eq!(video.init, read("video/init.webm"));
     assert_eq!(video.segments.len(), 6);
     assert_eq!(song.karaoke.segments.len(), 6);
@@ -152,20 +155,66 @@ fn manifest_with_an_unknown_vocal_role_is_rejected() {
     assert!(err.to_string().contains("vocal_role"), "{err}");
 }
 
+#[test]
+fn manifest_track_without_a_type_is_rejected() {
+    for track in ["video", "karaoke", "original"] {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let mut manifest = absolute_manifest();
+        manifest[track]
+            .as_table_mut()
+            .expect("track is a table")
+            .remove("type")
+            .expect("the fixture track has a type");
+
+        let err = lyre_cli::build(&write_manifest(dir.path(), &manifest)).unwrap_err();
+        assert!(err.to_string().contains("type"), "{track}: {err}");
+    }
+}
+
+#[test]
+fn manifest_track_with_a_type_in_the_wrong_container_is_rejected() {
+    let dir = tempfile::tempdir().expect("temporary folder");
+    let mut manifest = absolute_manifest();
+    manifest["original"]["type"] = toml::Value::from(r#"video/webm; codecs="vp9""#);
+
+    let err = lyre_cli::build(&write_manifest(dir.path(), &manifest)).unwrap_err();
+    assert!(err.to_string().contains("container"), "{err}");
+}
+
+/// A manifest's lines after its header comment.
+fn body(name: &str) -> String {
+    let text = fs::read_to_string(song_dir().join(name)).expect("manifest is readable");
+    text.lines()
+        .skip_while(|line| line.starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// `male.toml` is `song.toml` with its own header comment and a male vocal role.
 #[test]
 fn male_manifest_differs_from_the_fixture_only_in_its_vocal_role() {
-    fn body(name: &str) -> String {
-        let text = fs::read_to_string(song_dir().join(name)).expect("manifest is readable");
-        text.lines()
-            .skip_while(|line| line.starts_with('#'))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
     let female = body("song.toml");
     assert!(female.contains("vocal_role = \"female\""), "{female}");
     let expected = female.replacen("vocal_role = \"female\"", "vocal_role = \"male\"", 1);
     assert_eq!(body("male.toml"), expected);
+}
+
+/// `h265.toml` is `song.toml` with its own header comment and an H.265 video
+/// type.
+#[test]
+fn h265_manifest_differs_from_the_fixture_only_in_its_video_type() {
+    let vp9 = r#"type = 'video/webm; codecs="vp09.00.40.08"'"#;
+    let h265 = r#"type = 'video/mp4; codecs="hvc1.1.6.L93.B0"'"#;
+    let song = body("song.toml");
+    assert!(song.contains(&format!("[video]\n{vp9}")), "{song}");
+    assert_eq!(body("h265.toml"), song.replacen(vp9, h265, 1));
+
+    let built = lyre_cli::build(&song_dir().join("h265.toml")).expect("the H.265 variant builds");
+    let video = song_file::read(&built)
+        .expect("the core reads it")
+        .video
+        .expect("it has a video");
+    assert_eq!(video.stored_type, r#"video/mp4; codecs="hvc1.1.6.L93.B0""#);
 }
 
 /// The fixture manifest with absolute paths to the fixture files.

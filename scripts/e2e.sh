@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end journeys against the built web client, once tests/e2e exists.
 # Playwright serves web/dist with tests/e2e/serve.mjs, at / and at /lyre/. The report and traces go to artifacts/e2e/.
-# The journeys open the fixture song and its male variant, which lyre-cli builds into artifacts/e2e/, because song files are never committed.
+# The journeys open the fixture song and its male and H.265 variants, which lyre-cli builds into artifacts/e2e/, because song files are never committed.
 # They read the source fixtures, which tests/fixtures/source/make.sh makes with ffmpeg into artifacts/e2e/sources/.
 # On a NexKit pull request it runs only when the change can affect the journeys (D16).
 set -euo pipefail
@@ -22,5 +22,6 @@ fi
 export PATH="$HOME/.cargo/bin:$PATH"
 (cd core && cargo run --locked -q -p lyre-cli -- build ../tests/fixtures/song/song.toml ../artifacts/e2e/fixture.lyre)
 (cd core && cargo run --locked -q -p lyre-cli -- build ../tests/fixtures/song/male.toml ../artifacts/e2e/fixture-male.lyre)
+(cd core && cargo run --locked -q -p lyre-cli -- build ../tests/fixtures/song/h265.toml ../artifacts/e2e/fixture-h265.lyre)
 tests/fixtures/source/make.sh artifacts/e2e/sources
 (cd tests/e2e && npx playwright test)

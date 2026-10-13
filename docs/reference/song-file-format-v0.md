@@ -110,8 +110,7 @@ Chunks come in this order, and no other type or order is accepted:
 - **The thumbnail is optional.** Thumbnails are made by processing *(planned
   for M2)*. Songs built by hand for tests may have none.
 - **Both audio tracks are cut at about the same times.** The original track
-  has the same number of segments as the karaoke track. Today each has the
-  same `start_ms` and `duration_ms`. *(planned for M2)* Each original
+  has the same number of segments as the karaoke track. Each original
   segment's start and end (`start_ms + duration_ms`) are within 50 ms of those
   of the karaoke segment at the same position, because the original keeps its
   own codec's frame length. Switching between Karaoke and Original then keeps
@@ -170,14 +169,12 @@ bytes.
 
 ### Media segments
 
-Init segment chunks are 1 to 65,536 bytes today. With the stored type
-*(planned for M2)* they are 4 to 65,793 bytes. Media segments are 1 byte to
-16 MiB today, and up to 64 MiB *(planned for M2)*. An audio segment has a
-`duration_ms` of 1 to 10,000. A video segment has 1 to 10,000 today, and 1 to
-20,000 *(planned for M2)*. The [media](#media) section says what these bytes
-hold. The core treats the media as opaque and checks only the sizes, counts
-and times, and *(planned for M2)* the container part of each stored type. The
-client's decoders check the media itself.
+Init segment chunks are 4 to 65,793 bytes: the stored type and the
+container's init bytes. Media segments are 1 byte to 64 MiB. An audio segment
+has a `duration_ms` of 1 to 10,000. A video segment has 1 to 20,000. The
+[media](#media) section says what these bytes hold. The core treats the media
+as opaque and checks only the sizes, counts and times, and the container part
+of each stored type. The client's decoders check the media itself.
 
 *Why opaque:* the core does no media work, so it has no media parser to keep
 in step with the decoders.
@@ -232,12 +229,11 @@ Each track is stored so that Media Source Extensions (MSE) can stream it: a
 browser appends each chunk to a `SourceBuffer` as it reads it.
 
 - **Container.** WebM, in the MSE WebM byte stream format, with
-  `TimecodeScale` 1,000,000 so timestamps are in milliseconds. Or, *(planned
-  for M2)* for a codec WebM cannot hold, fragmented MP4 in the MSE ISO BMFF
-  byte stream format. Fragmented MP4 is the MP4 layout that is streamed in
-  pieces. D24 says which container a codec gets.
-- **Init segment chunk.** Today it holds the container's init bytes only.
-  *(planned for M2)* It starts with the track's stored type:
+  `TimecodeScale` 1,000,000 so timestamps are in milliseconds. Or, for a codec
+  WebM cannot hold, fragmented MP4 in the MSE ISO BMFF byte stream format.
+  Fragmented MP4 is the MP4 layout that is streamed in pieces. D24 says which
+  container a codec gets.
+- **Init segment chunk.** It starts with the track's stored type:
 
   | Size | Field | Value |
   | --- | --- | --- |
@@ -247,37 +243,36 @@ browser appends each chunk to a `SourceBuffer` as it reads it.
 
   The container's init bytes hold exactly one track. In WebM they are the
   EBML header, then the Segment element with its Info and Tracks elements. In
-  fragmented MP4 *(planned for M2)* they are the `ftyp` and `moov` boxes.
-- **Stored type checks** *(planned for M2)*. The core checks only the
+  fragmented MP4 they are the `ftyp` and `moov` boxes.
+- **Stored type checks.** The core checks only the
   container part of each type. The video's type starts with `video/webm;` or
   `video/mp4;`. The original track's starts with `audio/webm;` or
   `audio/mp4;`. The karaoke track's is exactly `audio/webm; codecs="opus"`.
   The core does not read the `codecs` value. The device's decoders decide
   whether it plays.
-- **Media segment chunk.** One or more whole Clusters of that track, or
-  *(planned for M2)* one or more whole `moof` and `mdat` box pairs. It starts
+- **Media segment chunk.** One or more whole Clusters of that track, or one
+  or more whole `moof` and `mdat` box pairs. It starts
   on a keyframe that needs no earlier frame. Its first frame's presentation
   time, rounded down to a whole millisecond, equals the index entry's
   `start_ms`.
-- **Video.** Today the web Player plays VP9 video, with the MSE type
-  `video/webm; codecs="vp09.00.40.08"`. *(planned for M2)* The video is the
-  source's coded frames, at any codec, resolution and frame rate the device
-  plays. A video segment runs from one keyframe to a later one, and lasts at
-  most 20,000 ms.
+- **Video.** The video is the source's coded frames, at any codec,
+  resolution and frame rate the device plays. A video segment runs from one
+  keyframe to a later one, and lasts at most 20,000 ms.
 - **Audio.** The karaoke track is Opus, 48 kHz, stereo, with the MSE type
-  `audio/webm; codecs="opus"`. Today the original track is Opus too.
-  *(planned for M2)* The original track is the source's audio as it was coded.
-  The karaoke track and the original track are separate chunk sequences, each
-  with one track.
-- **The type is checked first** *(planned for M2)*. The stored type lets a
-  player ask `MediaSource.isTypeSupported`, or Media3 its decoders, before it
-  reads a segment. When the device cannot play a type, the Player shows the
-  plain message of D24, such as "This device cannot play H.265 video", and
-  plays nothing.
+  `audio/webm; codecs="opus"`. The original track is the source's audio as it
+  was coded. The karaoke track and the original track are separate chunk
+  sequences, each with one track.
+- **The type is checked first.** The stored type lets a player ask
+  `MediaSource.isTypeSupported`, or Media3 its decoders *(planned for M4)*,
+  before it reads a segment. When the device cannot play a type, the web
+  Player shows the plain message of D24 and plays nothing. The message names
+  the track, as in "This device cannot play this song's video." Naming the
+  codec, as in "This device cannot play H.265 video", is *(planned for M2)*.
 
 *Why VP9 and Opus in the tests:* Playwright's Chromium has no H.264 or AAC
 decoder. So the fixture songs and the web journeys use VP9 video and Opus
-audio, and other codecs are checked on real devices.
+audio, and other codecs are checked on real devices. One journey stores an
+H.265 type that Playwright's Chromium cannot play, to check the message.
 
 *Why these play through Media3 (planned for M4):* Media3 plays WebM and
 fragmented MP4 segments through its DASH source, with a data source that reads
@@ -292,7 +287,7 @@ A reader rejects the whole file when any value is outside these limits.
 | Header | exactly 32 bytes |
 | Index entry | exactly 24 bytes |
 | `entry_count` | 7 to 16,384 |
-| File size | at most 2,147,483,647 bytes (2³¹ − 1) today. At most 4,294,967,295 bytes (2³² − 1) *(planned for M2)* |
+| File size | at most 4,294,967,295 bytes (2³² − 1) |
 | Song details chunk | 8 to 3,079 bytes |
 | Title | 1 to 1,024 bytes |
 | Artist, composer | 0 to 1,024 bytes each |
@@ -301,12 +296,13 @@ A reader rejects the whole file when any value is outside these limits.
 | Lyrics chunk | 1 to 1,048,576 bytes |
 | Timing chunk | exactly `4 + 8 × count` bytes, 12 to 524,292 |
 | Syllables (`count`) | 1 to 65,536 |
-| Init segment chunk | 1 to 65,536 bytes today. 4 to 65,793 bytes with the stored type *(planned for M2)* |
-| Stored type | 1 to 255 printable ASCII bytes *(planned for M2)* |
-| Media segment chunk | 1 to 16,777,216 bytes (16 MiB) today. 1 to 67,108,864 bytes (64 MiB) *(planned for M2)* |
+| Init segment chunk | 4 to 65,793 bytes |
+| Stored type | 1 to 255 printable ASCII bytes |
+| Container init bytes | 1 to 65,536 bytes |
+| Media segment chunk | 1 to 67,108,864 bytes (64 MiB) |
 | Audio media segment `duration_ms` | 1 to 10,000 |
-| Video media segment `duration_ms` | 1 to 10,000 today. 1 to 20,000 *(planned for M2)* |
-| Audio cut tolerance | 0 ms today. 50 ms *(planned for M2)* between each original segment's start and end and those of the karaoke segment at the same position |
+| Video media segment `duration_ms` | 1 to 20,000 |
+| Audio cut tolerance | 50 ms between each original segment's start and end and those of the karaoke segment at the same position |
 | Media segments per track | 1 to 4,096 |
 | Song duration | 1 to 3,600,000 ms (1 hour) |
 | Video duration | within 1,000 ms of the song duration |
@@ -335,23 +331,25 @@ song is open.
 
 ## Known-answer example
 
-This 249-byte song file is the core's known-answer example. It holds:
+This 307-byte song file is the core's known-answer example. It holds:
 
 - `song_id`: the bytes `00` to `0F`;
 - song details: the title "Mưa", with no artist and no composer, and the
   vocal role female (11 bytes);
 - lyrics: `"Mưa rơi\n"` (10 bytes), which is 1 lyric line with 2 syllables;
 - timing: 2 syllables, from 0 to 500 ms and from 500 to 1,000 ms (20 bytes);
-- the karaoke track: init segment `"ki"` and one media segment `"ks"` from 0
-  ms, lasting 1,000 ms;
-- the original track: init segment `"oi"` and one media segment `"os"` from 0
-  ms, lasting 1,000 ms;
+- the karaoke track: the stored type `audio/webm; codecs="opus"` with the
+  init bytes `"ki"`, and one media segment `"ks"` from 0 ms, lasting
+  1,000 ms;
+- the original track: the stored type `audio/mp4; codecs="mp4a.40.2"` (AAC
+  in fragmented MP4) with the init bytes `"oi"`, and one media segment `"os"`
+  from 0 ms, lasting 1,000 ms;
 - no video and no thumbnail.
 
-The four media chunks are 2-byte placeholders, not playable media. This is
-valid version 0, because the core does not check media content. It keeps the
-example small enough to check by hand. The init chunks use today's layout,
-with no stored type, until the core reads stored types *(planned for M2)*.
+The init bytes and the media segments are 2-byte placeholders, not playable
+media. This is valid version 0, because the core does not check media
+content. It keeps the example small enough to check by hand. The original
+track's type shows that it keeps its own codec and container.
 
 ### Annotated bytes
 
@@ -378,20 +376,20 @@ offset  bytes                                    meaning
   88    DD 00 00 00 00 00 00 00                  offset 221
   96    00 00 00 00  00 00 00 00                 start_ms 0, duration_ms 0
                                                  Index entry 4: karaoke init
- 104    12 00  00 00  02 00 00 00                type 18, reserved, length 2
+ 104    12 00  00 00  1D 00 00 00                type 18, reserved, length 29
  112    F1 00 00 00 00 00 00 00                  offset 241
  120    00 00 00 00  00 00 00 00                 start_ms 0, duration_ms 0
                                                  Index entry 5: karaoke segment
  128    13 00  00 00  02 00 00 00                type 19, reserved, length 2
- 136    F3 00 00 00 00 00 00 00                  offset 243
+ 136    0E 01 00 00 00 00 00 00                  offset 270
  144    00 00 00 00  E8 03 00 00                 start_ms 0, duration_ms 1000
                                                  Index entry 6: original init
- 152    14 00  00 00  02 00 00 00                type 20, reserved, length 2
- 160    F5 00 00 00 00 00 00 00                  offset 245
+ 152    14 00  00 00  21 00 00 00                type 20, reserved, length 33
+ 160    10 01 00 00 00 00 00 00                  offset 272
  168    00 00 00 00  00 00 00 00                 start_ms 0, duration_ms 0
                                                  Index entry 7: original segment
  176    15 00  00 00  02 00 00 00                type 21, reserved, length 2
- 184    F7 00 00 00 00 00 00 00                  offset 247
+ 184    31 01 00 00 00 00 00 00                  offset 305
  192    00 00 00 00  E8 03 00 00                 start_ms 0, duration_ms 1000
                                                  Chunk 1: song details
  200    04 00  4D C6 B0 61                       title, 4 bytes: "Mưa"
@@ -404,17 +402,27 @@ offset  bytes                                    meaning
  221    02 00 00 00                              count 2
  225    00 00 00 00  F4 01 00 00                 "Mưa": 0 to 500 ms
  233    F4 01 00 00  E8 03 00 00                 "rơi": 500 to 1000 ms
-                                                 Chunks 4 to 7: placeholders
- 241    6B 69                                    karaoke init "ki"
- 243    6B 73                                    karaoke segment "ks"
- 245    6F 69                                    original init "oi"
- 247    6F 73                                    original segment "os"
- 249                                             end of file
+                                                 Chunk 4: karaoke init
+ 241    19 00                                    type_length 25
+ 243    61 75 64 69 6F 2F 77 65 62 6D 3B 20 63   type (25 bytes): audio/webm; c
+ 256    6F 64 65 63 73 3D 22 6F 70 75 73 22      type, continued: odecs="opus"
+ 268    6B 69                                    init "ki", a placeholder
+                                                 Chunk 5: karaoke segment
+ 270    6B 73                                    "ks", a placeholder
+                                                 Chunk 6: original init
+ 272    1D 00                                    type_length 29
+ 274    61 75 64 69 6F 2F 6D 70 34 3B 20 63 6F   type (29 bytes): audio/mp4; co
+ 287    64 65 63 73 3D 22 6D 70 34 61 2E 34 30   type, continued: decs="mp4a.40
+ 300    2E 32 22                                 type, continued: .2"
+ 303    6F 69                                    init "oi", a placeholder
+                                                 Chunk 7: original segment
+ 305    6F 73                                    "os", a placeholder
+ 307                                             end of file
 ```
 
 ### Hex dump
 
-The same 249 bytes as an `xxd` dump. `xxd -r` turns it back into the file.
+The same 307 bytes as an `xxd` dump. `xxd -r` turns it back into the file.
 
 ```text
 00000000: 894c 5952 450d 0a1a 0000 0000 0700 0000  .LYRE...........
@@ -423,22 +431,26 @@ The same 249 bytes as an `xxd` dump. `xxd -r` turns it back into the file.
 00000030: 0000 0000 0000 0000 0300 0000 0a00 0000  ................
 00000040: d300 0000 0000 0000 0000 0000 0000 0000  ................
 00000050: 0400 0000 1400 0000 dd00 0000 0000 0000  ................
-00000060: 0000 0000 0000 0000 1200 0000 0200 0000  ................
+00000060: 0000 0000 0000 0000 1200 0000 1d00 0000  ................
 00000070: f100 0000 0000 0000 0000 0000 0000 0000  ................
-00000080: 1300 0000 0200 0000 f300 0000 0000 0000  ................
-00000090: 0000 0000 e803 0000 1400 0000 0200 0000  ................
-000000a0: f500 0000 0000 0000 0000 0000 0000 0000  ................
-000000b0: 1500 0000 0200 0000 f700 0000 0000 0000  ................
+00000080: 1300 0000 0200 0000 0e01 0000 0000 0000  ................
+00000090: 0000 0000 e803 0000 1400 0000 2100 0000  ............!...
+000000a0: 1001 0000 0000 0000 0000 0000 0000 0000  ................
+000000b0: 1500 0000 0200 0000 3101 0000 0000 0000  ........1.......
 000000c0: 0000 0000 e803 0000 0400 4dc6 b061 0000  ..........M..a..
 000000d0: 0000 024d c6b0 6120 72c6 a169 0a02 0000  ...M..a r..i....
 000000e0: 0000 0000 00f4 0100 00f4 0100 00e8 0300  ................
-000000f0: 006b 696b 736f 696f 73                   .kiksoios
+000000f0: 0019 0061 7564 696f 2f77 6562 6d3b 2063  ...audio/webm; c
+00000100: 6f64 6563 733d 226f 7075 7322 6b69 6b73  odecs="opus"kiks
+00000110: 1d00 6175 6469 6f2f 6d70 343b 2063 6f64  ..audio/mp4; cod
+00000120: 6563 733d 226d 7034 612e 3430 2e32 226f  ecs="mp4a.40.2"o
+00000130: 696f 73                                  ios
 ```
 
 SHA-256 of the whole file:
 
 ```text
-1cc9f478d6e61e2c30847ebe95a885e28c5d68f4f3d45b6bce4f6d5481128568
+6334dbaa7990515e0b1585e51963f4f73a537dfaff43c422c07f6b7f8494e5a6
 ```
 
 ### Invalid variants
@@ -449,8 +461,9 @@ Each variant changes the example in one way. A reader rejects each one.
 | --- | --- |
 | Byte 0 is `88` instead of `89` | The magic is wrong. |
 | Bytes 8 and 9 are `01 00` | The version is not 0. |
-| The last byte is removed (248 bytes) | The last chunk ends after the end of the file. |
-| One byte is added at the end (250 bytes) | The last chunk does not end at the end of the file. |
+| The last byte is removed (306 bytes) | The last chunk ends after the end of the file. |
+| One byte is added at the end (308 bytes) | The last chunk does not end at the end of the file. |
 | Byte 210, the vocal role, is `03` | The vocal role is not known. |
 | Byte 221, the timing count, is `03` | The timing chunk is not `4 + 8 × 3` bytes, and 3 is not the lyrics' 2 syllables. |
-| Byte 196, the original segment's `duration_ms`, is `E7` (999) | The original segment's duration differs from the karaoke segment's. |
+| Byte 196, the original segment's `duration_ms`, is `B5` (949) | The original segment ends 51 ms from the karaoke segment's. |
+| Byte 243 is `41` (`A`) | The karaoke track's stored type is not exactly `audio/webm; codecs="opus"`. |

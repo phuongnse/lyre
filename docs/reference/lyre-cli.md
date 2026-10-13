@@ -34,7 +34,8 @@ From the repository root, this builds the fixture song:
 The built file is not committed. Tests build it from the fixtures when they
 run: `scripts/e2e.sh` builds it into `artifacts/e2e/fixture.lyre` for the
 Player journeys. It also builds `male.toml` into
-`artifacts/e2e/fixture-male.lyre`. The `inspect` command in the [repository
+`artifacts/e2e/fixture-male.lyre`, and `h265.toml` into
+`artifacts/e2e/fixture-h265.lyre`. The `inspect` command in the [repository
 layout](../architecture.md#repository-layout) is not built yet.
 
 ## Manifest
@@ -53,12 +54,19 @@ folder, or absolute. Unknown fields are rejected.
 | `[karaoke]` | The karaoke track. |
 | `[original]` | The original track. |
 
-Each track has `init`, the init segment file, and `segments`, a list of media
-segments in order. Each segment has a `file` and a `duration_ms`.
+Each track has `type`, `init`, the init segment file, and `segments`, a list
+of media segments in order. Each segment has a `file` and a `duration_ms`.
 
-- The media files are WebM init and media segments, cut beforehand as the
+- `type` is the track's MSE type, which the song file stores, such as
+  `'video/webm; codecs="vp09.00.40.08"'`. Write it as a TOML literal string,
+  in single quotes, so its double quotes need no escapes. It is required and
+  has no default, because a default could label a track with the wrong codec.
+  The core checks only its container part, as the
+  [media](song-file-format-v0.md#media) section describes.
+- The media files are init and media segments, cut beforehand as the
   [media](song-file-format-v0.md#media) section describes. `lyre-cli` treats
-  them as opaque bytes, as the core does.
+  them as opaque bytes, as the core does. The init segment file holds only
+  the container's init bytes. `lyre-cli` adds the stored type.
 - Durations are written by hand. A segment's duration runs from its first
   Cluster's timestamp to the next segment's, so each segment's start matches
   its media.
@@ -117,6 +125,12 @@ from real media.
 - **Male variant.** `male.toml` is the same song with a male vocal role, for
   the vocal role colour journey. A lyre-cli test keeps it equal to `song.toml`
   apart from its header comment and vocal role.
+- **H.265 variant.** `h265.toml` is the same song with the video type
+  `video/mp4; codecs="hvc1.1.6.L93.B0"`, an H.265 type. Playwright's
+  Chromium cannot play it, so the Player journey checks the cannot-play
+  message with it. Its video bytes are still the VP9 fixture's, and are never
+  read. A lyre-cli test keeps it equal to `song.toml` apart from its header
+  comment and video type.
 - **Timing.** Written by hand for those lyrics. The first lyric line starts
   at 2,000 ms, after a lead-in. The second follows a 300 ms break. The third
   starts 5,000 ms after the second ends. So the fixture has both gaps that

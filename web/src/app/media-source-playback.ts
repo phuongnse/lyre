@@ -1,18 +1,30 @@
 import { ChunkRef, MediaTrack, OpenedSong } from '../song-file'
 
 // Streams a song's video and one audio track into a video element through Media
-// Source Extensions. docs/reference/song-file-format-v0.md#media sets the types.
-const VIDEO_TYPE = 'video/webm; codecs="vp09.00.40.08"'
-const AUDIO_TYPE = 'audio/webm; codecs="opus"'
+// Source Extensions. Each track plays by the type its song file stores
+// (docs/reference/song-file-format-v0.md#media).
 
 // How far ahead of the play position media is appended. Chromium caps each
 // buffer at a size a long song would exceed, and memory stays bounded.
 const AHEAD_SECONDS = 30
 
+// The media of a song that a device may be unable to play.
+export type SongMedia = 'video' | 'karaoke' | 'original'
+
+// The first of the song's video, karaoke track and original track whose stored
+// type this browser cannot play, or undefined when it can play them all.
+export function unplayableMedia(song: OpenedSong): SongMedia | undefined {
+  if (song.video && !MediaSource.isTypeSupported(song.video.type)) return 'video'
+  if (!MediaSource.isTypeSupported(song.karaoke.type)) return 'karaoke'
+  if (!MediaSource.isTypeSupported(song.original.type)) return 'original'
+  return undefined
+}
+
 export interface Playback {
   // Replaces the streamed audio with `track` from the play position on. The
   // video goes on and the play position does not move. Both tracks are cut at
-  // the same times, so the new audio fits where the old audio was.
+  // about the same times, so the new audio fits where the old audio was. A
+  // track of another type changes the buffer's type.
   switchAudio(track: MediaTrack): void
   // Stops the streaming.
   stop(): void
@@ -51,11 +63,12 @@ export function playSong(video: HTMLVideoElement, song: OpenedSong, audio: Media
     try {
       mediaSource.duration = song.durationMs / 1000
       if (song.video) {
-        const buffer = mediaSource.addSourceBuffer(VIDEO_TYPE)
-        feeders.push(new TrackFeeder(buffer, [song.video.init, ...song.video.segments], song, video, finish, fail))
+        const buffer = mediaSource.addSourceBuffer(song.video.type)
+        const chunks = [song.video.init, ...song.video.segments]
+        feeders.push(new TrackFeeder(buffer, song.video.type, chunks, song, video, finish, fail))
       }
-      const buffer = mediaSource.addSourceBuffer(AUDIO_TYPE)
-      audioFeeder = new TrackFeeder(buffer, remaining(audio), song, video, finish, fail)
+      const buffer = mediaSource.addSourceBuffer(audio.type)
+      audioFeeder = new TrackFeeder(buffer, audio.type, remaining(audio), song, video, finish, fail)
       feeders.push(audioFeeder)
     } catch {
       fail()
@@ -66,7 +79,7 @@ export function playSong(video: HTMLVideoElement, song: OpenedSong, audio: Media
   const switchAudio = (track: MediaTrack) => {
     if (stopped) return
     // Before the source opens, the track is the one to stream first.
-    if (audioFeeder) audioFeeder.replace(remaining(track))
+    if (audioFeeder) audioFeeder.replace(track.type, remaining(track))
     else audio = track
   }
 
@@ -97,6 +110,9 @@ export function playSong(video: HTMLVideoElement, song: OpenedSong, audio: Media
 // Appends one track's init segment, then its media segments in order, one at a
 // time, while they start no more than AHEAD_SECONDS after the play position.
 class TrackFeeder {
+  // The type of the chunks to append. It differs from the buffer's type after a
+  // replacement with a track of another type, until the old media is removed.
+  private type: string
   done = false
   private next = 0
   private busy = false
@@ -108,12 +124,15 @@ class TrackFeeder {
 
   constructor(
     private readonly buffer: SourceBuffer,
+    // The type the buffer was created with, or last changed to.
+    private bufferType: string,
     private chunks: ChunkRef[],
     private readonly song: OpenedSong,
     private readonly video: HTMLVideoElement,
     private readonly onDone: () => void,
     private readonly onError: () => void,
   ) {
+    this.type = bufferType
     buffer.addEventListener('updateend', this.appended)
     buffer.addEventListener('error', this.onError)
   }
@@ -140,6 +159,16 @@ class TrackFeeder {
     }
     const chunk = this.chunks[this.next]
     if (chunk.startMs / 1000 > this.video.currentTime + AHEAD_SECONDS) return
+    if (this.type !== this.bufferType) {
+      // The old media is removed, so the new init segment comes next.
+      try {
+        this.buffer.changeType(this.type)
+        this.bufferType = this.type
+      } catch {
+        this.onError()
+        return
+      }
+    }
     this.busy = true
     const generation = this.generation
     this.song.read(chunk).then(
@@ -163,8 +192,10 @@ class TrackFeeder {
     )
   }
 
-  // Drops what is buffered and streams `chunks` instead, from the first.
-  replace(chunks: ChunkRef[]): void {
+  // Drops what is buffered and streams `chunks`, of the given `type`, instead,
+  // from the first.
+  replace(type: string, chunks: ChunkRef[]): void {
+    this.type = type
     this.chunks = chunks
     this.next = 0
     this.done = false
