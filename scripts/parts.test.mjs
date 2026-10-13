@@ -36,19 +36,26 @@ describe('parts picked from changed paths', () => {
     assert.deepEqual(checkedParts(['tests/e2e/a.spec.ts']), ['e2e'])
   })
 
-  test('core and scripts pick every part', () => {
-    const every = ['core', 'web', 'e2e', 'android']
-    assert.deepEqual(checkedParts(['core/Cargo.toml']), every)
-    assert.deepEqual(checkedParts(['scripts/lint.sh']), every)
+  test('core picks every part but the model tool', () => {
+    assert.deepEqual(checkedParts(['core/Cargo.toml']), ['core', 'web', 'e2e', 'android'])
+  })
+
+  test('scripts pick every part', () => {
+    assert.deepEqual(checkedParts(['scripts/lint.sh']), ['core', 'web', 'e2e', 'android', 'models'])
+  })
+
+  test('tools/model-tool picks the model tool', () => {
+    assert.deepEqual(checkedParts(['tools/model-tool/fetch.py']), ['models'])
+    assert.deepEqual(neededParts(['models']), [])
   })
 
   test('tests/fixtures picks the core, the web client and the Playwright journeys', () => {
     assert.deepEqual(checkedParts(['tests/fixtures/song/lyrics.txt']), ['core', 'web', 'e2e'])
   })
 
-  test('lyre-cli picks every part, as the rest of the core does', () => {
-    const every = ['core', 'web', 'e2e', 'android']
-    assert.deepEqual(checkedParts(['core/lyre-cli/src/main.rs']), every)
+  test('lyre-cli picks the same parts as the rest of the core', () => {
+    const core = ['core', 'web', 'e2e', 'android']
+    assert.deepEqual(checkedParts(['core/lyre-cli/src/main.rs']), core)
   })
 
   test('a mixed list picks the union in order', () => {
@@ -191,11 +198,12 @@ describe('scripts in a repository', () => {
       const result = run('node', ['scripts/parts.mjs'], { NEXKIT_BASE_SHA: base })
       assert.equal(result.status, 0, result.stderr)
       const states = result.stdout.split('\n').map((line) => line.split(' ').slice(0, 2).join(' '))
-      assert.deepEqual(states.slice(1, 5), [
+      assert.deepEqual(states.slice(1, 6), [
         'core needed',
         'web checked',
         'e2e checked',
         'android skipped',
+        'models skipped',
       ])
     } finally {
       rmSync(file)
@@ -207,8 +215,8 @@ describe('scripts in a repository', () => {
     for (const env of [{}, { NEXKIT_BASE_SHA: unknown }]) {
       const parts = run('node', ['scripts/parts.mjs'], env)
       assert.equal(parts.status, 0, parts.stderr)
-      const states = parts.stdout.split('\n').slice(1, 5).map((line) => line.split(' ')[1])
-      assert.deepEqual(states, ['checked', 'checked', 'checked', 'checked'])
+      const states = parts.stdout.split('\n').slice(1, 6).map((line) => line.split(' ')[1])
+      assert.deepEqual(states, ['checked', 'checked', 'checked', 'checked', 'checked'])
       if (env.NEXKIT_BASE_SHA) {
         assert.match(parts.stderr, /is not a commit here: checking every part/)
       }
