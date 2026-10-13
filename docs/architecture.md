@@ -45,11 +45,15 @@ flowchart LR
   devices however people choose: a shared Drive folder, a chat, a USB stick.
 - **Models** are checked by the core against their pinned size and SHA-256
   hash. The client feeds a download to the core in pieces, and the check
-  passes only when both match. Downloading the files from Hugging Face over
-  HTTPS on first use
-  ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed))
-  and keeping them on the device is *(planned for M2)*. The
-  [models reference](reference/models.md) lists the pinned files.
+  passes only when both match. The web client downloads each file from
+  Hugging Face over HTTPS on first use
+  ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)),
+  streaming it to the check and to a `models/` folder in the browser's origin
+  private file system (OPFS). It keeps a file only when it passes, and checks
+  it again each time it is loaded, because nothing authenticates that storage.
+  A file that fails is deleted and never used. The Android app's downloads
+  are *(planned for M2)*. The [models reference](reference/models.md) lists
+  the pinned files.
 
 ## Repository layout
 
@@ -64,7 +68,7 @@ web/                  web client: TypeScript, Angular, Angular Material
 android/              Android app: Kotlin, Jetpack Compose, Media3
 tests/
   e2e/                Playwright journeys against the built web client
-  fixtures/           small sources, lyrics and expected timing for tests
+  fixtures/           small sources, lyrics, expected timing and test model files for tests
 scripts/              one script per check, shared by CI and NexKit
 tools/
   model-tool/         developer tool: makes and checks model ONNX files, run by hand

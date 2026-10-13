@@ -153,6 +153,25 @@ EOF
 - To change a pin, update its row and the expected number of files in the
   same change, then run the command.
 
+## Download hosts
+
+Hugging Face answers a request for a pinned file with a redirect to another
+host, which serves the bytes. The web client's Content Security Policy allows
+downloads only from `huggingface.co` and these hosts, in its `connect-src`:
+
+- `cas-bridge.xethub.hf.co`
+- `cdn-lfs.hf.co`
+- `cdn-lfs-us-1.hf.co`
+- `cdn-lfs-eu-1.hf.co`
+- `us.aws.cdn.hf.co`
+
+The web client keeps the same list in `web/src/models/download-hosts.ts`, and
+a unit test checks the policy against it. The hosts are how Hugging Face
+works today, seen with `curl -sI` on each pinned URL. If a download is
+refused by the policy, check where the URL redirects with
+`curl -sI <url> | grep -i ^location`, and update the list, the policy and
+this section together.
+
 ## Measurement method
 
 The model measurement page runs the separator and each aligner file on the

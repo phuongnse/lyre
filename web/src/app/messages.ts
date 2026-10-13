@@ -84,4 +84,13 @@ export const messages = {
   decodedTone: 'Tone',
   decodedFirstSound: 'Sound starts at sample',
   hertz: (value: string) => `${value} Hz`,
+  modelCheckTitle: 'Model check',
+  modelCheckAbout: 'Downloads a 56-byte test model file, checks it and keeps it in this browser.',
+  downloadTestModel: 'Download the test model',
+  modelProgress: 'Download progress',
+  modelDownloading: (id: string, loaded: number, total: number) => `${id}: ${loaded} of ${total} bytes`,
+  modelPassed: (id: string) => `The model file ${id} passed its check and is kept.`,
+  modelCheckFailed: (id: string) => `The model file ${id} failed its check. It was deleted and not used.`,
+  modelDownloadFailed: (id: string) => `The model file ${id} could not be downloaded. Nothing was kept.`,
+  modelsMayBeCleared: 'Your browser did not allow lasting storage, so it may remove the downloaded models.',
 } as const

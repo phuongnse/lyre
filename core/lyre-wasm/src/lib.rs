@@ -693,6 +693,32 @@ impl SongReader {
     }
 }
 
+/// A pinned model file: the ID that names it, where it is downloaded from
+/// and its size in bytes. A test entry's URL is relative to the site.
+#[wasm_bindgen]
+#[derive(Debug, Clone, PartialEq)]
+pub struct PinnedModelFile {
+    #[wasm_bindgen(getter_with_clone)]
+    pub id: String,
+    #[wasm_bindgen(getter_with_clone)]
+    pub url: String,
+    pub size: f64,
+}
+
+/// Every pinned model file, in the core's order.
+#[wasm_bindgen(js_name = pinnedFiles)]
+pub fn pinned_files() -> Vec<PinnedModelFile> {
+    model::PINNED_FILES
+        .iter()
+        .map(|file| PinnedModelFile {
+            id: file.id.to_owned(),
+            url: file.url.to_owned(),
+            // Every pinned size is far below 2^53, so it is exact as a number.
+            size: file.size as f64,
+        })
+        .collect()
+}
+
 /// The result of a model check: the file's ID and whether it passed. It
 /// holds no file bytes.
 #[wasm_bindgen]
@@ -819,6 +845,17 @@ mod tests {
         let mut check = ModelCheck::start("test-two-block").expect("a pinned ID");
         assert!(check.feed(&changed));
         assert!(!check.result().passed);
+    }
+
+    #[test]
+    fn lists_every_pinned_file() {
+        let files = pinned_files();
+        assert_eq!(files.len(), 9);
+        assert!(files.contains(&PinnedModelFile {
+            id: "test-two-block".to_owned(),
+            url: "test-models/two-block.bin".to_owned(),
+            size: 56.0,
+        }));
     }
 
     #[test]

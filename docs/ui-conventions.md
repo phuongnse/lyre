@@ -242,8 +242,8 @@ Compose uses the same three values *(planned for M4)*.
 - Check pages keep their code out of the main app's initial load. Examples are
   the passkey check page and the model measurement page (see
   [early checks](roadmap.md#early-checks-on-real-devices)), the task
-  check page at `#/task-check` and the source check page at
-  `#/source-check`.
+  check page at `#/task-check`, the source check page at
+  `#/source-check` and the model check page at `#/model-check`.
 - The task check page runs a task of test stages, with its progress and a
   Cancel button. The Playwright journeys use it to check cancel and the
   cleanup after a reload ([processing](architecture.md#processing-planned-for-m2)).
@@ -254,5 +254,13 @@ Compose uses the same three values *(planned for M4)*.
   what came out: its rate, channels, length, tone and where sound starts.
   Audio the browser cannot decode gets the no-audio message. The Playwright
   journeys use it to check reading a source and decoding its audio.
+- The model check page downloads, checks and keeps the 56-byte test model
+  file `test-two-block`. A progress bar and a line below it show the bytes
+  downloaded, and the line stays after the download ends. The status line
+  says that the file passed and is kept, that it failed its check and was
+  deleted, or that it could not be downloaded. Each names the file. When the
+  browser refuses persistent storage, a note says it may remove the
+  downloaded models. The Playwright journeys use it to check a download, a
+  later load that downloads nothing, and a file that fails its check.
 - Each one is a lazy-loaded route with `loadComponent`, in the same build and
   deploy as the main app. This is agreed in D19.

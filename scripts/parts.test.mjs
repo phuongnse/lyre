@@ -24,6 +24,10 @@ describe('parts picked from changed paths', () => {
     assert.deepEqual(checkedParts([]), [])
   })
 
+  test('the models reference picks the core, whose test checks it', () => {
+    assert.deepEqual(checkedParts(['docs/reference/models.md']), ['core'])
+  })
+
   test('web picks the web client and the journeys', () => {
     assert.deepEqual(checkedParts(['web/src/main.ts']), ['web', 'e2e'])
   })
