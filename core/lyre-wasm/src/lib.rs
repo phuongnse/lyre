@@ -1,5 +1,6 @@
 //! WebAssembly bindings of the Lyre core, for the web client.
 
+use lyre_core::alignment::{self, AlignmentError, Emissions};
 use lyre_core::countdown;
 use lyre_core::display_lines::{self, DisplayLine, MeasuredSyllable};
 use lyre_core::highlight;
@@ -195,6 +196,101 @@ pub struct DisplayLineSpan {
 pub struct LyricsRows {
     pub top: Option<u32>,
     pub bottom: Option<u32>,
+}
+
+/// When one aligned syllable is sung, and how sure the model is of it, from
+/// 0 to 1.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AlignedSyllable {
+    #[wasm_bindgen(js_name = startMs)]
+    pub start_ms: u32,
+    #[wasm_bindgen(js_name = endMs)]
+    pub end_ms: u32,
+    pub confidence: f32,
+}
+
+/// Why alignment failed. It holds no core message, because those are not
+/// meant for users. A syllable with no character the model knows has its
+/// place. Any other failure has none.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AlignmentFault {
+    lyric_line: Option<u32>,
+    syllable: Option<u32>,
+}
+
+#[wasm_bindgen]
+impl AlignmentFault {
+    /// The index of the unknown syllable's lyric line, counting from 0.
+    #[wasm_bindgen(getter, js_name = lyricLine)]
+    pub fn lyric_line(&self) -> Option<u32> {
+        self.lyric_line
+    }
+
+    /// The unknown syllable's position within its lyric line, counting
+    /// from 0.
+    #[wasm_bindgen(getter)]
+    pub fn syllable(&self) -> Option<u32> {
+        self.syllable
+    }
+}
+
+impl From<AlignmentError> for AlignmentFault {
+    fn from(error: AlignmentError) -> AlignmentFault {
+        match error {
+            // Lyrics are at most 1 MiB, so every index fits.
+            AlignmentError::UnknownSyllable {
+                lyric_line,
+                position,
+            } => AlignmentFault {
+                lyric_line: Some(lyric_line as u32),
+                syllable: Some(position as u32),
+            },
+            _ => REJECTED,
+        }
+    }
+}
+
+/// The fault for a failure with no syllable to name.
+const REJECTED: AlignmentFault = AlignmentFault {
+    lyric_line: None,
+    syllable: None,
+};
+
+/// Times every syllable of `lyrics` from a CTC model's output for the whole
+/// song: `log_probs` holds `frames × vocabulary.length` natural-log
+/// probabilities, frame by frame. `blank` is the blank token's index,
+/// `frame_us` the frame length in microseconds and `song_ms` the song's
+/// duration. It returns one time per syllable, in lyric order.
+#[wasm_bindgen]
+pub fn align(
+    lyrics: &[u8],
+    log_probs: &[f32],
+    vocabulary: Vec<String>,
+    blank: u32,
+    frame_us: u32,
+    song_ms: u32,
+) -> Result<Vec<AlignedSyllable>, AlignmentFault> {
+    let lyrics = Lyrics::parse(lyrics).map_err(|_| REJECTED)?;
+    let emissions = Emissions {
+        log_probs,
+        vocabulary: &vocabulary,
+        blank: blank as usize,
+        frame_us,
+    };
+    let alignment = alignment::align(&lyrics, &emissions, song_ms)?;
+    Ok(alignment
+        .timing
+        .syllables()
+        .iter()
+        .zip(alignment.confidence)
+        .map(|(time, confidence)| AlignedSyllable {
+            start_ms: time.start_ms,
+            end_ms: time.end_ms,
+            confidence,
+        })
+        .collect())
 }
 
 /// Reads a song file the way the format's reading model says: the header,
@@ -747,6 +843,50 @@ mod tests {
         // A refused layout leaves no display lines.
         assert_eq!(reader.lay_out(&[10.0], 2.0, 1_000.0), vec![]);
         assert_eq!(reader.lyrics_rows(1_000.0), none);
+    }
+
+    /// Frames for "Mưa rơi" over the vocabulary of [`ALIGNMENT_VOCABULARY`]:
+    /// "Mưa" in frames 1 to 3 and "rơi" in frames 6 to 8, each best token at
+    /// probability 0.9.
+    fn alignment_frames() -> Vec<f32> {
+        let best = [0, 1, 2, 3, 0, 0, 4, 5, 6, 0];
+        let rest = (0.1f64 / 6.0).ln() as f32;
+        let mut log_probs = vec![rest; 7 * best.len()];
+        for (frame, &token) in best.iter().enumerate() {
+            log_probs[frame * 7 + token] = 0.9f64.ln() as f32;
+        }
+        log_probs
+    }
+
+    const ALIGNMENT_VOCABULARY: [&str; 7] = ["<pad>", "m", "ư", "a", "r", "\u{1A1}", "i"];
+
+    fn align_known_answer(lyrics: &str) -> Result<Vec<AlignedSyllable>, AlignmentFault> {
+        let vocabulary = ALIGNMENT_VOCABULARY.map(str::to_owned).to_vec();
+        align(
+            lyrics.as_bytes(),
+            &alignment_frames(),
+            vocabulary,
+            0,
+            20_000,
+            1_000,
+        )
+    }
+
+    #[test]
+    fn aligns_the_known_answer() {
+        let syllables = align_known_answer("Mưa r\u{1A1}i").expect("it aligns");
+        let times: Vec<_> = syllables.iter().map(|s| (s.start_ms, s.end_ms)).collect();
+        assert_eq!(times, vec![(20, 80), (120, 180)]);
+        assert!(syllables.iter().all(|s| (s.confidence - 0.9).abs() < 1e-6));
+    }
+
+    #[test]
+    fn alignment_names_the_unknown_syllable() {
+        let fault = align_known_answer("Mưa ♪\r\nrơi 2").expect_err("♪ is unknown");
+        assert_eq!(fault.lyric_line(), Some(0));
+        assert_eq!(fault.syllable(), Some(1));
+        let fault = align_known_answer("").expect_err("there are no lyrics");
+        assert_eq!(fault, REJECTED);
     }
 
     #[test]

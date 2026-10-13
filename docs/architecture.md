@@ -27,9 +27,9 @@ flowchart LR
 
 - **Lyre core** is one Rust library (D10). It owns everything both clients
   must agree on: the song file format, encryption, access files, device
-  codes, lyric parsing, display line layout, timing, and the pinned model
-  files with the check of a download against them. Both clients call it;
-  neither has its own copy of this logic.
+  codes, lyric parsing, forced alignment, display line layout, timing, and
+  the pinned model files with the check of a download against them. Both
+  clients call it; neither has its own copy of this logic.
 - **The web client** is a static site (D9). Its UI, media playback and model
   runs are in TypeScript. The UI is Angular with Angular Material (D19),
   built by the rules in [UI conventions](ui-conventions.md). It calls the
@@ -48,8 +48,8 @@ flowchart LR
 
 ```text
 core/                 Rust workspace
-  lyre-core/          song file format, crypto, access files, lyrics, layout, timing,
-                      model check
+  lyre-core/          song file format, crypto, access files, lyrics, alignment, layout,
+                      timing, model check
   lyre-wasm/          WebAssembly bindings for the web client
   lyre-ffi/           UniFFI bindings for the Android app
   lyre-cli/           developer tool: build and inspect song files, used by tests
