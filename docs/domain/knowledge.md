@@ -94,6 +94,17 @@ What was learned:
   sometimes put a shared instrument in both outputs. Removing on the word of
   one separator damages the music. D15 has one separator, so the clean-up
   waits for M8, with the vocal roles.
+- **Forced alignment times only the supplied syllables.** The core takes a
+  CTC model's per-frame log-probabilities for the whole song and the model's
+  vocabulary. It finds the most likely path through the syllables' tokens,
+  in timing order. It never recognises words (D5, D15). Each syllable is
+  matched to the vocabulary through a folded copy that handles case, Unicode
+  normalisation and punctuation. The lyric bytes never change. A syllable
+  with no character the vocabulary knows, such as "2" or "♪", is not guessed:
+  alignment fails and names its lyric line and position, without quoting it.
+  Frames, vocabulary size, entry length, syllables and the work grid have
+  limits. Each syllable also gets a confidence score, the model's average
+  probability over its frames.
 - **Distrust very long word spans.** The aligner can stretch the first word
   over a long instrumental intro and still report high confidence. Check long
   spans against the nearest sung onsets.
