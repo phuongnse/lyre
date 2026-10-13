@@ -143,7 +143,7 @@ interface ShownLine {
       -webkit-text-stroke: 0.125em #000;
       paint-order: stroke fill;
       /* Not text-shadow: Chromium paints the fill's shadow over the stroke. */
-      filter: drop-shadow(0.15em 0.15em 0 #000);
+      filter: drop-shadow(0.1em 0.1em 0 #000);
     }
     /* Sung text takes the song's vocal role colour, set in --sung. */
     .syllable.sung,

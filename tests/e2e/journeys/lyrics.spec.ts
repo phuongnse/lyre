@@ -397,7 +397,8 @@ async function edgeScan(
         if (Math.max(...pixel) >= 200) {
           let dark = 0
           for (let after = position + 1; after < length; after++) {
-            if (Math.max(...at(after)) < 80) dark++
+            // 130 counts the half-covered pixels at both ends of the band.
+            if (Math.max(...at(after)) < 130) dark++
           }
           // Where the outline meets the backdrop instead of the shadow, the edge
           // pixel is white blended with green, so the next one in is checked too.
@@ -502,6 +503,15 @@ async function leadingEdgeScan(
   }, png.toString('base64'))
 }
 
+// The shadow is 0.1 em, so the band past the outline is 0.07 to 0.13 em wide.
+// `outside` is what the band also holds: the black outline past the glyph.
+function expectShadowBand(scan: EdgeScan, outside = 0): void {
+  for (const band of [scan.rightBand - outside, scan.bottomBand - outside]) {
+    expect(band).toBeGreaterThanOrEqual(0.07)
+    expect(band).toBeLessThanOrEqual(0.13)
+  }
+}
+
 test('at 4.0 s the fully sung "Mưa" has an unbroken white outline and a black shadow band past it', async ({
   page,
 }) => {
@@ -511,8 +521,7 @@ test('at 4.0 s the fully sung "Mưa" has an unbroken white outline and a black s
   await expect(syllableIn(region)('Mưa')).toHaveClass(/sung/)
   const scan = await edgeScan(page, region, video, syllableIn(region)('Mưa'))
   expect(scan.whiteFraction).toBeGreaterThanOrEqual(0.95)
-  expect(scan.rightBand).toBeGreaterThanOrEqual(0.08)
-  expect(scan.bottomBand).toBeGreaterThanOrEqual(0.08)
+  expectShadowBand(scan)
 })
 
 test('at 4.0 s the unsung "bên" has a dark band of outline and shadow past its white fill', async ({ page }) => {
@@ -521,10 +530,10 @@ test('at 4.0 s the unsung "bên" has a dark band of outline and shadow past its 
   await seek(video, 4)
   await expect(syllableIn(region)('về')).toHaveAttribute('aria-current', 'true')
   await expect(syllableIn(region)('bên')).not.toHaveClass(/sung/)
-  // The outline's 0.06 em outside the glyph, and at least 0.08 em of shadow.
+  // The black outline and the black shadow can't be told apart, so the band is
+  // the outline's 0.06 em outside the glyph plus the 0.1 em shadow.
   const scan = await edgeScan(page, region, video, syllableIn(region)('bên'))
-  expect(scan.rightBand).toBeGreaterThanOrEqual(0.14)
-  expect(scan.bottomBand).toBeGreaterThanOrEqual(0.14)
+  expectShadowBand(scan, 0.125 / 2)
 })
 
 // "về" runs 3.8 to 4.1 s, so at 4.0 s two thirds of it is swept. The scan covers
@@ -578,6 +587,5 @@ test('at 9.5 s the third countdown dot has an unbroken white outline and a black
   await expect(dot).toHaveClass(/changed/)
   const scan = await edgeScan(page, region, video, dot)
   expect(scan.whiteFraction).toBeGreaterThanOrEqual(0.95)
-  expect(scan.rightBand).toBeGreaterThanOrEqual(0.08)
-  expect(scan.bottomBand).toBeGreaterThanOrEqual(0.08)
+  expectShadowBand(scan)
 })
