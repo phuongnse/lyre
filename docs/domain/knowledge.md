@@ -69,14 +69,19 @@ being followed blindly.
 The stages, in order:
 
 1. **Read the source.** Duration, streams, and title, artist and composer
-   tags. The source needs an audio stream; video is optional.
+   tags. The source needs an audio stream; video is optional. *(planned for
+   M2)* Its video and audio must be in codecs the making device can play, or
+   the source is refused.
 2. **Extract the audio** of the song, or of the section, at full quality.
 3. **Separate** vocals from the karaoke track.
 4. **Align** the supplied syllables against the vocals.
 5. **Clean up** vocals left in the karaoke track *(planned for M8)*.
 6. **Classify vocal roles** *(planned for M8)*.
 7. **Lay out the display lines** and their timing.
-8. **Build the playback media** and the thumbnail.
+8. **Package the playback media:** repackage the source's video and
+   original audio as coded, encode the karaoke track (Opus) and make the
+   thumbnail
+   ([D24](../decisions.md#d24-sources-are-repackaged-and-only-the-karaoke-track-is-encoded--agreed)).
 9. **Write the song file** and remove everything the task made on the way.
 
 What was learned:
@@ -115,12 +120,21 @@ What was learned:
 - **Distrust very long word spans.** The aligner can stretch the first word
   over a long instrumental intro and still report high confidence. Check long
   spans against the nearest sung onsets.
-- **Trimming and re-encoding can drift out of sync.** Copy audio without
-  re-encoding only for the full, untrimmed timeline in a widely supported
-  codec. Otherwise re-encode both tracks from the same decoded audio.
+- **A trimmed section keeps sync without re-encoding the video.** A section
+  cut from a source starts at the source's keyframe at or before the chosen
+  start, because coded video can only start on a keyframe. Both audio tracks
+  are cut at that same time, and the karaoke track is encoded from audio
+  decoded on that timeline. The end needs no keyframe. The cost is that a
+  section may start up to one keyframe gap early, at most 20 s. A source
+  whose keyframes are more than 20 s apart, or with one group of frames over
+  64 MiB, is refused *(planned for M2)*. It cannot be cut into the song
+  file's [media segments](../reference/song-file-format-v0.md#limits)
+  without re-encoding.
 - **Sources can start at a nonzero time.** Some containers start their
   timeline after zero. Player time then differs from source time, which moves
   section cut points and timing unless it is corrected once, at the start.
+  Repackaging *(planned for M2)* corrects it by rewriting the container
+  timestamps, so the song starts at 0.
 - **A lyric correction is cheap only when the sung structure stays the same.**
   Changing words in place: re-time only the changed lines against the stored
   original track. Whitespace only: keep the timing. A different number of

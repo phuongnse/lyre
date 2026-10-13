@@ -77,6 +77,10 @@ M4.
   the play position carry on. The original track is read only once the singer
   switches to it. A file the core refuses shows one plain message, "not a song
   file" or "damaged or incomplete", and nothing plays.
+- *(planned for M2)* A song whose stored media type the device cannot play
+  shows one plain message naming the codec and the kind of media, such as
+  "This device cannot play H.265 video", and nothing plays
+  ([D24](decisions.md#d24-sources-are-repackaged-and-only-the-karaoke-track-is-encoded--agreed)).
 - The web Player shows the lyrics in a Lyrics area over the bottom of the
   video, in two rows. See [Lyrics area](#lyrics-area). The core lays out the
   display lines from the widths the client measures, when the song opens and
