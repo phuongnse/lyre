@@ -147,14 +147,17 @@ durations in `song.toml`.
 
 `tests/fixtures/source/make.sh <out-dir>` makes small synthetic sources for
 the source check journeys: an MP4, a WebM and an MP3 with tags, a WebM with
-no audio, and a WebM whose timeline starts at 1.5 s. No real media is used.
+no audio, a WebM whose timeline starts at 1.5 s, and `karaoke.webm`, which
+stands in for a karaoke track. No real media is used.
 They are not committed: `scripts/e2e.sh` makes them into
 `artifacts/e2e/sources/`. It needs ffmpeg built with libx264, libvpx, libopus
 and libmp3lame. `scripts/setup.sh` installs ffmpeg for the journeys when it
 is missing.
 
 Every source holds a 2 s sine at 440 Hz and 48 kHz. The WebM (Opus) and MP3
-fixtures check decoding. The MP4 holds AAC audio, which not every Chromium
+fixtures check decoding. `karaoke.webm` is audio only: a 3 s sine at 660 Hz
+in Opus. It is longer than the sources, so making the audio tracks from it
+and `song.webm` also checks that it is cut to the source's length. The MP4 holds AAC audio, which not every Chromium
 build decodes. Its journey makes Chromium report that it has no AAC decoder,
 so the MP4 checks the no-audio refusal instead.
 
@@ -163,7 +166,9 @@ Chromium report that it cannot play H.264, and checks that the MP4 names its
 video next to its tags. Another does the same for Opus with the WebM. The MP3
 is stored as `audio/mp4; codecs="mp4a.6B"`, which Playwright's Chromium does
 not accept. So its journeys expect the MP3 audio reason next to its details,
-or no reason in a browser that accepts the type.
+or no reason in a browser that accepts the type. A last one makes Chromium
+report that it cannot encode Opus, and checks that making the audio tracks
+shows only the cannot-encode-audio message.
 
 The files under `tests/fixtures/` total about 61 KB. A test fails when they
 pass 64 KiB.

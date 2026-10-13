@@ -18,9 +18,9 @@ export interface Packaging {
   stop(): void
 }
 
-// Packages the primary audio of `file` in a Web Worker. The worker ends once
-// it answers.
-export function packageInWorker(file: File, storedType: string): Packaging {
+// Sends `request` to a new original track worker. The worker ends once it
+// answers.
+function runInWorker(request: PackageRequest): Packaging {
   const worker = startWorker()
   let answer: (reply: PackageReply) => void = () => undefined
   const reply = new Promise<PackageReply>((resolve) => {
@@ -31,7 +31,17 @@ export function packageInWorker(file: File, storedType: string): Packaging {
   })
   worker.onmessage = ({ data }: MessageEvent<PackageReply>) => answer(data)
   worker.onerror = () => answer({ type: 'failed' })
-  const request: PackageRequest = { type: 'package', file, storedType }
   worker.postMessage(request)
   return { reply, stop: () => answer({ type: 'failed' }) }
+}
+
+// Packages the primary audio of `file` in a Web Worker.
+export function packageInWorker(file: File, storedType: string): Packaging {
+  return runInWorker({ type: 'package', file, storedType })
+}
+
+// Packages the primary audio of `file` into the original track, then makes
+// the karaoke track from `karaokeFile` at its cut times, in a Web Worker.
+export function makeAudioInWorker(file: File, karaokeFile: File, storedType: string): Packaging {
+  return runInWorker({ type: 'make-audio', file, karaokeFile, storedType })
 }

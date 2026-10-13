@@ -196,6 +196,16 @@ reference doc and reviewed before M3 implements them.
   50 ms after that start is refused. Mediabunny writes Clusters or fragments
   of about 1 s, and the web client groups them into media segments of up to
   10 s. It checks the format's limits, which the core's writer checks again.
+  The same worker can then make the karaoke track, for now from a second
+  picked file that stands in for it. It decodes the file at 48 kHz stereo on
+  its own timeline, fits it to the original track's end with silence or a
+  cut, and encodes it to Opus at 128 kbps through WebCodecs. Mediabunny
+  writes one Cluster per Opus packet. The web client cuts the track at the
+  packet edge nearest each of the original track's cuts, so both tracks have
+  the same number of segments, each start and end within 50 ms. A packet
+  that starts at the original's end, which the encoder adds for the audio it
+  held back, is left out. The page checks that the browser can encode Opus
+  before it starts the worker.
 - The web client runs a model with ONNX Runtime Web (MIT), at a pinned
   version, in a Web Worker. It uses WebGPU when the browser gives it a GPU
   adapter and the session opens on it, and otherwise WebAssembly on one

@@ -192,7 +192,7 @@ function outputFormat(
   throw new PackageError('stored type')
 }
 
-function concat(parts: Uint8Array[]): Uint8Array {
+export function concat(parts: Uint8Array[]): Uint8Array {
   if (parts.length === 1) return parts[0]!
   const joined = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
   let offset = 0
