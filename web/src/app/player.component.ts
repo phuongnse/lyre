@@ -16,7 +16,7 @@ import { ByteSource, OpenedSong, SongFileError, SongFileProblem } from '../song-
 import { Library } from './library'
 import { LibraryList } from './library.component'
 import { Lyrics } from './lyrics.component'
-import { Playback, playSong } from './media-source-playback'
+import { Playback, playSong, SongMedia, unplayableMedia } from './media-source-playback'
 import { messages } from './messages'
 
 type State =
@@ -24,12 +24,14 @@ type State =
   | { status: 'opening' }
   | { status: 'ready'; song: OpenedSong }
   | { status: 'failed'; problem: SongFileProblem }
+  | { status: 'unplayable'; media: SongMedia }
 
 type AudioTrackChoice = 'karaoke' | 'original'
 
 // The Player: opens a song file, or a song from the library, and plays its
 // video with the karaoke track or the original track, with its lyrics over the
-// bottom of the video. A song file that opens is kept in the library.
+// bottom of the video. A song file that opens, and that this browser can play,
+// is kept in the library.
 @Component({
   selector: 'lyre-player',
   imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, LibraryList, Lyrics],
@@ -49,6 +51,9 @@ type AudioTrackChoice = 'karaoke' | 'original'
         <p role="alert">
           {{ current.problem === 'not-a-song-file' ? messages.songFileNotASongFile : messages.songFileDamaged }}
         </p>
+      }
+      @case ('unplayable') {
+        <p role="alert">{{ messages.cannotPlay[current.media] }}</p>
       }
       @case ('ready') {
         <div class="stage">
@@ -139,6 +144,13 @@ export class Player {
       const song = await this.openSongFile(source)
       if (attempt !== this.attempts || this.state().status !== 'opening') {
         song.close()
+        return
+      }
+      // Nothing plays, and the song is not kept, when a track cannot play here.
+      const media = unplayableMedia(song)
+      if (media) {
+        song.close()
+        this.leave({ status: 'unplayable', media })
         return
       }
       this.leave({ status: 'ready', song })

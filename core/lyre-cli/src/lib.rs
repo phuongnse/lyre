@@ -2,9 +2,9 @@
 //! fixtures, with timing written by hand.
 //!
 //! The manifest and the timing file are described in
-//! `docs/reference/lyre-cli.md`. The media files are WebM init and media
-//! segments cut beforehand. The tool treats them as opaque bytes, as the core
-//! does.
+//! `docs/reference/lyre-cli.md`. The media files are init and media
+//! segments cut beforehand, and the manifest gives each track's MSE type. The
+//! tool treats the media as opaque bytes, as the core does.
 
 use std::fmt;
 use std::fs;
@@ -47,6 +47,10 @@ struct Details {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TrackSpec {
+    /// The track's MSE type. It is required, because a default could label a
+    /// track with the wrong codec.
+    #[serde(rename = "type")]
+    stored_type: String,
     init: String,
     segments: Vec<SegmentSpec>,
 }
@@ -102,6 +106,7 @@ pub fn build(manifest: &Path) -> Result<Vec<u8>, BuildError> {
             })
             .collect::<Result<_, BuildError>>()?;
         Ok(Track {
+            stored_type: spec.stored_type.clone(),
             init: read(&spec.init)?,
             segments,
         })

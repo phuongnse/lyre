@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, Page, test } from '@playwright/test'
-import { Choice, fixture, openSongFile } from './song-file'
+import { Choice, fixture, h265Fixture, openSongFile } from './song-file'
 
 function octets(name: string, buffer: Buffer): Choice {
   return { name, mimeType: 'application/octet-stream', buffer }
@@ -155,6 +155,20 @@ test('a truncated song file shows that it is damaged, and nothing plays', async 
   await expect(page.getByRole('alert')).toHaveText('This song file is damaged or incomplete.')
   await expect(page.getByLabel('Song video')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Play' })).toHaveCount(0)
+})
+
+test('a song whose video this browser cannot play says so, and nothing plays', async ({ page }) => {
+  await page.goto('/')
+  // The journey tests the message only while Playwright's Chromium has no H.265 decoder.
+  const supported = await page.evaluate(() => MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L93.B0"'))
+  expect(supported).toBe(false)
+
+  await openSongFile(page, h265Fixture)
+  await expect(page.getByRole('alert')).toHaveText("This device cannot play this song's video.")
+  await expect(page.getByLabel('Song video')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Play' })).toHaveCount(0)
+  // The song is not kept in the library.
+  await expect(page.getByRole('list', { name: 'Library' })).toHaveCount(0)
 })
 
 test('a file that is not a song file shows that, and nothing plays', async ({ page }) => {

@@ -46,8 +46,8 @@ async function chooseFileIn(
 
 // A song that opens but plays nothing. jsdom has no Media Source Extensions,
 // no media playback and no ResizeObserver, so the Player gets stand-ins that do
-// nothing.
-function openedSong(): OpenedSong {
+// nothing. The stand-in MediaSource supports the types `supported` accepts.
+function openedSong(supported: (type: string) => boolean = () => true): OpenedSong {
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -57,7 +57,12 @@ function openedSong(): OpenedSong {
   )
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined)
-  vi.stubGlobal('MediaSource', class extends EventTarget {})
+  vi.stubGlobal(
+    'MediaSource',
+    class extends EventTarget {
+      static isTypeSupported = supported
+    },
+  )
   vi.stubGlobal(
     'URL',
     Object.assign(class extends URL {}, { createObjectURL: () => 'blob:song', revokeObjectURL: () => undefined }),
@@ -66,8 +71,21 @@ function openedSong(): OpenedSong {
     songId: '00112233445566778899aabbccddeeff',
     details: { title: 'Mưa rơi nhẹ', artist: 'Lyre fixtures', composer: '', vocalRole: 'female' },
     durationMs: 1000,
-    karaoke: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
-    original: { init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 }, segments: [] },
+    video: {
+      type: 'video/webm; codecs="vp09.00.40.08"',
+      init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 },
+      segments: [],
+    },
+    karaoke: {
+      type: 'audio/webm; codecs="opus"',
+      init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 },
+      segments: [],
+    },
+    original: {
+      type: 'audio/mp4; codecs="mp4a.40.2"',
+      init: { position: 0, offset: 0, length: 0, startMs: 0, durationMs: 0 },
+      segments: [],
+    },
     lyrics: [],
     layOut: () => [],
     sweepPosition: () => 0,
@@ -123,4 +141,31 @@ test('a file that fails to open is not kept', async () => {
   const element = await chooseFile(() => Promise.reject(new SongFileError('damaged')), store)
   expect(store.songs.size).toBe(0)
   expect(element.querySelector('ul')).toBeNull()
+})
+
+test('a song whose original track cannot play here shows that, plays nothing and is not kept', async () => {
+  const store = new FakeLibraryStore()
+  const asked: string[] = []
+  const song = openedSong((type) => {
+    asked.push(type)
+    return !type.startsWith('audio/mp4')
+  })
+  const close = vi.spyOn(song, 'close')
+  const element = await chooseFile(() => Promise.resolve(song), store)
+  expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+    "This device cannot play this song's original track.",
+  )
+  expect(asked).toEqual([song.video?.type, song.karaoke.type, song.original.type])
+  expect(element.querySelector('video')).toBeNull()
+  expect(element.querySelector('[aria-label="Track"]')).toBeNull()
+  expect(close).toHaveBeenCalled()
+  expect(store.songs.size).toBe(0)
+})
+
+test('a song whose video cannot play here names the video', async () => {
+  const element = await chooseFile(() => Promise.resolve(openedSong((type) => !type.startsWith('video/'))))
+  expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+    "This device cannot play this song's video.",
+  )
+  expect(element.querySelector('video')).toBeNull()
 })

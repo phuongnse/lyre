@@ -9,6 +9,12 @@ export const messages = {
   songFileOpening: 'Opening the song file…',
   songFileNotASongFile: 'This file is not a song file.',
   songFileDamaged: 'This song file is damaged or incomplete.',
+  // Keyed by SongMedia.
+  cannotPlay: {
+    video: "This device cannot play this song's video.",
+    karaoke: "This device cannot play this song's karaoke track.",
+    original: "This device cannot play this song's original track.",
+  },
   play: 'Play',
   pause: 'Pause',
   songVideo: 'Song video',

@@ -5,6 +5,9 @@ import { Page } from '@playwright/test'
 export const fixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture.lyre', import.meta.url))
 // The same song with a male vocal role, built from tests/fixtures/song/male.toml.
 export const maleFixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture-male.lyre', import.meta.url))
+// The same song with an H.265 video type, which Playwright's Chromium cannot play, built from
+// tests/fixtures/song/h265.toml.
+export const h265Fixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture-h265.lyre', import.meta.url))
 
 export type Choice = string | { name: string; mimeType: string; buffer: Buffer }
 

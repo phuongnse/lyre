@@ -16,6 +16,7 @@ vocal_role = "male"
 # start every 2000 ms from 0. The audio Clusters start at 0, 1981, 3981, 5981,
 # 7981 and 9981 ms, and the 600 Opus frames of 20 ms end at 12000 ms.
 [video]
+type = 'video/webm; codecs="vp09.00.40.08"'
 init = "video/init.webm"
 segments = [
   { file = "video/segment-1.webm", duration_ms = 2000 },
@@ -27,6 +28,7 @@ segments = [
 ]
 
 [karaoke]
+type = 'audio/webm; codecs="opus"'
 init = "karaoke/init.webm"
 segments = [
   { file = "karaoke/segment-1.webm", duration_ms = 1981 },
@@ -38,6 +40,7 @@ segments = [
 ]
 
 [original]
+type = 'audio/webm; codecs="opus"'
 init = "original/init.webm"
 segments = [
   { file = "original/segment-1.webm", duration_ms = 1981 },

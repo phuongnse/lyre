@@ -74,13 +74,18 @@ M4.
   through Media Source Extensions, with a Play/Pause button. A Karaoke /
   Original switch shows the chosen track, and starts on Karaoke for each song.
   Switching replaces only the audio in the running stream, so the video and
-  the play position carry on. The original track is read only once the singer
-  switches to it. A file the core refuses shows one plain message, "not a song
-  file" or "damaged or incomplete", and nothing plays.
-- *(planned for M2)* A song whose stored media type the device cannot play
-  shows one plain message naming the codec and the kind of media, such as
-  "This device cannot play H.265 video", and nothing plays
+  the play position carry on. Each track plays by the type its song file
+  stores. Opening a song reads every init chunk to check its type. The
+  original track's media segments are read only once the singer switches to
+  it. A file the core refuses shows one plain message, "not a song file" or
+  "damaged or incomplete", and nothing plays.
+- A song whose stored media type the device cannot play shows one plain
+  message naming the track: "This device cannot play this song's video.", or
+  its karaoke track or its original track. Nothing plays, and the song is not
+  kept in the library
   ([D24](decisions.md#d24-sources-are-repackaged-and-only-the-karaoke-track-is-encoded--agreed)).
+  *(planned for M2)* The message names the codec and the kind of media
+  instead, such as "This device cannot play H.265 video".
 - The web Player shows the lyrics in a Lyrics area over the bottom of the
   video, in two rows. See [Lyrics area](#lyrics-area). The core lays out the
   display lines from the widths the client measures, when the song opens and
@@ -97,8 +102,8 @@ M4.
 
 ## Library
 
-- The web client keeps each song file that opens without error in the
-  browser's IndexedDB, one per song ID. Opening a song again replaces its
+- The web client keeps each song file that opens without error, and that
+  this device can play, in the browser's IndexedDB, one per song ID. Opening a song again replaces its
   kept copy, so each song is listed once.
 - The library lists the kept songs under the Player, the most recently
   opened first. Each shows its title, and its artist and composer when they

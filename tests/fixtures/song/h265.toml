@@ -1,0 +1,54 @@
+# The fixture song with an H.265 video type, for the Player journey of a song
+# this device cannot play. Playwright's Chromium has no H.265 decoder, so the
+# video bytes are the VP9 fixture's and are never read. Everything else is the
+# same as song.toml, and a lyre-cli test keeps it so.
+song_id = "00112233445566778899aabbccddeeff"
+lyrics = "lyrics.txt"
+timing = "timing.txt"
+thumbnail = "thumbnail.jpg"
+
+[details]
+title = "Mưa rơi nhẹ"
+artist = "Lyre fixtures"
+composer = "Lyre fixture composer"
+vocal_role = "female"
+
+# A segment's duration runs from its first Cluster's timestamp to the next
+# segment's, so each segment starts where its media does. The video Clusters
+# start every 2000 ms from 0. The audio Clusters start at 0, 1981, 3981, 5981,
+# 7981 and 9981 ms, and the 600 Opus frames of 20 ms end at 12000 ms.
+[video]
+type = 'video/mp4; codecs="hvc1.1.6.L93.B0"'
+init = "video/init.webm"
+segments = [
+  { file = "video/segment-1.webm", duration_ms = 2000 },
+  { file = "video/segment-2.webm", duration_ms = 2000 },
+  { file = "video/segment-3.webm", duration_ms = 2000 },
+  { file = "video/segment-4.webm", duration_ms = 2000 },
+  { file = "video/segment-5.webm", duration_ms = 2000 },
+  { file = "video/segment-6.webm", duration_ms = 2000 },
+]
+
+[karaoke]
+type = 'audio/webm; codecs="opus"'
+init = "karaoke/init.webm"
+segments = [
+  { file = "karaoke/segment-1.webm", duration_ms = 1981 },
+  { file = "karaoke/segment-2.webm", duration_ms = 2000 },
+  { file = "karaoke/segment-3.webm", duration_ms = 2000 },
+  { file = "karaoke/segment-4.webm", duration_ms = 2000 },
+  { file = "karaoke/segment-5.webm", duration_ms = 2000 },
+  { file = "karaoke/segment-6.webm", duration_ms = 2019 },
+]
+
+[original]
+type = 'audio/webm; codecs="opus"'
+init = "original/init.webm"
+segments = [
+  { file = "original/segment-1.webm", duration_ms = 1981 },
+  { file = "original/segment-2.webm", duration_ms = 2000 },
+  { file = "original/segment-3.webm", duration_ms = 2000 },
+  { file = "original/segment-4.webm", duration_ms = 2000 },
+  { file = "original/segment-5.webm", duration_ms = 2000 },
+  { file = "original/segment-6.webm", duration_ms = 2019 },
+]
