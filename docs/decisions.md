@@ -152,8 +152,9 @@ Open points, each settled by a later decision:
   [D15](#d15-models-for-separation-and-alignment--agreed),
   [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
   [D21](#d21-pinned-model-files-and-the-separator-target--agreed),
-  [D28](#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed) and
-  [D29](#d29-the-aligner-is-lyric-alignment--agreed), confirmed by the M2 measurements;
+  [D28](#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed),
+  [D29](#d29-the-aligner-is-lyric-alignment--agreed) and
+  [D30](#d30-the-aligner-file-is-fp32--agreed), confirmed by the M2 measurements;
 - the lowest Android version and the browsers Lyre supports.
 
 ## D11. Delivery workflow — Agreed
@@ -371,7 +372,8 @@ aligner.
   lyric alignment. Its model card states CC-BY-NC-4.0. Both do only forced
   alignment of the supplied syllables. Neither transcribes (D5).
 - **The choice:** replaced by [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed), and then by
-  [D29](#d29-the-aligner-is-lyric-alignment--agreed). The results are recorded in the
+  [D29](#d29-the-aligner-is-lyric-alignment--agreed) and
+  [D30](#d30-the-aligner-file-is-fp32--agreed). The results are recorded in the
   docs.
 - **The measurement page is built at the start of M2.** It needs the ONNX
   files, their download and hash check, and alignment, which M2 builds anyway.
@@ -508,12 +510,14 @@ every target device.
 
 - **Browser:** a current browser with WebGPU, on any OS, on a desktop or a
   phone.
-- **Memory:** a minimum amount, about 6 GB until it is measured.
-- **Settled by measurement:** the
-  [model measurement page](roadmap.md#early-checks-on-real-devices) measures
-  devices near the minimum. Its results set the values, including how the
-  web client reads memory where the browser does not report it. The owner
-  then marks this decision Agreed.
+- **Memory:** a minimum amount, 8 GB. A song used about 5 GB on top of what
+  the system already used ([results](reference/models.md#measurement-results)).
+- **Settled by measurement:** the first results come from one device far
+  above the minimum, so they cannot settle it. The
+  [model measurement page](roadmap.md#early-checks-on-real-devices) still
+  measures devices near the minimum. Those results confirm the values,
+  including how the web client reads memory where the browser does not report
+  it. The owner then marks this decision Agreed.
 - **Below the requirements:** the web client says before starting that this
   device cannot make songs, and does not start
   ([D3](#d3-processing-runs-on-the-device-that-asks-for-it--agreed), D27).
@@ -526,6 +530,7 @@ it, while a list of device types leaves out devices that would work.
 
 Partly replaced by [D29](#d29-the-aligner-is-lyric-alignment--agreed): the candidates are
 `lyric-alignment`'s int8 and fp32 files, and int8 is used unless its timing looks worse.
+[D30](#d30-the-aligner-file-is-fp32--agreed) then chose fp32.
 **Play with this timing** stays.
 
 Replaces the choice rule of [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
@@ -607,6 +612,8 @@ Kim, without distorting the music.
 
 ## D29. The aligner is lyric-alignment — Agreed
 
+Partly replaced by [D30](#d30-the-aligner-file-is-fp32--agreed): Lyre uses the fp32 file.
+
 Replaces the aligner of [D15](#d15-models-for-separation-and-alignment--agreed),
 the choice rule of [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
 and [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed),
@@ -634,3 +641,19 @@ and the Omnilingual source point of [D21](#d21-pinned-model-files-and-the-separa
 
 *Why:* more than 90 % of the songs Lyre makes are Vietnamese, and
 `lyric-alignment` is trained on sung Vietnamese lyrics.
+
+## D30. The aligner file is fp32 — Agreed
+
+Replaces the "Which file" and "The rule" points of [D29](#d29-the-aligner-is-lyric-alignment--agreed).
+
+- **File:** `lyric-alignment`'s fp32 file, `model.onnx`, about 1.28 GB.
+- **Timing:** on the measured songs, fp32's timing and int8's looked the same
+  in the Player.
+- **Speed:** on WebGPU, int8 aligned about 40 times slower: 141.60 s and
+  139.21 s, against 3.60 s and 2.97 s for fp32
+  ([results](reference/models.md#measurement-results)).
+- **Download:** about 1.28 GB once, instead of about 360 MB. The owner accepts
+  this.
+
+*Why:* the timing is the same, and the far slower alignment of int8 costs
+every song, while the larger download happens once.

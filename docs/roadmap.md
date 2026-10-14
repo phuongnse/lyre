@@ -122,31 +122,29 @@ Done when all ten were merged and the owner accepted the Player.
   Its first part is the measurement section of the model check page, at
   `#/model-check`. Each run measures WebGPU only,
   without the download time yet.
-- The owner chooses between int8 and fp32 by watching each one's timing in the
-  Player
+- The owner chose fp32 over int8 by watching each one's timing in the Player
   ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed),
-  [D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
+  [D30](decisions.md#d30-the-aligner-file-is-fp32--agreed)).
   After a measurement, **Play with this timing** on the model check page's
   Player plays the source with that file's timing.
-  The choice and its reason are recorded in the docs before the later M2 work
-  relies on it.
+  The choice and its reason are recorded in the
+  [measurement results](reference/models.md#measurement-results).
 
 ## Later milestones
 
 Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
-- **M2:** the measurement page comes first. It measures the int8 and fp32
-  files of `lyric-alignment`. Among the files that run on the
-  [target devices](decisions.md#d25-requirements-for-making-songs--proposed),
-  int8 is used unless its timing looks worse than fp32's in the Player
-  ([D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)). [D28](decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)
-  replaced D15's separator. If Mel-Band RoFormer misses the time target, Lyre
-  makes its own export of the same weights
-  ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
-  as [D22](decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed) splits it).
-  The measurement results settle the values of the requirements of
-  [D25](decisions.md#d25-requirements-for-making-songs--proposed), and the owner then marks it Agreed.
+- **M2:** the measurement page came first. Its first measurement chose the
+  fp32 file of `lyric-alignment`
+  ([D30](decisions.md#d30-the-aligner-file-is-fp32--agreed)) and
+  Mel-Band RoFormer
+  ([D28](decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed))
+  met the time target. See the
+  [results](reference/models.md#measurement-results).
+  [D25](decisions.md#d25-requirements-for-making-songs--proposed) states 8 GB
+  of memory from the first results. A device near the minimum is still to be
+  measured, and the owner then marks D25 Agreed.
 - **M3:** the passkey check results (D8); the reference doc for the encrypted
   format, access files and recovery, reviewed before implementation.
 - **M4:** Android playback and device keys

@@ -142,14 +142,14 @@ the section may refine them, and update this section when they do.
 - **Make the song** is off until a source, valid lyrics, a non-empty title
   and a vocal role are all set.
 - Before the first stage, the page downloads any missing model files:
-  the separator's file and the `lyric-alignment` file the measurements chose, int8 or fp32
-  ([the choice](reference/models.md#the-choice),
-  [D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
+  the separator's file and the `lyric-alignment` fp32 file
+  ([D30](decisions.md#d30-the-aligner-file-is-fp32--agreed),
+  [the choice](reference/models.md#the-choice)).
   It checks them with the same progress bar and byte line as the model check
   page. A file that fails its check stops the task, and the message names
   the file. Kept files download nothing on later runs.
-- The section waits for the measured choice between the two files. It has no
-  temporary default.
+- The measurement chose the fp32 file
+  ([results](reference/models.md#measurement-results)).
 - The task runs in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). The page shows
   the current stage's name, such as "Separating the vocals", and a progress
