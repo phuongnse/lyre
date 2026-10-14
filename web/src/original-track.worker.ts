@@ -1,9 +1,12 @@
 import { KARAOKE_FORMAT, makeKaraoke } from './karaoke-track'
 import init, { parseTimingFile, TimingFileErrorKind, TimingFileFault } from './lyre-wasm/lyre_wasm.js'
+import { wavPlanes } from './measurement/wav'
 import { PackageReply, PackageRequest, SegmentTimes } from './original-track-messages'
 import { PackagedTrack, packageOriginal } from './original-track'
+import { Resampler } from './resampler'
 import { SongRefused, writeSong } from './song-writer'
-import { decodeAudio } from './source-audio'
+import { readSource } from './source'
+import { decodeAudio, SEPARATION_FORMAT } from './source-audio'
 import { makeThumbnail } from './thumbnail'
 import { checkVideoEnd, packageVideo, videoRefusal } from './video-track'
 
@@ -11,8 +14,9 @@ import { checkVideoEnd, packageVideo, videoRefusal } from './video-track'
 // karaoke track cut at its times and the video track, and makes a source's
 // thumbnail, off the page's main thread. It can also make all of these and
 // write them, with the lyrics and the timing, into a song file through the
-// core. It answers with a summary or the song file, never with the error's
-// text.
+// core. It can also make a song from a source, the karaoke track and the
+// timing of a measurement, for the model check page to play. It answers with
+// a summary or the song file, never with the error's text.
 addEventListener('message', (event: MessageEvent<PackageRequest>) => {
   const request = event.data
   if (request.type === 'package') {
@@ -49,6 +53,12 @@ addEventListener('message', (event: MessageEvent<PackageRequest>) => {
         const reason = error instanceof SongRefused ? error.reason : videoRefusal(error)
         postMessage((reason === undefined ? { type: 'failed' } : { type: 'failed', reason }) satisfies PackageReply)
       },
+    )
+  } else if (request.type === 'make-measured-song') {
+    void makeMeasuredSong(request).then(
+      (bytes) => postMessage({ type: 'song-done', bytes } satisfies PackageReply, [bytes.buffer]),
+      // The page has one message for any failure, so no reason crosses.
+      () => postMessage({ type: 'failed' } satisfies PackageReply),
     )
   }
 })
@@ -108,6 +118,59 @@ async function makeSong(request: Extract<PackageRequest, { type: 'make-song' }>)
     video,
     thumbnail,
   })
+}
+
+// The last extension of a file name, such as ".webm".
+const EXTENSION = /\.[^.]*$/
+
+// About 1 s of 44.1 kHz audio: how much of the karaoke track is resampled at a time.
+const KARAOKE_PIECE_FRAMES = 44_100
+
+// Makes a song from the source, a candidate aligner's timing and the karaoke
+// track of its backend's separation, and writes it through the core. It has
+// no thumbnail. Its title is the source's title tag, or else the file name
+// without its extension. The artist and composer come from the tags, and the
+// vocal role is female. The lyrics' bytes go to the core unchanged (D5).
+async function makeMeasuredSong(request: Extract<PackageRequest, { type: 'make-measured-song' }>): Promise<Uint8Array> {
+  // The build copies the core's module to lyre-wasm/, next to the page.
+  await init({ module_or_path: new URL('lyre-wasm/lyre_wasm_bg.wasm', request.baseUri) })
+  const details = await readSource(request.file)
+  if (details.audioType === undefined) throw new Error('no audio type')
+  const lyrics = new Uint8Array(await request.lyrics.arrayBuffer())
+  const original = await packageOriginal(request.file, details.audioType)
+  const planes = wavPlanes(new Uint8Array(await request.karaokeWav.arrayBuffer()))
+  const karaoke = await makeKaraoke(resampled(planes), original)
+  const karaokeTimes = segmentTimes(karaoke)
+  // The song lasts as long as its karaoke track.
+  const songDurationMs = karaokeTimes[karaokeTimes.length - 1]!.endMs
+  const video = details.videoType === undefined ? null : await packageVideo(request.file, details.videoType)
+  if (video !== null) checkVideoEnd(video, songDurationMs)
+  return writeSong({
+    songId: request.songId,
+    details: {
+      title: details.title ?? request.file.name.replace(EXTENSION, ''),
+      artist: details.artist ?? '',
+      composer: details.composer ?? '',
+      vocalRole: 'female',
+    },
+    lyrics,
+    timesMs: request.timesMs,
+    original,
+    karaoke,
+    video,
+    thumbnail: null,
+  })
+}
+
+// The separation's planes, at 44.1 kHz, resampled to KARAOKE_FORMAT a piece at a time.
+async function* resampled([left, right]: Float32Array[]): AsyncGenerator<Float32Array[]> {
+  const resampler = new Resampler(SEPARATION_FORMAT.sampleRate, KARAOKE_FORMAT.sampleRate, KARAOKE_FORMAT.channels)
+  const frames = left!.length
+  for (let start = 0; start < frames; start += KARAOKE_PIECE_FRAMES) {
+    const end = Math.min(frames, start + KARAOKE_PIECE_FRAMES)
+    yield resampler.push([left!.subarray(start, end), right!.subarray(start, end)])
+  }
+  yield resampler.flush()
 }
 
 // Each syllable's start and end, in lyric order, from the timing file read

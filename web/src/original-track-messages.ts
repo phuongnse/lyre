@@ -4,7 +4,10 @@
 // core gave the primary video track, if any. To make the thumbnail, it sends
 // only the source. To make the song file, it also sends the lyrics and timing
 // files, a random 16-byte song ID, the song's details, and the page's base URI
-// to load the core from.
+// to load the core from. To make a measured song, it sends the source, the
+// lyrics, a candidate aligner's timing as each syllable's start then end in
+// lyric order, the karaoke track of that candidate's backend as the 16-bit
+// WAV file the measurement made, a random 16-byte song ID and the base URI.
 export type PackageRequest =
   | { type: 'package'; file: File; storedType: string }
   | { type: 'thumbnail'; file: File }
@@ -20,6 +23,15 @@ export type PackageRequest =
       videoType?: string
       songId: Uint8Array
       details: SongDetailsInput
+    }
+  | {
+      type: 'make-measured-song'
+      baseUri: string
+      file: File
+      lyrics: Blob
+      timesMs: Uint32Array
+      karaokeWav: Blob
+      songId: Uint8Array
     }
 
 // The song's details, exactly as the song file stores them. An empty artist

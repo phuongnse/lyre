@@ -5,8 +5,8 @@ import { MeasurementReply, MeasurementRequest, OnsetError, runProblem } from './
 type Candidate = MeasurementRequest['candidates'][number]
 
 // The two steps of a measurement on one backend: separating the source, and
-// timing the lyrics on the vocals with one candidate, with its onset error
-// when there is a hand-written timing. Each step runs on the backend it is
+// timing the lyrics on the vocals with one candidate, with its timing and its
+// onset error when there is a hand-written timing. Each step runs on the backend it is
 // given, or throws. Separating also gives the tracks as WAV files, for the
 // page's players.
 export interface MeasurementSteps {
@@ -26,6 +26,7 @@ export interface MeasurementSteps {
     alignMs: number
     onset?: OnsetError
     memory: StageMemory
+    timesMs: Uint32Array<ArrayBuffer>
   }>
 }
 

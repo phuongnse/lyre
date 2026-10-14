@@ -63,3 +63,12 @@ export function makeAudioInWorker(file: File, karaokeFile: File, storedType: str
 export function makeSongInWorker(request: Omit<Extract<PackageRequest, { type: 'make-song' }>, 'type'>): Packaging {
   return runInWorker({ type: 'make-song', ...request })
 }
+
+// Makes a song from a source, a measured timing and the karaoke track of its
+// backend's separation, through the core, in a Web Worker. The song is only
+// for playing: the page keeps it in memory.
+export function makeMeasuredSongInWorker(
+  request: Omit<Extract<PackageRequest, { type: 'make-measured-song' }>, 'type'>,
+): Packaging {
+  return runInWorker({ type: 'make-measured-song', ...request })
+}

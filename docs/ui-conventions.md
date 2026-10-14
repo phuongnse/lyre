@@ -443,7 +443,26 @@ Compose uses the same three values *(planned for M4)*.
   run. A later separation replaces the earlier one's tracks. The tracks play
   as 16-bit WAV files from the device's memory, and are never sent anywhere
   or kept. A new measurement, or leaving the page, removes the players and
-  frees the tracks. A **Copy results** button below the results copies the
+  frees the tracks. Each result whose alignment finished has a **Play with
+  this timing** button, whose accessible name also names the result, such as
+  "Play with this timing: Omnilingual int8 on WebAssembly". A result that
+  failed or never ran has none. Pressing it makes a song in another Web
+  Worker from the source and the lyrics the measurement used, the karaoke
+  track of that result's backend and that result's timing
+  ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
+  The song's title is the source's title tag, or else the file name without
+  its extension, and its vocal role is female. A line says while the song is
+  being made, and a song that cannot be made gets "The song could not be made
+  with this timing." A Player under the results then plays it, with its
+  lyrics highlighted and the Karaoke / Original switch. Its section is named
+  after the result, such as "Playing with the timing of Omnilingual int8 on
+  WebAssembly". This Player has no **Open a song file** button and no library
+  list. The song is made in the device's memory, and is never kept in the
+  library, downloaded or sent anywhere. Pressing another result's button
+  replaces the song, and a new measurement, or leaving the page, removes the
+  Player and frees the song. The page keeps each backend's karaoke track
+  until then. The buttons are off while anything on the page runs, and making
+  a song counts as running. A **Copy results** button below the results copies the
   Device section and every result as plain text, so the owner can record
   them in the docs. It works as soon as the Device section shows, and is off
   while a check or a measurement runs. The text has the Device section's
@@ -469,7 +488,12 @@ Compose uses the same three values *(planned for M4)*.
   the message for a clipboard that refuses the write. They check a
   measurement with no timing file, whose results and copied text say "not
   measured" for onset error, and that **Measure the aligners** stays off
-  until a source and the lyrics are picked.
+  until a source and the lyrics are picked. They play each test aligner's
+  timing after a measurement on WebAssembly, and check that a syllable is
+  highlighted, that the Karaoke / Original switch keeps the position, and
+  that the library gets no new song. They also check that a measurement with
+  invalid lyrics gives each result the refused alignment and no **Play with
+  this timing** button.
 - The separation check page separates a picked source's audio into vocals and
   a karaoke track in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). While it runs, a

@@ -113,8 +113,8 @@ async function separateOn(
   }
 }
 
-// Times the lyrics on the vocals with one candidate on `backend`, and
-// measures the timing against the hand-written one when there is one. The
+// Times the lyrics on the vocals with one candidate on `backend`, gives the
+// timing, and measures the timing against the hand-written one when there is one. The
 // memory covers loading the model as well as aligning.
 async function measureOn(
   request: MeasurementRequest,
@@ -128,6 +128,7 @@ async function measureOn(
   alignMs: number
   onset?: OnsetError
   memory: StageMemory
+  timesMs: Uint32Array<ArrayBuffer>
 }> {
   const { result, memory } = await watchStage(read, async (sample) => {
     let session: InferenceSession | undefined
@@ -142,14 +143,16 @@ async function measureOn(
       const runner = alignerRunner(session, kinds[kind])
       const timing = await alignSong(vocals, lyrics, kinds[kind], vocabularyBytes, runner, sample)
       const alignMs = performance.now() - alignStart
-      if (!request.handStartsMs) return { loadMs, alignMs, onset: undefined }
+      // Each syllable's start then end, for the page to play the source with this timing.
+      const timesMs = Uint32Array.from(timing.flatMap(({ startMs, endMs }) => [startMs, endMs]))
+      if (!request.handStartsMs) return { loadMs, alignMs, onset: undefined, timesMs }
       const errors = measureOnsetError(
         request.handStartsMs,
         Uint32Array.from(timing, (syllable) => syllable.startMs),
       )
       const { medianMs, p90Ms, within100Ms } = errors
       errors.free()
-      return { loadMs, alignMs, onset: { medianMs, p90Ms, within100Ms } }
+      return { loadMs, alignMs, onset: { medianMs, p90Ms, within100Ms }, timesMs }
     } finally {
       await session?.release().catch(() => undefined)
     }

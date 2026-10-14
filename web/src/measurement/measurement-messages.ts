@@ -41,9 +41,10 @@ export type RunProblem =
 // backend's separation figures and its tracks as WAV files, each candidate's
 // figures or failure on each backend, and the end of the run. Only a source
 // that cannot be read ends the run early. Times are in milliseconds and memory
-// is in bytes: the highest seen in the stage. A candidate's onset error is
-// given only when the request has hand-written starts. Never the lyric text or
-// an error's text.
+// is in bytes: the highest seen in the stage. A candidate's timing is each
+// syllable's start then end, in lyric order, in milliseconds. Its onset error
+// is given only when the request has hand-written starts. Never the lyric text
+// or an error's text.
 export type MeasurementReply =
   | { type: 'stage'; stage: MeasurementStage; backend?: Backend; candidate?: Candidate }
   | { type: 'extracted'; extractMs: number; memory: StageMemory }
@@ -58,6 +59,7 @@ export type MeasurementReply =
       alignMs: number
       onset?: OnsetError
       memory: StageMemory
+      timesMs: Uint32Array<ArrayBuffer>
     }
   // `ran` is false when the separation on the backend failed, so the candidate did not run.
   | { type: 'candidate-failed'; candidate: Candidate; backend: Backend; ran: boolean; problem: RunProblem }

@@ -243,6 +243,14 @@ export const messages = {
   measurementTracksAbout: "The tracks play from this device's memory. They are not sent anywhere or kept.",
   measurementVocals: 'Vocals',
   measurementKaraoke: 'Karaoke track',
+  // Plays the source with one measured result's timing.
+  playWithTiming: 'Play with this timing',
+  // The button's accessible name, which names the result.
+  playWithTimingOf: (result: string) => `Play with this timing: ${result}`,
+  measuredSongTitle: (result: string) => `Playing with the timing of ${result}`,
+  measuredSongAbout: "The song is made in this device's memory. It is not kept, downloaded or sent anywhere.",
+  measuredSongMaking: 'Making the song with this timing…',
+  measuredSongFailed: 'The song could not be made with this timing.',
   // Keyed by Candidate.
   candidateNames: {
     'omnilingual-int8': 'Omnilingual int8',

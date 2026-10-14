@@ -5,6 +5,7 @@ import {
   ElementRef,
   effect,
   inject,
+  input,
   signal,
   untracked,
   viewChild,
@@ -31,18 +32,22 @@ type AudioTrackChoice = 'karaoke' | 'original'
 // The Player: opens a song file, or a song from the library, and plays its
 // video with the karaoke track or the original track, with its lyrics over the
 // bottom of the video. A song file that opens, and that this browser can play,
-// is kept in the library.
+// is kept in the library. Given a song through its input, it plays only that
+// song: it keeps nothing in the library, and has no open button or library
+// list.
 @Component({
   selector: 'lyre-player',
   imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, LibraryList, Lyrics],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
-    <button matButton="filled" type="button" [disabled]="current.status === 'opening'" (click)="fileInput.click()">
-      {{ messages.openSongFile }}
-    </button>
-    <input #fileInput type="file" accept=".lyre" hidden (change)="open(fileInput)" />
-    <lyre-library (choose)="openSource($event.file)" />
+    @if (!song()) {
+      <button matButton="filled" type="button" [disabled]="current.status === 'opening'" (click)="fileInput.click()">
+        {{ messages.openSongFile }}
+      </button>
+      <input #fileInput type="file" accept=".lyre" hidden (change)="open(fileInput)" />
+      <lyre-library (choose)="openSource($event.file)" />
+    }
     @switch (current.status) {
       @case ('opening') {
         <p role="status">{{ messages.songFileOpening }}</p>
@@ -100,6 +105,8 @@ type AudioTrackChoice = 'karaoke' | 'original'
   `,
 })
 export class Player {
+  // A song to play without keeping it, such as a measured song.
+  readonly song = input<Blob>()
   protected readonly messages = messages
   protected readonly state = signal<State>({ status: 'empty' })
   protected readonly playing = signal(false)
@@ -125,6 +132,11 @@ export class Player {
         playback.stop()
         if (this.playback === playback) this.playback = undefined
       })
+    })
+    // A song given through the input opens without a file, so the library never keeps it.
+    effect(() => {
+      const song = this.song()
+      if (song) untracked(() => void this.openSource(song))
     })
     inject(DestroyRef).onDestroy(() => this.leave())
   }

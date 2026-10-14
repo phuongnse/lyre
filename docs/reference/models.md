@@ -297,7 +297,8 @@ on each [target device](../decisions.md#d25-target-devices-for-making-songs--pro
   memory.
 - **The rule:** among the candidates that run on every
   [target device](../decisions.md#d25-target-devices-for-making-songs--proposed), the owner
-  chooses the one whose timing looks better in the Player
+  chooses the one whose timing looks better in the Player, which plays each
+  result through **Play with this timing** on the model check page
   ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
 - **One-thread WebAssembly** results are reported for information. They do
   not decide the choice. Onset error is also reported for information only.

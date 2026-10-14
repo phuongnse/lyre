@@ -169,3 +169,41 @@ test('a song whose video cannot play here names the video', async () => {
   )
   expect(element.querySelector('video')).toBeNull()
 })
+
+test('a song given through the input opens, is not kept, and the Player has no open button or library', async () => {
+  const store = new FakeLibraryStore()
+  const keep = vi.spyOn(store, 'keep')
+  const song = openedSong()
+  const opened: unknown[] = []
+  TestBed.configureTestingModule({
+    providers: [
+      provideZonelessChangeDetection(),
+      {
+        provide: SONG_FILE_OPENER,
+        useValue: (source: unknown) => {
+          opened.push(source)
+          return Promise.resolve(song)
+        },
+      },
+      { provide: LIBRARY_STORE, useValue: store },
+    ],
+  })
+  const fixture = TestBed.createComponent(Player)
+  const bytes = new Blob(['measured song'])
+  fixture.componentRef.setInput('song', bytes)
+  await fixture.whenStable()
+  const element = fixture.nativeElement as HTMLElement
+  await vi.waitFor(() => expect(element.querySelector('video')).not.toBeNull())
+  expect(opened).toEqual([bytes])
+  expect(element.querySelector('[aria-label="Song video"]')).not.toBeNull()
+  expect([...element.querySelectorAll('button')].map((button) => button.textContent?.trim())).not.toContain(
+    'Open a song file',
+  )
+  expect(element.querySelector('input[type="file"]')).toBeNull()
+  expect(element.querySelector('lyre-library')).toBeNull()
+  await fixture.whenStable()
+  expect(keep).not.toHaveBeenCalled()
+  expect(store.songs.size).toBe(0)
+  // Stops the playback while the stand-ins are still in place.
+  fixture.destroy()
+})
