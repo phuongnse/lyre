@@ -66,6 +66,11 @@ their own licences. For example:
   CC-BY-NC model that
   [D20](docs/decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
   allows stays under its own licence.
+- The separator Mel-Band RoFormer by Kimberley Jensen, in audiojs's ONNX
+  export, is published unchanged by the owner as
+  `phuongnse/mel-roformer-kim-onnx`. It is under MIT. See
+  [D28](docs/decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed) and
+  [the models reference](docs/reference/models.md#mel-band-roformer).
 
 Mediabunny, which the web client uses to read and decode sources, is under
 MPL-2.0. It is used unmodified from npm, and the web build ships its licence

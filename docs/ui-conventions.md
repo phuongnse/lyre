@@ -142,7 +142,7 @@ the section may refine them, and update this section when they do.
 - **Make the song** is off until a source, valid lyrics, a non-empty title
   and a vocal role are all set.
 - Before the first stage, the page downloads any missing model files:
-  htdemucs and the `lyric-alignment` file the measurements chose, int8 or fp32
+  the separator's file and the `lyric-alignment` file the measurements chose, int8 or fp32
   ([the choice](reference/models.md#the-choice),
   [D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
   It checks them with the same progress bar and byte line as the model check
@@ -407,7 +407,7 @@ Compose uses the same three values *(planned for M4)*.
   missing model files with the same progress bar, and a file that fails
   stops the run with the message naming it. In one Web Worker, it decodes the
   source once. Then it runs each backend in turn, first WebGPU and then
-  WebAssembly on one thread. On each, it separates the source with htdemucs,
+  WebAssembly on one thread. On each, it separates the source with the separator,
   then times the lyrics on those vocals with Omnilingual int8,
   `lyric-alignment` fp32 and `lyric-alignment` int8 in turn. Omnilingual int8
   is no longer a candidate (D29). The page measures it until a later change
@@ -503,7 +503,7 @@ Compose uses the same three values *(planned for M4)*.
   lengths of the source, the vocals and the karaoke track. A run that fails
   the sum check names the rule and the value it measured. A source without
   audio, or a file it cannot read, gets the source check page's messages, and
-  a separator that cannot be loaded gets its own. The page runs htdemucs.
+  a separator that cannot be loaded gets its own. The page runs the separator.
   `?model=test` runs the test separator instead, and `?backend=wasm` makes it
   run on WebAssembly, as on the model check page. The Playwright journeys use
   it to check a whole run of the test separator and that the page stays

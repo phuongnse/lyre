@@ -1436,7 +1436,7 @@ mod tests {
     #[test]
     fn lists_every_pinned_file() {
         let files = pinned_files();
-        assert_eq!(files.len(), 15);
+        assert_eq!(files.len(), 16);
         assert!(files.contains(&PinnedModelFile {
             id: "test-two-block".to_owned(),
             url: "test-models/two-block.bin".to_owned(),
