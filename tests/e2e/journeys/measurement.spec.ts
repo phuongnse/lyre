@@ -73,14 +73,16 @@ async function choose(
   await (await chooser).setFiles(files);
 }
 
-// Picks the source, the lyrics and `timingFile`, then starts the measurement.
+// Picks the source, the lyrics and `timingFile`, if given, then starts the
+// measurement.
 async function measure(
   page: Page,
-  timingFile: Parameters<FileChooser["setFiles"]>[0],
+  timingFile?: Parameters<FileChooser["setFiles"]>[0],
 ): Promise<void> {
   await choose(page, "Choose a source", source);
   await choose(page, "Choose the lyrics", lyrics);
-  await choose(page, "Choose a timing file", timingFile);
+  if (timingFile !== undefined)
+    await choose(page, "Choose a timing file", timingFile);
   await page.getByRole("button", { name: "Measure the aligners" }).click();
 }
 
@@ -127,6 +129,62 @@ test("measuring the test aligners says WebGPU is not available, shows each one's
   for (const requestOrigin of origins) expect(requestOrigin).toBe(origin);
   expect(await violations(page)).toEqual([]);
   expect(problems).toEqual([]);
+});
+
+test("measuring without a timing file shows each WebAssembly result's figures with onset error not measured, and copies it the same", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(WASM_PAGE);
+
+  await measure(page);
+
+  await expect(page.getByText("The measurement is done.")).toBeVisible({
+    timeout: RUN_TIMEOUT,
+  });
+  const onsetRows = [
+    "Onset error median",
+    "Onset error 90th percentile",
+    "Within 100 ms",
+  ];
+  for (const name of CANDIDATES) {
+    const result = labelled(page, `${name} on WebAssembly`);
+    await expect(result).toBeVisible();
+    for (const row of ["Extract audio", "Separate", "Align", "Model load"]) {
+      await expect(labelled(result, row)).toHaveText(/^\d+\.\d{2} s$/);
+    }
+    await expect(labelled(result, "Sum check")).toHaveText(/^-?\d+\.\d dB$/);
+    for (const row of onsetRows) {
+      await expect(labelled(result, row)).toHaveText("not measured");
+    }
+  }
+
+  await page.getByRole("button", { name: "Copy results" }).click();
+  await expect(page.getByText("The results are copied.")).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  for (const name of CANDIDATES) {
+    // The block runs from the result's name to the blank line after it.
+    const start = copied.indexOf(`${name} on WebAssembly\n`);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = copied.indexOf("\n\n", start);
+    const block = copied.slice(start, end === -1 ? undefined : end);
+    for (const row of onsetRows)
+      expect(block).toContain(`${row}: not measured`);
+  }
+});
+
+test("Measure the aligners stays off until a source and the lyrics are picked, and needs no timing file", async ({
+  page,
+}) => {
+  await page.goto(WASM_PAGE);
+  const button = page.getByRole("button", { name: "Measure the aligners" });
+
+  await expect(button).toBeDisabled();
+  await choose(page, "Choose a source", source);
+  await expect(button).toBeDisabled();
+  await choose(page, "Choose the lyrics", lyrics);
+  await expect(button).toBeEnabled();
 });
 
 test("the Device section names the browser and the OS, and says WebGPU is not available when the page has no GPU object", async ({

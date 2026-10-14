@@ -210,8 +210,7 @@ For now, the measurement section of the
 [model check page](../ui-conventions.md#check-pages) runs it. Each run
 measures WebGPU, then one-thread WebAssembly, and does not yet report the
 download time. The page's Copy results button copies the results as plain
-text, for recording in these docs. The page still requires a timing file.
-Making it optional is *(planned for M2)*.
+text, for recording in these docs.
 
 ### Inputs
 
@@ -261,6 +260,8 @@ system's figure by hand when it is needed.
   start.
 - The page reports the median, the 90th percentile and the share of
   syllables within 100 ms, 100 ms included.
+- Without a timing file, the page and its copied results show "not measured"
+  for all three.
 - Both statistics interpolate linearly between ranks, as the
   [roadmap](../roadmap.md#early-checks-on-real-devices) says.
 

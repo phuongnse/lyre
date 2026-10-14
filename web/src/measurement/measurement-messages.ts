@@ -8,19 +8,23 @@ import { Candidate, CandidateKind } from './candidates'
 import { StageMemory } from './memory'
 
 // What the page sends the measurement worker: the source, the lyrics file,
-// the starts of the hand-written timing, the checked files of the separator
-// and of each candidate, in the order to run them, and the backends to run
-// them on, in order.
+// the starts of the hand-written timing when the owner picked a timing file,
+// the checked files of the separator and of each candidate, in the order to
+// run them, and the backends to run them on, in order.
 export type MeasurementRequest = {
   type: 'run'
   source: File
   lyrics: Blob
-  handStartsMs: Uint32Array
+  handStartsMs?: Uint32Array
   separator: { graph: Blob; weights: Blob }
   candidates: { candidate: Candidate; kind: CandidateKind; graph: Blob; vocabulary: Blob }[]
   baseUri: string
   backends: Backend[]
 }
+
+// A candidate's onset error against the hand-written timing: the median and
+// the 90th percentile in milliseconds, and the share within 100 ms.
+export type OnsetError = { medianMs: number; p90Ms: number; within100Ms: number }
 
 // The stage a run is in.
 export type MeasurementStage = 'extract' | 'separate' | 'align'
@@ -37,8 +41,9 @@ export type RunProblem =
 // backend's separation figures and its tracks as WAV files, each candidate's
 // figures or failure on each backend, and the end of the run. Only a source
 // that cannot be read ends the run early. Times are in milliseconds and memory
-// is in bytes: the highest seen in the stage. Never the lyric text or an
-// error's text.
+// is in bytes: the highest seen in the stage. A candidate's onset error is
+// given only when the request has hand-written starts. Never the lyric text or
+// an error's text.
 export type MeasurementReply =
   | { type: 'stage'; stage: MeasurementStage; backend?: Backend; candidate?: Candidate }
   | { type: 'extracted'; extractMs: number; memory: StageMemory }
@@ -51,9 +56,7 @@ export type MeasurementReply =
       backend: Backend
       loadMs: number
       alignMs: number
-      medianMs: number
-      p90Ms: number
-      within100Ms: number
+      onset?: OnsetError
       memory: StageMemory
     }
   // `ran` is false when the separation on the backend failed, so the candidate did not run.

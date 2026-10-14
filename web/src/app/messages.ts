@@ -224,7 +224,7 @@ export const messages = {
   timingRefused: 'The song file timing check refused the timing.',
   alignerFailed: 'The test aligner could not run.',
   measurementAbout:
-    "Measures each candidate aligner against a hand-written timing, on WebGPU and then on WebAssembly. On each backend it separates a source's audio once, then times the lyrics on the vocals with each aligner, in a Web Worker. The source, the lyrics and the timing file are not sent anywhere.",
+    "Measures each candidate aligner on WebGPU and then on WebAssembly. On each backend it separates a source's audio once, then times the lyrics on the vocals with each aligner, in a Web Worker. A hand-written timing file is optional: only the onset error needs it. The source, the lyrics and the timing file are not sent anywhere.",
   measureAligners: 'Measure the aligners',
   measurementReading: 'Reading the timing file…',
   measurementFilesUnreadable: 'The lyrics file or the timing file could not be read.',
@@ -278,6 +278,7 @@ export const messages = {
   webGpuAvailable: 'Available',
   webGpuNotAvailable: 'Not available',
   notReported: 'not reported',
+  notMeasured: 'not measured',
   decibels: (value: string) => `${value} dB`,
   milliseconds: (value: string) => `${value} ms`,
   percent: (value: string) => `${value}%`,

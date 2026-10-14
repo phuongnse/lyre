@@ -1,13 +1,14 @@
 import { Backend } from '../separation/backend'
 import { StageMemory } from './memory'
-import { MeasurementReply, MeasurementRequest, runProblem } from './measurement-messages'
+import { MeasurementReply, MeasurementRequest, OnsetError, runProblem } from './measurement-messages'
 
 type Candidate = MeasurementRequest['candidates'][number]
 
 // The two steps of a measurement on one backend: separating the source, and
-// timing the lyrics on the vocals with one candidate. Each step runs on the
-// backend it is given, or throws. Separating also gives the tracks as WAV
-// files, for the page's players.
+// timing the lyrics on the vocals with one candidate, with its onset error
+// when there is a hand-written timing. Each step runs on the backend it is
+// given, or throws. Separating also gives the tracks as WAV files, for the
+// page's players.
 export interface MeasurementSteps {
   separate(backend: Backend): Promise<{
     vocals: Float32Array
@@ -23,9 +24,7 @@ export interface MeasurementSteps {
   ): Promise<{
     loadMs: number
     alignMs: number
-    medianMs: number
-    p90Ms: number
-    within100Ms: number
+    onset?: OnsetError
     memory: StageMemory
   }>
 }

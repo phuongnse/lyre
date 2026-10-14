@@ -392,16 +392,18 @@ Compose uses the same three values *(planned for M4)*.
   failure one plain message. Neither shows lyric text or error text. The
   Playwright journeys use it to check a run of each test aligner on
   WebAssembly, under the page's policy.
-  Its measurement section measures each candidate aligner against a
-  hand-written timing, as the
+  Its measurement section measures each candidate aligner, as the
   [measurement method](reference/models.md#measurement-method) says.
   **Choose a source**, **Choose the lyrics** and **Choose a timing file**
-  buttons pick the three files, and a **Measure the aligners** button starts
-  once all three are picked. The page first reads the timing file against the
-  lyrics through the core, before it downloads or runs anything. A refused
-  timing file gets a sentence that names the line and the rule it broke, such
-  as "Line 4 of the timing file overlaps the line before it.", and invalid
-  lyrics get "The lyrics file is not valid lyrics." The page then downloads the
+  buttons pick the files, and a **Measure the aligners** button starts once
+  a source and the lyrics are picked. The hand-written timing file is
+  optional. Only with one does the page first read it against the lyrics
+  through the core, before it downloads or runs anything, and report onset
+  error. A refused timing file gets a sentence that names the line and the
+  rule it broke, such as "Line 4 of the timing file overlaps the line before
+  it.", and invalid lyrics get "The lyrics file is not valid lyrics." Without
+  a timing file, the page goes straight to the download, and invalid lyrics
+  show as a refused alignment in each result. The page then downloads the
   missing model files with the same progress bar, and a file that fails
   stops the run with the message naming it. In one Web Worker, it decodes the
   source once. Then it runs each backend in turn, first WebGPU and then
@@ -414,7 +416,8 @@ Compose uses the same three values *(planned for M4)*.
   WebAssembly…". Each candidate gets a result per backend, named after both,
   such as "Omnilingual int8 on WebGPU". It shows the backend, the extract,
   separate and align times, the model load time, the sum check in dB, and the
-  onset error median, 90th percentile and share within 100 ms. It also shows
+  onset error median, 90th percentile and share within 100 ms. Without a
+  timing file, those three onset error rows say "not measured". It also shows
   the highest WebAssembly memory and the highest JavaScript heap seen in each
   of the three stages, in bytes. A figure the browser does not give, such as
   the heap in Firefox, shows "not reported". The extract time and memory are
@@ -453,8 +456,8 @@ Compose uses the same three values *(planned for M4)*.
   measurement clears the line. Only a source without audio or an unreadable source stops the run, with the
   separation check page's messages. `?model=test` measures the two test
   aligners after the test separator, and `?backend=wasm` measures only
-  WebAssembly. The source, the lyrics and the timing file are never sent
-  anywhere. The Playwright journeys use it to check a whole measurement of
+  WebAssembly. The source, the lyrics and the timing file, when picked, are
+  never sent anywhere. The Playwright journeys use it to check a whole measurement of
   the test aligners in Chromium with its GPU turned off, so WebGPU gives no
   adapter. Each WebGPU result then says WebGPU is not available, and each
   WebAssembly result has its figures, with a WebAssembly memory above 0 bytes
@@ -463,7 +466,10 @@ Compose uses the same three values *(planned for M4)*.
   and with a stubbed adapter, an overlap in the timing file, that the main
   page does not load the page's code, and that every request goes to the
   site's own origin. They also check the copied text of a measurement, and
-  the message for a clipboard that refuses the write.
+  the message for a clipboard that refuses the write. They check a
+  measurement with no timing file, whose results and copied text say "not
+  measured" for onset error, and that **Measure the aligners** stays off
+  until a source and the lyrics are picked.
 - The separation check page separates a picked source's audio into vocals and
   a karaoke track in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
