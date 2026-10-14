@@ -9,15 +9,17 @@ them.
 The terms in this doc are defined in the [concepts](../domain/concepts.md).
 Why these models were chosen is in
 [D15](../decisions.md#d15-models-for-separation-and-alignment--agreed),
-[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
-and D21.
+[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
+[D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)
+and [D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed).
 
 Each file is downloaded from `https://huggingface.co/<repository>/resolve/<revision>/<path>`,
 never from a branch. Bytes are the file's exact size.
 
 ## Omnilingual CTC-300M
 
-The aligner of D15, as sherpa-onnx's int8 export.
+D15's aligner, no longer a candidate (D29). It stays pinned only while the
+measurement page still measures it, as sherpa-onnx's int8 export.
 
 | Repository | Revision | Path | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -110,9 +112,9 @@ The separator of D15, as the community fp32 export of its inner network.
 
 ## lyric-alignment
 
-The second aligner of D20, as Lyre's own ONNX export, made by the
-[model tool](model-tool.md#make_alignerpy). Each of the two model files is a
-separate candidate on the measurement page.
+The aligner of D29, as Lyre's own ONNX export, made by the
+[model tool](model-tool.md#make_alignerpy). Each of the two model files, int8
+and fp32, is a candidate on the measurement page.
 
 | Repository | Revision | Path | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -204,7 +206,8 @@ this section together.
 
 The model measurement page runs the separator and each aligner file on the
 owner's devices. This section says what it measures and how the results,
-together with the owner's viewing in the Player, inform the choice of aligner. The results name the devices they were taken on.
+together with the owner's viewing in the Player, inform the choice between the
+aligner's files. The results name the devices they were taken on.
 
 For now, the measurement section of the
 [model check page](../ui-conventions.md#check-pages) runs it. Each run
@@ -273,15 +276,17 @@ on each [target device](../decisions.md#d25-requirements-for-making-songs--propo
 
 ### The choice
 
-- **Candidates:** each aligner file is a separate candidate: Omnilingual
-  int8, `lyric-alignment` fp32 and `lyric-alignment` int8.
+- **Aligner:** `lyric-alignment` ([D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
+- **Candidates:** its fp32 and int8 files. The page still measures Omnilingual
+  int8 until a later change removes it. That result decides nothing.
 - **Runs on a device:** a candidate runs on a device when it finishes every
   measured song there on WebGPU, without an error and without running out of
   memory.
 - **The rule:** among the candidates that run on every
-  [target device](../decisions.md#d25-requirements-for-making-songs--proposed), the owner
-  chooses the one whose timing looks better in the Player, which plays each
-  result through **Play with this timing** on the model check page
-  ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
+  [target device](../decisions.md#d25-requirements-for-making-songs--proposed),
+  int8 is used unless its timing looks worse than fp32's in the Player. If only
+  one file runs on every target device, that file is used. The owner plays each result through **Play with this timing** on the model check
+  page ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed),
+  [D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
 - **One-thread WebAssembly** results are reported for information. They do
   not decide the choice.

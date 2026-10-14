@@ -150,8 +150,9 @@ Open points, each settled by a later decision:
 
 - the vocal separation and alignment models: settled by
   [D15](#d15-models-for-separation-and-alignment--agreed),
-  [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) and
-  [D21](#d21-pinned-model-files-and-the-separator-target--agreed), confirmed by the M2 measurements;
+  [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
+  [D21](#d21-pinned-model-files-and-the-separator-target--agreed) and
+  [D29](#d29-the-aligner-is-lyric-alignment--agreed), confirmed by the M2 measurements;
 - the lowest Android version and the browsers Lyre supports.
 
 ## D11. Delivery workflow — Agreed
@@ -210,8 +211,9 @@ else can be built and verified through it, issue by issue.
 
 ## D15. Models for separation and alignment — Agreed
 
-Partly replaced by [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
-and [D21](#d21-pinned-model-files-and-the-separator-target--agreed).
+Partly replaced by [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
+[D21](#d21-pinned-model-files-and-the-separator-target--agreed) and
+[D29](#d29-the-aligner-is-lyric-alignment--agreed). D29 replaces its alignment point.
 
 The owner delegated this choice.
 
@@ -346,7 +348,8 @@ not come from the seed.
 
 ## D20. Non-commercial models are allowed, and M2 compares two aligners — Agreed
 
-Partly replaced by [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed).
+Partly replaced by [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)
+and [D29](#d29-the-aligner-is-lyric-alignment--agreed).
 
 Replaces the CC-BY-NC part of the "Not used" point of
 [D15](#d15-models-for-separation-and-alignment--agreed), and adds a second
@@ -363,7 +366,8 @@ aligner.
   `nguyenvulebinh/lyric-alignment`, a wav2vec2 model built for Vietnamese
   lyric alignment. Its model card states CC-BY-NC-4.0. Both do only forced
   alignment of the supplied syllables. Neither transcribes (D5).
-- **The choice:** replaced by [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed). The results are recorded in the
+- **The choice:** replaced by [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed), and then by
+  [D29](#d29-the-aligner-is-lyric-alignment--agreed). The results are recorded in the
   docs.
 - **The measurement page is built at the start of M2.** It needs the ONNX
   files, their download and hash check, and alignment, which M2 builds anyway.
@@ -376,7 +380,8 @@ is out of scope.
 
 ## D21. Pinned model files and the separator target — Agreed
 
-Partly replaced by [D22](#d22-the-separator-target-splits-lead-and-backing-vocals--agreed).
+Partly replaced by [D22](#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)
+and [D29](#d29-the-aligner-is-lyric-alignment--agreed).
 
 Says which files the models of
 [D15](#d15-models-for-separation-and-alignment--agreed) and
@@ -512,6 +517,10 @@ it, while a list of device types leaves out devices that would work.
 
 ## D26. The owner chooses the aligner by watching its timing in the Player — Agreed
 
+Partly replaced by [D29](#d29-the-aligner-is-lyric-alignment--agreed): the candidates are
+`lyric-alignment`'s int8 and fp32 files, and int8 is used unless its timing looks worse.
+**Play with this timing** stays.
+
 Replaces the choice rule of [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
 
 - **Candidates:** the aligner files that run on every
@@ -551,3 +560,33 @@ runtime and WebAssembly fallback of
 long runs heat the phone, and every task would need a second implementation.
 The web client on a capable phone can still make songs. A requirement says
 more than a list of device types.
+
+## D29. The aligner is lyric-alignment — Agreed
+
+Replaces the aligner of [D15](#d15-models-for-separation-and-alignment--agreed),
+the choice rule of [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
+and [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed),
+and the Omnilingual source point of [D21](#d21-pinned-model-files-and-the-separator-target--agreed).
+
+- **Aligner:** `lyric-alignment`, a wav2vec2 model trained on sung Vietnamese
+  lyrics. Lyre uses the ONNX export in the owner's
+  `phuongnse/lyric-alignment-onnx`. It is under CC-BY-NC-4.0, with the
+  attribution in the [models reference](reference/models.md#lyric-alignment).
+- **Which file:** the measurement chooses between the int8 file, about 360 MB,
+  and the fp32 file, about 1.28 GB. Only files that run on every
+  [target device](#d25-requirements-for-making-songs--proposed) are candidates.
+- **The rule:** int8 is used unless its timing looks worse than fp32's in the
+  Player.
+- **One file or none:** if only one file runs on every target device, that file
+  is used. If neither runs, a newer decision replaces this one.
+- **Watching:** D26's **Play with this timing** stays, to compare the two files.
+- **Omnilingual:** no longer a candidate. Its files stay pinned only while the
+  measurement page still measures them.
+- **Other languages:** the vocabulary is Vietnamese. Letters it does not know
+  are not timed. A syllable with none it knows fails alignment
+  ([D5](#d5-supplied-lyrics-are-authoritative--agreed)). Songs in other
+  languages may be timed worse or refused.
+- **Commercial use:** needs the aligner replaced, as [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) says.
+
+*Why:* more than 90 % of the songs Lyre makes are Vietnamese, and
+`lyric-alignment` is trained on sung Vietnamese lyrics.

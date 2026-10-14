@@ -33,7 +33,7 @@
 | --- | --- | --- | --- |
 | **M0** | Foundation | Done | The core, the web client and the Android app build; CI runs build, lint, unit and Playwright E2E for real; NexKit is installed with those checks. |
 | **M1** | Karaoke playback | Done | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
-| **M2** | Making songs on the device | Next | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page compares the two aligners of D20 on real devices and confirms the separator. |
+| **M2** | Making songs on the device | Next | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page measures the aligner's int8 and fp32 files (D29) on real devices and confirms the separator. |
 | **M3** | Devices, encryption and sharing | Planned | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
 | **M4** | Android | Planned | The Android app plays songs and shows a device code to receive shared songs, with its device key in Android Keystore. Songs made in the web client play in the Android app. |
 | **M5** | Library and queue | Planned | Library, queue in order or shuffled, search by title, artist, composer and lyrics that ignores Vietnamese diacritics, thumbnails, lyric corrections. |
@@ -113,19 +113,21 @@ Done when all ten were merged and the owner accepted the Player.
   example <https://phuongnse.github.io/lyre/#/passkey-check>. The main page
   does not link to it.
 - The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
-  It runs the D15 separator and both candidate aligners, Omnilingual and
-  `lyric-alignment`, on WebGPU and on one-thread WebAssembly for information
+  It runs the D15 separator and both files of the `lyric-alignment` aligner
+  (D29), and still measures Omnilingual int8 until a later change removes it.
+  It runs on WebGPU and on one-thread WebAssembly for information
   (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
   reports time and memory as the browser reports it. The
   [models reference](reference/models.md#measurement-method) sets the method.
   Its first part is the measurement section of the model check page, at
   `#/model-check`. Each run measures WebGPU, then one-thread WebAssembly,
   without the download time yet.
-- The owner chooses the aligner by watching each candidate's timing in the
+- The owner chooses between int8 and fp32 by watching each one's timing in the
   Player
-  ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
+  ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed),
+  [D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
   After a measurement, **Play with this timing** on the model check page's
-  Player plays the source with that candidate's timing.
+  Player plays the source with that file's timing.
   The choice and its reason are recorded in the docs before the later M2 work
   relies on it.
 
@@ -134,11 +136,12 @@ Done when all ten were merged and the owner accepted the Player.
 Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
-- **M2:** the measurement page comes first. It compares Omnilingual and
-  `lyric-alignment`. Among the aligners that run on the
-  [target devices](decisions.md#d25-requirements-for-making-songs--proposed), the owner chooses the one whose timing looks better in the Player
-  ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)). A newer decision replaces D15 if the separator
-  misses its target
+- **M2:** the measurement page comes first. It measures the int8 and fp32
+  files of `lyric-alignment`. Among the files that run on the
+  [target devices](decisions.md#d25-requirements-for-making-songs--proposed),
+  int8 is used unless its timing looks worse than fp32's in the Player
+  ([D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)). A newer
+  decision replaces D15 if the separator misses its target
   ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
   as [D22](decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed) splits it).
   The measurement results settle the values of the requirements of

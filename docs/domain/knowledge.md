@@ -89,7 +89,7 @@ What was learned:
 
 - **Alignment and role classification are the heaviest stages,** then
   separation. In a browser, on a desktop or a phone, they set what Lyre can do, so the
-  M2 measurements choose the aligner and confirm the separator (D15, D20, D26).
+  M2 measurements choose the aligner's file and confirm the separator (D15, D26, D29).
 - **Check separation by sum.** Vocals plus karaoke track should add back up to
   the original, without clipping and at plausible levels. A large difference
   means a broken run. Two rules apply. The energy rule: the original's energy
@@ -218,18 +218,19 @@ What was learned:
 
 ## Models and licences
 
-[D15](../decisions.md#d15-models-for-separation-and-alignment--agreed) and
-[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) chose the models for separation and alignment.
+[D15](../decisions.md#d15-models-for-separation-and-alignment--agreed),
+[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) and
+[D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed) chose the models for separation and alignment.
 [D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)
 pinned their files, which the [models reference](../reference/models.md) lists:
 
 | Purpose | Model | Status | Licence |
 | --- | --- | --- | --- |
 | Separation | Demucs v4 `htdemucs` (community fp32 ONNX export, STFT outside the file) | chosen (D15, D21) | code MIT, no separate grant stated for the weights |
-| Alignment | Meta Omnilingual ASR CTC-300M (sherpa-onnx int8 ONNX export) | candidate (D20, D21) | Apache-2.0 for code and models |
+| Alignment | Meta Omnilingual ASR CTC-300M (sherpa-onnx int8 ONNX export) | no longer a candidate (D29) | Apache-2.0 for code and models |
 | Separation | UVR MDX-Net Inst HQ 4 | fallback | not yet confirmed in writing |
 | Alignment on weak devices | Whisper base multilingual with forced decoding | fallback | MIT |
-| Alignment | `nguyenvulebinh/lyric-alignment` (wav2vec2 for Vietnamese lyrics, as Lyre's fp32 and int8 ONNX export) | candidate (D20, D21) | CC-BY-NC-4.0 |
+| Alignment | `nguyenvulebinh/lyric-alignment` (wav2vec2 for Vietnamese lyrics, as Lyre's fp32 and int8 ONNX export) | chosen (D29), int8 or fp32 by measurement | CC-BY-NC-4.0 |
 | Alignment | other Vietnamese wav2vec2 fine-tunes and MMS | not a candidate | CC-BY-NC-4.0 |
 | Separation | RoFormer separators | not used (heavy) | unclear for some |
 
@@ -242,7 +243,9 @@ pinned their files, which the [models reference](../reference/models.md) lists:
   applies to the Demucs weights, where the repository states no separate
   grant.
 - Every model needs an ONNX export that runs in ONNX Runtime Web on WebGPU.
-  M2 measures whether the separator and both candidate aligners run fast enough there.
+  M2 measures whether the separator and the aligner's int8 and fp32 files run fast enough there.
+- **The aligner's vocabulary is Vietnamese.** Lyrics in other languages may be
+  timed worse or refused (D29).
 - The models for vocal roles and for the leftover check are chosen when M8 is
   broken down. So is the lead and backing separator for
   [D23](../decisions.md#d23-backing-vocals-as-their-own-track--proposed).
