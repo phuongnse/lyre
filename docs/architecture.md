@@ -232,6 +232,14 @@ reference doc and reviewed before M3 implements them.
   [test separator](reference/model-tool.md#make_test_separatorpy) when its
   URL asks for it. The vocals and the karaoke track are not kept yet: only
   their lengths reach the page.
+- On the web, stage 4, alignment, is a loop in the web client that takes the
+  model runner as a function, so it is tested without ONNX Runtime. The core
+  plans the windows over 16 kHz mono audio, prepares each window's input for
+  the aligner, gives the frame length and turns the model's output into
+  frames. It then joins the frames, times the syllables and runs the song
+  file's timing check, so a timing the check refuses is never returned.
+  Progress counts the windows done out of the total. No page or worker runs
+  it yet.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is

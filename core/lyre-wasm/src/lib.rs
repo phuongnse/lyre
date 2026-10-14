@@ -12,7 +12,8 @@ use lyre_core::model;
 use lyre_core::onset_error;
 use lyre_core::separation::{self, SeparationError, SumCheckFailure};
 use lyre_core::song_file::{
-    self, Chunk, ChunkType, Header, Index, IndexEntry, SongDetails, SongFileError, Timing,
+    self, Chunk, ChunkType, Header, Index, IndexEntry, SongDetails, SongFileError, SyllableTime,
+    Timing,
 };
 use lyre_core::timing_file::{self, TimingErrorKind, TimingFileError};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -343,6 +344,9 @@ impl From<WindowError> for WindowFault {
 /// The fault for a refusal with no window to name.
 const NO_WINDOW: WindowFault = WindowFault { window: None };
 
+/// The sample rate of the audio an aligner takes, in hertz.
+const ALIGNER_SAMPLE_RATE: u64 = 16_000;
+
 /// The aligner windows of a whole song. The client gives the 16 kHz mono
 /// audio, runs the model on each window's audio, gives back its frames in
 /// order, and finally takes the joined frames for `align`.
@@ -373,6 +377,14 @@ impl AlignerWindows {
             .as_ref()
             // At most 129 windows fit the frame limit, so the count fits.
             .map_or(0, |w| u32::try_from(w.window_count()).unwrap_or(u32::MAX))
+    }
+
+    /// The length of one frame in microseconds: 20 ms at 16 kHz. It is the
+    /// `frame_us` that `align` takes, and stays the same once finished.
+    #[wasm_bindgen(getter, js_name = frameUs)]
+    pub fn frame_us(&self) -> u32 {
+        // 320 samples at 16 kHz is 20,000 µs, so it fits.
+        (alignment_windows::SAMPLES_PER_FRAME as u64 * 1_000_000 / ALIGNER_SAMPLE_RATE) as u32
     }
 
     /// The audio of the window `index`: 480,000 samples (30 s), padded with
@@ -567,6 +579,68 @@ pub fn parse_timing_file(
             end_ms: time.end_ms,
         })
         .collect())
+}
+
+/// The rule a timing broke in the song file's timing check, or `Lyrics`
+/// when the lyrics it is checked against are not valid.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimingCheckErrorKind {
+    Lyrics,
+    /// The times are not a valid timing: not start and end pairs, none at
+    /// all, a syllable that does not start before it ends, or an overlap.
+    Times,
+    SyllableCount,
+    PastEnd,
+}
+
+/// Why a timing was refused by the song file's timing check. It holds no
+/// core message and never the lyric text.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimingCheckFault {
+    kind: TimingCheckErrorKind,
+}
+
+#[wasm_bindgen]
+impl TimingCheckFault {
+    #[wasm_bindgen(getter)]
+    pub fn kind(&self) -> TimingCheckErrorKind {
+        self.kind
+    }
+}
+
+impl From<SongFileError> for TimingCheckFault {
+    fn from(error: SongFileError) -> TimingCheckFault {
+        let kind = match error {
+            SongFileError::SyllableMismatch { .. } => TimingCheckErrorKind::SyllableCount,
+            SongFileError::TimingPastEnd { .. } => TimingCheckErrorKind::PastEnd,
+            _ => TimingCheckErrorKind::Times,
+        };
+        TimingCheckFault { kind }
+    }
+}
+
+/// Runs the song file's timing check on a timing against `lyrics` and the
+/// song's duration `song_ms`. `times_ms` holds each syllable's start and
+/// end, in lyric order.
+#[wasm_bindgen(js_name = checkTiming)]
+pub fn check_timing(times_ms: &[u32], lyrics: &[u8], song_ms: u32) -> Result<(), TimingCheckFault> {
+    let lyrics = Lyrics::parse(lyrics).map_err(|_| TimingCheckFault {
+        kind: TimingCheckErrorKind::Lyrics,
+    })?;
+    let (pairs, rest) = times_ms.as_chunks::<2>();
+    if !rest.is_empty() {
+        return Err(TimingCheckFault {
+            kind: TimingCheckErrorKind::Times,
+        });
+    }
+    let syllables = pairs
+        .iter()
+        .map(|&[start_ms, end_ms]| SyllableTime { start_ms, end_ms })
+        .collect();
+    let timing = Timing::new(syllables)?;
+    Ok(song_file::check_timing(&timing, &lyrics, song_ms)?)
 }
 
 /// The onset error of every syllable, in lyric order, and its statistics.
@@ -1603,6 +1677,40 @@ mod tests {
         assert_eq!(windows.finish(), Err(NO_WINDOW));
         assert_eq!(windows.window_count(), 0);
         assert_eq!(windows.window(0), Err(NO_WINDOW));
+    }
+
+    #[test]
+    fn aligner_windows_give_a_frame_of_20_ms() {
+        let windows = AlignerWindows::new(&[0.0; 16_000], 4).expect("valid");
+        assert_eq!(windows.frame_us(), 20_000);
+    }
+
+    #[test]
+    fn checks_a_valid_timing() {
+        assert_eq!(check_timing(&[0, 500, 500, 1000], b"a b", 1000), Ok(()));
+    }
+
+    #[test]
+    fn a_timing_check_names_the_rule_it_broke() {
+        let kind = |times: &[u32], lyrics: &[u8]| {
+            check_timing(times, lyrics, 1000)
+                .expect_err("refused")
+                .kind()
+        };
+        assert_eq!(kind(&[0, 500], b"a b"), TimingCheckErrorKind::SyllableCount);
+        assert_eq!(
+            kind(&[0, 500, 500, 1001], b"a b"),
+            TimingCheckErrorKind::PastEnd
+        );
+        assert_eq!(
+            kind(&[0, 500, 400, 1000], b"a b"),
+            TimingCheckErrorKind::Times
+        );
+        assert_eq!(kind(&[0, 500, 500], b"a b"), TimingCheckErrorKind::Times);
+        assert_eq!(
+            kind(&[0, 500, 500, 1000], b"a\xFF"),
+            TimingCheckErrorKind::Lyrics
+        );
     }
 
     #[test]
