@@ -1,4 +1,5 @@
 import type { MediaCodec } from 'mediabunny'
+import type { TimingFileErrorKind } from '../lyre-wasm/lyre_wasm.js'
 
 // Every user-visible string lives here (docs/ui-conventions.md#strings).
 // The text is still English. The Vietnamese text comes in a later issue.
@@ -206,6 +207,52 @@ export const messages = {
   syllablesTimed: (count: number) => `${count} syllables timed. The song file timing check accepted the timing.`,
   timingRefused: 'The song file timing check refused the timing.',
   alignerFailed: 'The test aligner could not run.',
+  measurementAbout:
+    "Measures each candidate aligner against a hand-written timing. It separates a source's audio once, then times the lyrics on the vocals with each aligner, in a Web Worker. The source, the lyrics and the timing file are not sent anywhere.",
+  measureAligners: 'Measure the aligners',
+  measurementReading: 'Reading the timing file…',
+  measurementFilesUnreadable: 'The lyrics file or the timing file could not be read.',
+  measurementDownloading: 'Downloading the models…',
+  measurementExtracting: 'Extracting the audio…',
+  measurementSeparating: 'Separating the vocals…',
+  measurementAligning: (candidate: string) => `Aligning with ${candidate}…`,
+  measurementDone: 'The measurement is done.',
+  // Keyed by Candidate.
+  candidateNames: {
+    'omnilingual-int8': 'Omnilingual int8',
+    'lyric-alignment-fp32': 'lyric-alignment fp32',
+    'lyric-alignment-int8': 'lyric-alignment int8',
+    'test-omnilingual': 'Test Omnilingual',
+    'test-lyric-alignment': 'Test lyric-alignment',
+  },
+  measurementBackend: 'Backend',
+  measurementExtract: 'Extract audio',
+  measurementSeparate: 'Separate',
+  measurementAlign: 'Align',
+  measurementModelLoad: 'Model load',
+  measurementSumCheck: 'Sum check',
+  measurementOnsetMedian: 'Onset error median',
+  measurementOnsetP90: 'Onset error 90th percentile',
+  measurementWithin100Ms: 'Within 100 ms',
+  decibels: (value: string) => `${value} dB`,
+  milliseconds: (value: string) => `${value} ms`,
+  percent: (value: string) => `${value}%`,
+  // Keyed by TimingFileErrorKind. Each rule has its own sentence naming the
+  // line, so each translates whole. Invalid lyrics get songLyricsInvalid.
+  measurementTimingFile: {
+    Malformed: (line: number) => `Line ${line} of the timing file is not a start in ms, an end in ms and a syllable.`,
+    UnknownSyllable: (line: number) =>
+      `Line ${line} of the timing file names a syllable that is not the next one in the lyrics.`,
+    MissingSyllable: (line: number) => `The timing file misses a syllable of the lyrics at line ${line}.`,
+    Backwards: (line: number) =>
+      `Line ${line} of the timing file ends before it starts, or starts before the line before it.`,
+    Overlap: (line: number) => `Line ${line} of the timing file overlaps the line before it.`,
+  } satisfies Record<Exclude<keyof typeof TimingFileErrorKind, 'Lyrics'>, (line: number) => string>,
+  // Keyed by the candidate's failure.
+  candidateFailed: {
+    timing: "The song file timing check refused this aligner's timing.",
+    other: 'This aligner could not run.',
+  },
   separationCheckTitle: 'Separation check',
   separationCheckAbout:
     "Separates a source's audio into vocals and a karaoke track in a Web Worker. The source is not changed or sent anywhere.",

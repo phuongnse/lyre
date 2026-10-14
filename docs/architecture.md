@@ -243,7 +243,8 @@ reference doc and reviewed before M3 implements them.
   runs htdemucs, or the
   [test separator](reference/model-tool.md#make_test_separatorpy) when its
   URL asks for it. The vocals and the karaoke track are not kept yet: only
-  their lengths reach the page.
+  their lengths reach the page. The model check page's measurement runs the
+  same separation, then stage 4 on the vocals, in one Web Worker.
 - On the web, stage 4, alignment, is a loop in the web client that takes the
   model runner as a function, so it is tested without ONNX Runtime. The core
   plans the windows over 16 kHz mono audio, prepares each window's input for
@@ -253,6 +254,9 @@ reference doc and reviewed before M3 implements them.
   Progress counts the windows done out of the total. For now, the model check
   page runs it in a Web Worker with a
   [test aligner](reference/model-tool.md#make_test_alignerspy) on test audio.
+  Its measurement runs it on the separated vocals instead, mixed to mono and
+  resampled to 16 kHz once, with each candidate aligner in turn in the same
+  worker as the separation.
   The model's input and output names come from the core's rules for each
   aligner. The aligner opens its ONNX Runtime session through the same helper
   as the separator.
