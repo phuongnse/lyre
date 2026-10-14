@@ -16,7 +16,9 @@ const candidates: MeasurementRequest['candidates'] = [
   { candidate: 'test-lyric-alignment', kind: 'lyric-alignment', graph: new Blob(), vocabulary: new Blob() },
 ]
 
-const figures = { loadMs: 1, alignMs: 2, medianMs: 3, p90Ms: 4, within100Ms: 0.5 }
+const alignMemory = { wasmBytes: 300, heapBytes: 400 }
+const separateMemory = { wasmBytes: 100, heapBytes: 200 }
+const figures = { loadMs: 1, alignMs: 2, medianMs: 3, p90Ms: 4, within100Ms: 0.5, memory: alignMemory }
 
 // Stand-in steps that succeed unless `fail` throws for the backend, or the backend and candidate.
 function steps(fail: { separate?: (backend: Backend) => unknown; measure?: (candidate: string) => unknown } = {}) {
@@ -27,7 +29,12 @@ function steps(fail: { separate?: (backend: Backend) => unknown; measure?: (cand
       separatedOn.push(backend)
       const error = fail.separate?.(backend)
       if (error !== undefined) throw error
-      return { vocals: Float32Array.of(backend === 'webgpu' ? 1 : 2), separateMs: 10, sumCheckDb: 30 }
+      return {
+        vocals: Float32Array.of(backend === 'webgpu' ? 1 : 2),
+        separateMs: 10,
+        sumCheckDb: 30,
+        memory: separateMemory,
+      }
     },
     async measure({ candidate }, backend, vocals) {
       measured.push({ candidate, backend, vocals })
@@ -84,8 +91,8 @@ describe('a measurement on each backend', () => {
     // Each backend's candidates run on its own vocals.
     expect(measured.map(({ vocals }) => vocals[0])).toEqual([1, 1, 2, 2])
     expect(replies.filter((reply) => reply.type === 'separated')).toEqual([
-      { type: 'separated', backend: 'webgpu', separateMs: 10, sumCheckDb: 30 },
-      { type: 'separated', backend: 'wasm', separateMs: 10, sumCheckDb: 30 },
+      { type: 'separated', backend: 'webgpu', separateMs: 10, sumCheckDb: 30, memory: separateMemory },
+      { type: 'separated', backend: 'wasm', separateMs: 10, sumCheckDb: 30, memory: separateMemory },
     ])
     expect(replies.filter((reply) => reply.type === 'stage')).toEqual([
       { type: 'stage', stage: 'separate', backend: 'webgpu' },

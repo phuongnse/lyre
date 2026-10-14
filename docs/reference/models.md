@@ -208,8 +208,8 @@ choose the aligner. The results name the devices they were taken on.
 
 For now, the measurement section of the
 [model check page](../ui-conventions.md#check-pages) runs it. Each run
-measures WebGPU, then one-thread WebAssembly, and does not yet report memory
-or the download time.
+measures WebGPU, then one-thread WebAssembly, and does not yet report the
+download time.
 
 ### Inputs
 
@@ -235,6 +235,13 @@ The page reports memory as the browser reports it, for each stage:
 
 - the highest WebAssembly memory seen;
 - in Chromium, the highest JavaScript heap seen (`performance.memory`).
+
+The WebAssembly figure adds up every WebAssembly memory in the measurement
+worker: the core's and ONNX Runtime's. WebAssembly memory only grows, so a
+stage's figure includes what earlier stages in the same worker grew. The
+separate stage's memory covers opening the separator, and the align stage's
+covers loading the model as well as aligning. A figure the browser does not
+give is shown as "not reported". A run that failed shows no memory figures.
 
 The page is not cross-origin isolated
 ([knowledge](../domain/knowledge.md#running-on-the-users-device)), so the

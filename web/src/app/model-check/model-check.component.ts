@@ -7,7 +7,9 @@ import { ActivatedRoute } from '@angular/router'
 import { TestAligner } from '../../alignment/aligner-session'
 import { loadCore } from '../../core'
 import { parseTimingFile, TimingFileErrorKind, TimingFileFault } from '../../lyre-wasm/lyre_wasm.js'
+import { Device, readDevice } from '../../measurement/device'
 import { backendsFor, Candidate, candidateFiles, candidatesFor, separatorFiles } from '../../measurement/candidates'
+import { StageMemory } from '../../measurement/memory'
 import {
   MeasurementReply,
   MeasurementRequest,
@@ -75,8 +77,9 @@ interface Row {
 
 const seconds = (ms: number) => messages.seconds((ms / 1000).toFixed(2))
 const milliseconds = (ms: number) => messages.milliseconds(ms.toFixed(0))
+const bytesOr = (bytes?: number) => (bytes === undefined ? messages.notReported : messages.bytes(bytes))
 
-// A measured candidate's figures on one backend. The extract time repeats in
+// A measured candidate's figures on one backend. The extract figures repeat in
 // every result, and the backend's separation figures in each of its
 // candidates' results. Each ID starts with the backend and the candidate, so
 // it is unique.
@@ -84,10 +87,10 @@ function rowsFor(
   candidate: Candidate,
   backend: Backend,
   outcome: Outcome,
-  extractMs: number | undefined,
+  extract: { ms: number; memory: StageMemory } | undefined,
   separation: Separation | undefined,
 ): Row[] {
-  if (outcome.status !== 'measured' || extractMs === undefined || separation === undefined) return []
+  if (outcome.status !== 'measured' || extract === undefined || separation === undefined) return []
   const row = (key: string, label: string, value: string): Row => ({
     id: `${backend}-${candidate}-${key}`,
     label,
@@ -95,7 +98,7 @@ function rowsFor(
   })
   return [
     row('backend', messages.measurementBackend, messages.backendNames[backend]),
-    row('extract', messages.measurementExtract, seconds(extractMs)),
+    row('extract', messages.measurementExtract, seconds(extract.ms)),
     row('separate', messages.measurementSeparate, seconds(separation.separateMs)),
     row('align', messages.measurementAlign, seconds(outcome.alignMs)),
     row('load', messages.measurementModelLoad, seconds(outcome.loadMs)),
@@ -103,6 +106,29 @@ function rowsFor(
     row('median', messages.measurementOnsetMedian, milliseconds(outcome.medianMs)),
     row('p90', messages.measurementOnsetP90, milliseconds(outcome.p90Ms)),
     row('within-100', messages.measurementWithin100Ms, messages.percent((outcome.within100Ms * 100).toFixed(0))),
+    row('extract-wasm', messages.measurementExtractWasmMemory, bytesOr(extract.memory.wasmBytes)),
+    row('extract-heap', messages.measurementExtractHeap, bytesOr(extract.memory.heapBytes)),
+    row('separate-wasm', messages.measurementSeparateWasmMemory, bytesOr(separation.memory.wasmBytes)),
+    row('separate-heap', messages.measurementSeparateHeap, bytesOr(separation.memory.heapBytes)),
+    row('align-wasm', messages.measurementAlignWasmMemory, bytesOr(outcome.memory.wasmBytes)),
+    row('align-heap', messages.measurementAlignHeap, bytesOr(outcome.memory.heapBytes)),
+  ]
+}
+
+// The rows of the Device section. Each ID is unique on the page.
+function deviceRows(device: Device): Row[] {
+  const text = (value?: string) => value ?? messages.notReported
+  return [
+    { id: 'device-browser', label: messages.deviceBrowser, value: text(device.browser) },
+    { id: 'device-os', label: messages.deviceOs, value: text(device.os) },
+    { id: 'device-gpu-vendor', label: messages.deviceGpuVendor, value: text(device.vendor) },
+    { id: 'device-gpu-architecture', label: messages.deviceGpuArchitecture, value: text(device.architecture) },
+    { id: 'device-gpu-description', label: messages.deviceGpuDescription, value: text(device.description) },
+    {
+      id: 'device-webgpu',
+      label: messages.deviceWebGpu,
+      value: device.webgpu ? messages.webGpuAvailable : messages.webGpuNotAvailable,
+    },
   ]
 }
 
@@ -126,7 +152,10 @@ function reasonFor(problem: RunProblem): string {
 // on the vocals with each candidate, never switching backend. Each candidate
 // on each backend gets its own result: its figures, or why it failed. With
 // ?model=test it measures the test aligners after the test separator, and
-// ?backend=wasm measures only WebAssembly.
+// ?backend=wasm measures only WebAssembly. A Device section names the browser,
+// the OS and the GPU, and says whether WebGPU is available. Each result also
+// shows the highest WebAssembly memory and JavaScript heap seen in each stage,
+// or "not reported" for a figure the browser does not give.
 @Component({
   selector: 'lyre-model-check',
   imports: [MatButton, MatCheckbox, MatProgressBar, MatRadioButton, MatRadioGroup],
@@ -229,6 +258,17 @@ function reasonFor(problem: RunProblem): string {
       <p>{{ messages.syllablesTimed(aligning.syllables) }}</p>
     }
     <p>{{ messages.measurementAbout }}</p>
+    @if (deviceRows(); as deviceRows) {
+      <section aria-labelledby="device-name">
+        <h3 id="device-name">{{ messages.deviceTitle }}</h3>
+        <dl>
+          @for (row of deviceRows; track row.id) {
+            <dt [id]="row.id">{{ row.label }}</dt>
+            <dd [attr.aria-labelledby]="row.id">{{ row.value }}</dd>
+          }
+        </dl>
+      </section>
+    }
     <button matButton="filled" type="button" [disabled]="busy" (click)="sourceInput.click()">
       {{ messages.chooseSource }}
     </button>
@@ -305,17 +345,23 @@ export class ModelCheckPage {
   protected readonly lyrics = signal<File | undefined>(undefined)
   protected readonly timing = signal<File | undefined>(undefined)
   protected readonly measurement = signal<MeasurementState>({ status: 'idle' })
-  protected readonly extractMs = signal<number | undefined>(undefined)
+  // The device the page runs on, once the browser has told it.
+  protected readonly device = signal<Device | undefined>(undefined)
+  protected readonly extract = signal<{ ms: number; memory: StageMemory } | undefined>(undefined)
   // The separation's figures on each backend that separated.
   protected readonly separations = signal<Partial<Record<Backend, Separation>>>({})
   // Each candidate that has finished on a backend, in the order it ran.
   protected readonly outcomes = signal<{ candidate: Candidate; backend: Backend; outcome: Outcome }[]>([])
+  protected readonly deviceRows = computed(() => {
+    const device = this.device()
+    return device && deviceRows(device)
+  })
   protected readonly measurementLine = computed(() => this.lineFor(this.measurement()))
   protected readonly results = computed(() =>
     this.outcomes().map(({ candidate, backend, outcome }) => ({
       id: `${backend}-${candidate}`,
       name: messages.candidateOnBackend(messages.candidateNames[candidate], messages.backendNames[backend]),
-      rows: rowsFor(candidate, backend, outcome, this.extractMs(), this.separations()[backend]),
+      rows: rowsFor(candidate, backend, outcome, this.extract(), this.separations()[backend]),
       failure: outcome.status === 'failed' ? { ran: outcome.ran, reason: reasonFor(outcome.problem) } : undefined,
     })),
   )
@@ -335,6 +381,7 @@ export class ModelCheckPage {
   })
 
   constructor() {
+    void readDevice().then((device) => this.device.set(device))
     inject(DestroyRef).onDestroy(() => {
       // A run's later replies then show nowhere.
       this.attempts++
@@ -410,7 +457,7 @@ export class ModelCheckPage {
     const attempt = ++this.attempts
     const current = () => attempt === this.attempts
     this.measurement.set({ status: 'reading' })
-    this.extractMs.set(undefined)
+    this.extract.set(undefined)
     this.separations.set({})
     this.outcomes.set([])
     // The timing file is read before anything is downloaded, so a bad one fails at once.
@@ -511,16 +558,19 @@ export class ModelCheckPage {
         })
         break
       case 'extracted':
-        this.extractMs.set(reply.extractMs)
+        this.extract.set({ ms: reply.extractMs, memory: reply.memory })
         break
       case 'separated': {
-        const { backend, separateMs, sumCheckDb } = reply
-        this.separations.update((separations) => ({ ...separations, [backend]: { separateMs, sumCheckDb } }))
+        const { backend, separateMs, sumCheckDb, memory } = reply
+        this.separations.update((separations) => ({
+          ...separations,
+          [backend]: { separateMs, sumCheckDb, memory },
+        }))
         break
       }
       case 'measured': {
-        const { candidate, backend, loadMs, alignMs, medianMs, p90Ms, within100Ms } = reply
-        const outcome: Outcome = { status: 'measured', loadMs, alignMs, medianMs, p90Ms, within100Ms }
+        const { candidate, backend, loadMs, alignMs, medianMs, p90Ms, within100Ms, memory } = reply
+        const outcome: Outcome = { status: 'measured', loadMs, alignMs, medianMs, p90Ms, within100Ms, memory }
         this.outcomes.update((outcomes) => [...outcomes, { candidate, backend, outcome }])
         break
       }
