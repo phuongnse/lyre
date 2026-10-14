@@ -2,15 +2,10 @@ import init, { AlignerKind } from '../lyre-wasm/lyre_wasm.js'
 import { openSession } from '../onnx-session'
 import { alignSong } from './align-song'
 import { AlignerCheckReply, AlignerCheckRequest, replyForError } from './aligner-check-messages'
-import { alignerRunner, TestAligner } from './aligner-session'
+import { alignerRunner } from './aligner-session'
 import { testAudio } from './test-audio'
 
-const kinds: Record<TestAligner, AlignerKind> = {
-  omnilingual: AlignerKind.Omnilingual,
-  'lyric-alignment': AlignerKind.LyricAlignment,
-}
-
-// Times the syllables of a lyrics file on the test audio with a test aligner,
+// Times the syllables of a lyrics file on the test audio with the lyric-alignment test aligner,
 // off the page's main thread: stage 4 of processing
 // (docs/architecture.md#processing-planned-for-m2). It answers with progress
 // and counts, never with the lyric text or the error's text.
@@ -31,7 +26,7 @@ async function run(request: AlignerCheckRequest): Promise<AlignerCheckReply> {
   )
   const { backend, session } = await openSession(graph, { baseUri: request.baseUri, forced: request.forced })
   try {
-    const kind = kinds[request.aligner]
+    const kind = AlignerKind.LyricAlignment
     const timing = await alignSong(testAudio(), lyrics, kind, vocabulary, alignerRunner(session, kind), (progress) =>
       postMessage({ type: 'progress', backend, ...progress } satisfies AlignerCheckReply),
     )

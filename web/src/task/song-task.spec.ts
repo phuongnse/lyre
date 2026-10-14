@@ -26,12 +26,6 @@ const STAGES = ['read-source', 'extract-audio', 'separate', 'align', 'lay-out', 
 const TIMEOUT_MS = 60_000
 
 const aligners = {
-  omnilingual: {
-    kind: 'omnilingual',
-    model: 'test-omnilingual-model',
-    vocabulary: 'test-omnilingual-tokens',
-    file: 'models/omnilingual-tokens.txt',
-  },
   'lyric-alignment': {
     kind: 'lyric-alignment',
     model: 'test-lyric-alignment-model',
@@ -78,13 +72,12 @@ async function openTestSeparator(
 }
 
 // A stand-in aligner that gives every token the same probability in every
-// frame, as in align-song.spec.ts: logits for Omnilingual, log probabilities
-// for lyric-alignment.
+// frame, as log probabilities, as in align-song.spec.ts.
 function alignerStandIn(kind: AlignerKind, file: Uint8Array): ModelRunner {
   const vocabulary = readVocabulary(kind, file)!
   const tokens = vocabulary.tokens.length
   vocabulary.free()
-  const value = kind === AlignerKind.Omnilingual ? 0 : Math.log(1 / tokens)
+  const value = Math.log(1 / tokens)
   return async (input) => new Float32Array((input.length / 320 - 1) * tokens).fill(value)
 }
 
@@ -152,7 +145,7 @@ async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners; da
   segments: { count: number }
   media: ReturnType<typeof fakeMedia>
 }> {
-  const aligner = aligners[o.aligner ?? 'omnilingual']
+  const aligner = aligners[o.aligner ?? 'lyric-alignment']
   const input: SongTaskInput = {
     source: new Blob([new Uint8Array(16)]),
     lyrics: o.lyrics ?? fixture('song/lyrics.txt'),
@@ -163,7 +156,7 @@ async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners; da
   }
   const segments = { count: 0 }
   const media = fakeMedia()
-  const models = fakeModels({ aligner: o.aligner ?? 'omnilingual', damaged: o.damaged, segments })
+  const models = fakeModels({ aligner: o.aligner ?? 'lyric-alignment', damaged: o.damaged, segments })
   const reports: TaskReport[] = []
   const areas = new FakeWorkingAreas()
   await runTask({ taskId, stages: songStages(input, media, models), areas, report: (report) => reports.push(report) })

@@ -16,7 +16,6 @@ import { vocalsForAlignment } from './vocals'
 import { wavFile } from './wav'
 
 const kinds: Record<CandidateKind, AlignerKind> = {
-  omnilingual: AlignerKind.Omnilingual,
   'lyric-alignment': AlignerKind.LyricAlignment,
 }
 

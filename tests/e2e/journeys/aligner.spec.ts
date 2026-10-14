@@ -24,22 +24,20 @@ async function watch(page: Page): Promise<string[]> {
 
 const violations = (page: Page) => page.evaluate(() => (window as unknown as { violations: string[] }).violations)
 
-for (const aligner of ['Omnilingual', 'lyric-alignment']) {
-  test(`forcing WebAssembly, the ${aligner} test aligner times every syllable of the lyrics on the test audio`, async ({
-    page,
-  }) => {
-    const problems = await watch(page)
+test('forcing WebAssembly, the lyric-alignment test aligner times every syllable of the lyrics on the test audio, with no aligner to choose', async ({
+  page,
+}) => {
+  const problems = await watch(page);
 
-    await page.goto('/#/model-check')
-    await page.getByRole('radio', { name: aligner, exact: true }).check()
-    await page.getByRole('checkbox', { name: 'Force WebAssembly' }).check()
-    const chooser = page.waitForEvent('filechooser')
-    await page.getByRole('button', { name: 'Align test audio' }).click()
-    await (await chooser).setFiles(lyrics)
+  await page.goto('/#/model-check')
+  await expect(page.getByRole('radio')).toHaveCount(0)
+  await page.getByRole('checkbox', { name: 'Force WebAssembly' }).check()
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Align test audio' }).click()
+  await (await chooser).setFiles(lyrics)
 
-    await expect(page.getByText('Aligned on WebAssembly: 2 of 2 windows done')).toBeVisible({ timeout: RUN_TIMEOUT })
-    await expect(page.getByText('9 syllables timed. The song file timing check accepted the timing.')).toBeVisible()
-    expect(await violations(page)).toEqual([])
-    expect(problems).toEqual([])
-  })
-}
+  await expect(page.getByText('Aligned on WebAssembly: 2 of 2 windows done')).toBeVisible({ timeout: RUN_TIMEOUT })
+  await expect(page.getByText('9 syllables timed. The song file timing check accepted the timing.')).toBeVisible()
+  expect(await violations(page)).toEqual([])
+  expect(problems).toEqual([])
+})

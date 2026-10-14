@@ -13,12 +13,12 @@ runs it by hand. It does two jobs for the
 
 A third job is for tests: it makes the
 [test separator](#make_test_separatorpy), a tiny stand-in for Mel-Band
-RoFormer, and the [test aligners](#make_test_alignerspy), tiny stand-ins
-for Omnilingual and lyric-alignment.
+RoFormer, and the [test aligner](#make_test_alignerspy), a tiny stand-in
+for lyric-alignment.
 
 No check script runs these commands. `scripts/test.sh` runs only the tool's
 unit tests, which need nothing beyond Python's standard library. Two of them
-rebuild the test separator and the test aligners in a temporary folder and
+rebuild the test separator and the test aligner in a temporary folder and
 compare them with the committed files.
 
 The terms in this doc are defined in the [concepts](../domain/concepts.md).
@@ -158,33 +158,27 @@ without its 464 MB. Tests never use the real models
 python3 tools/model-tool/make_test_aligners.py
 ```
 
-It writes the test aligners, stand-ins for the
-[Omnilingual](models.md#omnilingual-ctc-300m) and
+It writes the test aligner, a stand-in for the
 [lyric-alignment](models.md#lyric-alignment) files. The alignment journeys
-can load them without the real models of several hundred MB. Tests never use
+can load it without the real models of several hundred MB. Tests never use
 the real models ([testing](../architecture.md#testing)).
 
-- It writes `omnilingual.onnx` with `omnilingual-tokens.txt`, and
-  `lyric-alignment.onnx` with `lyric-alignment-vocab.json`, to
+- It writes `lyric-alignment.onnx` with `lyric-alignment-vocab.json` to
   `tests/fixtures/models/`, or to the folder given as its argument. It prints
   each file's size and SHA-256.
-- Each graph has its real model's input and output names, all float32. The
-  Omnilingual stand-in takes `x` (1, samples) and gives raw `logits`
-  (1, frames, 25). The lyric-alignment stand-in takes `input_values`
-  (1, samples) and gives `log_probs` (1, frames, 25).
-- Both give one frame per 320 samples, as the real models do. Each frame has
+- The graph has the real model's input and output names, all float32. It
+  takes `input_values` (1, samples) and gives `log_probs` (1, frames, 25).
+- It gives one frame per 320 samples, as the real model does. Each frame has
   one value per token of the graph's own vocabulary.
 - Each frame's values are the frame's average sample times a fixed weight
-  per token. The lyric-alignment stand-in then applies log-softmax inside
-  the file, as the real one does. It recognises nothing.
-- The vocabularies hold the lowercase letters of
-  `tests/fixtures/song/lyrics.txt`, and a unit test checks that they cover
-  it. `omnilingual-tokens.txt` has `<s>`, the blank, at index 0 and the space
-  at index 4. `lyric-alignment-vocab.json` has `|` at index 0 and `<pad>`, the
+  per token. The graph then applies log-softmax inside the file, as the real
+  one does. It recognises nothing.
+- The vocabulary holds the lowercase letters of
+  `tests/fixtures/song/lyrics.txt`, and a unit test checks that it covers
+  it. `lyric-alignment-vocab.json` has `|` at index 0 and `<pad>`, the
   blank, last. The core adds `<s>` and `</s>` after it, as for the real file.
 - It needs only Python's standard library, and every run writes the same
-  bytes. The core pins the four files as `test-omnilingual-model`,
-  `test-omnilingual-tokens`, `test-lyric-alignment-model` and
+  bytes. The core pins the two files as `test-lyric-alignment-model` and
   `test-lyric-alignment-vocab`, so after changing the script, update those
   pins.
 

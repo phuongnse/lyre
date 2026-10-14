@@ -1,7 +1,6 @@
 import {
   align,
   AlignerKind,
-  alignerInput,
   alignerLogProbs,
   AlignerWindows,
   checkTiming,
@@ -37,8 +36,7 @@ const SAMPLES_PER_MS = 16
 
 // Times every syllable of the lyrics from 16 kHz mono audio: stage 4 of
 // processing (docs/architecture.md#processing-planned-for-m2). The core plans
-// the windows, prepares each window's input and turns the model's output into
-// frames. Then it joins them, times the syllables and checks the timing as a
+// the windows and checks the model's output as frames. Then it joins them, times the syllables and checks the timing as a
 // song file needs it. The caller has loaded the core. A refused step throws
 // the core's own fault, unchanged.
 export async function alignSong(
@@ -61,8 +59,7 @@ export async function alignSong(
     const frameUs = windows.frameUs
     onProgress({ done: 0, total })
     for (let index = 0; index < total; index++) {
-      const input = alignerInput(kind, windows.window(index))
-      const output = await runModel(input)
+      const output = await runModel(windows.window(index))
       const logProbs = alignerLogProbs(kind, output, tokens.length)
       if (logProbs === undefined) throw new AlignmentRunError('output')
       windows.addFrames(index, logProbs)

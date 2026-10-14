@@ -25,22 +25,10 @@ pub struct PinnedFile {
 // them identical. Each `test-` entry is a file of tests/fixtures/models/. The
 // first two are SHA-256 test vectors of FIPS 180-2. The Kim-shaped test
 // separator is made by tools/model-tool/make_test_separator.py, and the
-// test aligners' four by tools/model-tool/make_test_aligners.py. Their URLs are relative
-// `test-models/` paths that only the e2e server serves, so no release site has
-// them.
+// test aligner's two by tools/model-tool/make_test_aligners.py. Their URLs are
+// relative `test-models/` paths that only the e2e server serves, so no release
+// site has them.
 pub const PINNED_FILES: &[PinnedFile] = &[
-    PinnedFile {
-        id: "omnilingual-int8-model",
-        url: "https://huggingface.co/csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/6fc542a3b0661c8278cca1230c34deb989f31202/model.int8.onnx",
-        size: 365_352_120,
-        sha256: "e7c4e54ee4c4c47829cc6667d5d00ed8ea7bef1dcfeef0fce766f77752a2726c",
-    },
-    PinnedFile {
-        id: "omnilingual-tokens",
-        url: "https://huggingface.co/csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/6fc542a3b0661c8278cca1230c34deb989f31202/tokens.txt",
-        size: 86_423,
-        sha256: "a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31",
-    },
     PinnedFile {
         id: "mel-roformer-fp16",
         url: "https://huggingface.co/phuongnse/mel-roformer-kim-onnx/resolve/9151f81ee8e4f7dd96598dbeeb1b186b939911be/mel-roformer.fp16.onnx",
@@ -82,18 +70,6 @@ pub const PINNED_FILES: &[PinnedFile] = &[
         url: "test-models/mel-roformer.onnx",
         size: 191,
         sha256: "c760a5f7e9387cefc876da59d10f11c87d97ff216ea3b1cdd880b571968197b8",
-    },
-    PinnedFile {
-        id: "test-omnilingual-model",
-        url: "test-models/omnilingual.onnx",
-        size: 525,
-        sha256: "0d0de937b17c5848e5ae43056288f19e018ffdf54fea9aa3c113696c5b5a9d9c",
-    },
-    PinnedFile {
-        id: "test-omnilingual-tokens",
-        url: "test-models/omnilingual-tokens.txt",
-        size: 137,
-        sha256: "c3d2b0849a5d13362057a4adfc4ba66f5ca399d197db2828e95ffe6c12863c34",
     },
     PinnedFile {
         id: "test-lyric-alignment-model",
@@ -247,15 +223,7 @@ mod tests {
 
     #[test]
     fn the_test_aligner_entries_pass_with_the_committed_files() {
-        let files: [(&str, &[u8]); 4] = [
-            (
-                "test-omnilingual-model",
-                include_bytes!("../../../tests/fixtures/models/omnilingual.onnx"),
-            ),
-            (
-                "test-omnilingual-tokens",
-                include_bytes!("../../../tests/fixtures/models/omnilingual-tokens.txt"),
-            ),
+        let files: [(&str, &[u8]); 2] = [
             (
                 "test-lyric-alignment-model",
                 include_bytes!("../../../tests/fixtures/models/lyric-alignment.onnx"),
@@ -372,7 +340,7 @@ mod tests {
             .iter()
             .filter(|file| file.id.starts_with("test-"))
             .collect();
-        assert_eq!(tests.len(), 7);
+        assert_eq!(tests.len(), 5);
         for file in tests {
             assert!(file.url.starts_with("test-models/"), "{}", file.url);
             for part in [":", "..", "//"] {
@@ -446,7 +414,7 @@ mod tests {
     #[test]
     fn the_real_files_are_the_rows_of_the_models_reference() {
         let documented = documented_files();
-        assert_eq!(documented.len(), 6);
+        assert_eq!(documented.len(), 4);
         let documented: std::collections::BTreeSet<_> = documented.into_iter().collect();
         let pinned: std::collections::BTreeSet<_> = real_files()
             .map(|file| (file.url.to_owned(), file.size, file.sha256.to_owned()))

@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { expect, FileChooser, Locator, Page, test } from "@playwright/test";
 import { fixture, openSongFile } from "./song-file";
 
-// Separating and running two test aligners on one WebAssembly thread takes a while.
+// Separating and running the test aligner on one WebAssembly thread takes a while.
 const RUN_TIMEOUT = 180_000;
 
 test.setTimeout(RUN_TIMEOUT + 30_000);
@@ -30,11 +30,11 @@ const lyrics = fileURLToPath(
   new URL("../../fixtures/song/lyrics.txt", import.meta.url),
 );
 
-// The test separator and the test aligners, on WebGPU and then on WebAssembly.
+// The test separator and the test aligner, on WebGPU and then on WebAssembly.
 const PAGE = "/#/model-check?model=test";
 // The same, on WebAssembly only.
 const WASM_PAGE = "/#/model-check?model=test&backend=wasm";
-const CANDIDATES = ["Test Omnilingual", "Test lyric-alignment"];
+const CANDIDATES = ["Test lyric-alignment"];
 // The labels of the rows the measurement no longer has. The pattern is the
 // same for the result's rows and for the lines of the copied text.
 const REMOVED_ROWS = /^(Onset\s+error|Within 100 ms)/;
@@ -86,7 +86,7 @@ async function measure(
 const labelled = (scope: Page | Locator, name: string) =>
   scope.getByLabel(name, { exact: true });
 
-test("measuring the test aligners says WebGPU is not available, shows each one's stage times, the separator and none of the removed accuracy rows on WebAssembly, and sends nothing to another origin", async ({
+test("measuring the test aligner says WebGPU is not available, shows its stage times, the separator and none of the removed accuracy rows on WebAssembly, and sends nothing to another origin", async ({
   page,
 }) => {
   const problems = await watch(page);
@@ -118,6 +118,14 @@ test("measuring the test aligners says WebGPU is not available, shows each one's
     await expect(labelled(result, "Sum check")).toHaveCount(0);
     await expect(result.getByLabel(REMOVED_ROWS)).toHaveCount(0);
   }
+  // Exactly one result per backend, and only the WebAssembly one has a button
+  // to play its timing.
+  await expect(
+    page.getByLabel(/^Test .+ on (WebGPU|WebAssembly)$/),
+  ).toHaveCount(2);
+  await expect(
+    page.getByRole("button", { name: /^Play with this timing/ }),
+  ).toHaveCount(1);
   // The test models came from the site's own origin too.
   expect(origins.length).toBeGreaterThan(0);
   for (const requestOrigin of origins) expect(requestOrigin).toBe(origin);
@@ -151,6 +159,8 @@ test("measuring shows each WebAssembly result's figures without the removed accu
   await page.getByRole("button", { name: "Copy results" }).click();
   await expect(page.getByText("The results are copied.")).toBeVisible();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
+  // Exactly one result block: the test aligner on WebAssembly.
+  expect(copied.match(/^Test .+ on WebAssembly$/gm)).toHaveLength(1);
   for (const name of CANDIDATES) {
     // The block runs from the result's name to the blank line after it.
     const start = copied.indexOf(`${name} on WebAssembly\n`);
@@ -394,7 +404,7 @@ test("the main page has no link to the model check page, and the page's code loa
   expect(opened.some((body) => body.includes("lyre-model-check"))).toBe(true);
 });
 
-// The fixture's syllables, which the test aligners time on the source.
+// The fixture's syllables, which the test aligner times on the source.
 const SYLLABLES = [
   "Mưa",
   "rơi",
@@ -436,7 +446,7 @@ async function syllableCurrent(page: Page): Promise<boolean> {
   return false;
 }
 
-test("after a WebAssembly measurement, each test aligner's timing plays the source in the Player with its lyrics highlighted, the Karaoke / Original switch keeps the position, and the library gets no new song", async ({
+test("after a WebAssembly measurement, the test aligner's timing plays the source in the Player with its lyrics highlighted, the Karaoke / Original switch keeps the position, and the library gets no new song", async ({
   page,
 }) => {
   await openSongFile(page, fixture);

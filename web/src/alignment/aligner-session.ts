@@ -2,9 +2,6 @@ import { InferenceSession, Tensor } from 'onnxruntime-web/webgpu'
 import { AlignerKind, alignerRules } from '../lyre-wasm/lyre_wasm.js'
 import { ModelRunner } from './align-song'
 
-// The test aligners, tiny stand-ins for the real ones (docs/reference/models.md).
-export type TestAligner = 'omnilingual' | 'lyric-alignment'
-
 // Runs an aligner of the core's `kind` in an open session, one window at a
 // time. The model's input and output names come from the core's rules for
 // `kind`. The caller has loaded the core.

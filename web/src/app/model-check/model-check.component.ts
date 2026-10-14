@@ -2,9 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signa
 import { MatButton } from '@angular/material/button'
 import { MatCheckbox } from '@angular/material/checkbox'
 import { MatProgressBar } from '@angular/material/progress-bar'
-import { MatRadioButton, MatRadioGroup } from '@angular/material/radio'
 import { ActivatedRoute } from '@angular/router'
-import { TestAligner } from '../../alignment/aligner-session'
 import { Device, readDevice } from '../../measurement/device'
 import { backendsFor, Candidate, candidateFiles, candidatesFor, separatorFile } from '../../measurement/candidates'
 import { StageMemory } from '../../measurement/memory'
@@ -131,8 +129,8 @@ function reasonFor(problem: RunProblem): string {
 // The model check page (docs/ui-conventions.md#check-pages). It downloads,
 // checks and keeps a pinned test file, until the real models are added. It
 // also runs the test separator with ONNX Runtime Web in a Web Worker, and
-// times the syllables of a picked lyrics file on test audio with a test
-// aligner in another, stage 4 of processing. Opened by its URL,
+// times the syllables of a picked lyrics file on test audio with the
+// lyric-alignment test aligner in another, stage 4 of processing. Opened by its URL,
 // #/model-check. With ?backend=wasm, the separator runs on WebAssembly even
 // when the browser has a GPU, and Force WebAssembly starts ticked for the
 // aligner. Its measurement section measures each candidate aligner
@@ -141,7 +139,7 @@ function reasonFor(problem: RunProblem): string {
 // once. Then, on WebGPU and then on one-thread WebAssembly, it separates the
 // source and times the picked lyrics on the vocals with each candidate, never
 // switching backend. Each candidate on each backend gets its own result: its
-// figures, or why it failed. With ?model=test it measures the test aligners
+// figures, or why it failed. With ?model=test it measures the test aligner
 // after the test separator, and ?backend=wasm measures only WebAssembly. A Device section names the browser,
 // the OS and the GPU, and says whether WebGPU is available. Each result also
 // shows the highest WebAssembly memory and JavaScript heap seen in each stage,
@@ -159,7 +157,7 @@ function reasonFor(problem: RunProblem): string {
 // frees it.
 @Component({
   selector: 'lyre-model-check',
-  imports: [MatButton, MatCheckbox, MatProgressBar, MatRadioButton, MatRadioGroup, Player],
+  imports: [MatButton, MatCheckbox, MatProgressBar, Player],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
@@ -221,16 +219,6 @@ function reasonFor(problem: RunProblem): string {
       }
     </p>
     <p>{{ messages.alignerCheckAbout }}</p>
-    <mat-radio-group
-      [attr.aria-label]="messages.testAligner"
-      [value]="aligner()"
-      [disabled]="busy"
-      (change)="aligner.set($event.value)"
-    >
-      @for (name of aligners; track name) {
-        <mat-radio-button [value]="name">{{ messages.alignerNames[name] }}</mat-radio-button>
-      }
-    </mat-radio-group>
     <mat-checkbox [checked]="forceWasm()" [disabled]="busy" (change)="forceWasm.set($event.checked)">
       {{ messages.forceWebAssembly }}
     </mat-checkbox>
@@ -385,8 +373,6 @@ export class ModelCheckPage {
   protected readonly state = signal<State>({ status: 'idle' })
   protected readonly separatorState = signal<SeparatorState>({ status: 'idle' })
   protected readonly alignerState = signal<AlignerState>({ status: 'idle' })
-  protected readonly aligners: readonly TestAligner[] = ['omnilingual', 'lyric-alignment']
-  protected readonly aligner = signal<TestAligner>('omnilingual')
   private readonly query = inject(ActivatedRoute).snapshot.queryParamMap
   private readonly forced: Backend | undefined = this.query.get('backend') === 'wasm' ? 'wasm' : undefined
   protected readonly forceWasm = signal(this.forced === 'wasm')
@@ -496,7 +482,6 @@ export class ModelCheckPage {
     this.alignerState.set({ status: 'preparing' })
     const reply = await runAlignerCheck(
       this.models,
-      this.aligner(),
       lyrics,
       this.forceWasm() ? 'wasm' : undefined,
       ({ backend, done, total }) => this.alignerState.set({ status: 'running', backend, done, total }),
