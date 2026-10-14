@@ -120,6 +120,10 @@ them.
    revised only to cut the number of criteria. It links to the doc sections it
    implements and is in the current milestone. Its text names the concepts it
    touches, so triage can choose the [profile](#profiles).
+   When it is created, it gets every existing
+   [repository label](https://github.com/phuongnse/lyre/labels) that fits its
+   content, at least one. Whether a label fits is judged by its description on
+   GitHub. No new labels are created for this.
 2. **Plan.** Comment `/nexkit plan` on the issue. NexKit's plan agent posts a
    plan as a comment.
 3. **Review the plan.** Check it against [decisions.md](decisions.md), and
@@ -151,8 +155,9 @@ them.
    issue, and its title names the behaviour that part delivers. It does not
    reuse the parent's title, whole or as a `<parent>: <part>` prefix, because
    the sub-issue link already shows the parent. Add each part as a GitHub
-   sub-issue of the parent, in order and in the parent's milestone. NexKit
-   closes the parent when all parts are done.
+   sub-issue of the parent, in order and in the parent's milestone. Each part
+   gets its own labels, which need not be the parent's. NexKit closes the
+   parent when all parts are done.
 4. **Implement.** The local agent posts `/nexkit go` on the latest plan, as
    described under Decisions. NexKit implements that plan and opens a pull
    request.
