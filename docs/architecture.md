@@ -227,8 +227,8 @@ reference doc and reviewed before M3 implements them.
   runs every check the reader runs, so the web client never lays out song
   file bytes itself. A refusal crosses to the page only as a fixed reason
   code. The writer holds every track in WebAssembly memory, which is fine
-  for short songs. Writing a long video in pieces is left for the real
-  song-making page.
+  for short songs. Writing a long video in pieces is left for
+  [the Make a song section](ui-conventions.md#making-a-song).
 - The web client runs a model with ONNX Runtime Web (MIT), at a pinned
   version, in a Web Worker. It uses WebGPU when the browser gives it a GPU
   adapter and the session opens on it, and otherwise WebAssembly on one
@@ -263,11 +263,17 @@ reference doc and reviewed before M3 implements them.
   The model's input and output names come from the core's rules for each
   aligner. The aligner opens its ONNX Runtime session through the same helper
   as the separator.
+- On the web, the main page's
+  [Make a song](ui-conventions.md#making-a-song) section runs a task's real
+  stages, from reading the source to writing the song file, with alignment in
+  place of the hand-written timing file. Until it is built, each stage runs
+  only from its check page.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is
   all worker and storage work. The web client runs test stages until the real
-  stages exist *(planned for M2)*.
+  stages run in [the Make a song section](ui-conventions.md#making-a-song)
+  *(planned for M2)*.
 
 ## Testing
 
