@@ -1,9 +1,9 @@
 import { expect, Page, test } from '@playwright/test'
 
-// Loading ONNX Runtime's WebAssembly and running one window on one thread takes a while.
+// Loading ONNX Runtime's WebAssembly and running one segment on one thread takes a while.
 const RUN_TIMEOUT = 60_000
 
-const ran = 'The test separator ran on WebAssembly. x_out 1×16×2048×336, xt_out 1×8×343980.'
+const ran = 'The test separator ran on WebAssembly. stems_spec 1×4×1025×801.'
 
 // Records every Content Security Policy or Trusted Types violation, console
 // error and page error, and every request's URL, from before the page loads.

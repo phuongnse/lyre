@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
+import { env, InferenceSession } from 'onnxruntime-web/webgpu'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { ModelRunner } from '../alignment/align-song'
 import { KARAOKE_TYPE } from '../karaoke-track'
@@ -8,6 +9,7 @@ import { FakeModelFiles } from '../models/fake-model-files'
 import { loadModel } from '../models/model-download'
 import { PackagedTrack } from '../original-track'
 import { SeparatorRunner } from '../separation/separate'
+import { separatorRunner } from '../separation/separator-session'
 import { openSongFile } from '../song-file'
 import { AudioFormat } from '../source-audio'
 import { FakeWorkingAreas } from './fake-working-areas'
@@ -53,25 +55,25 @@ function fakeFetch(damaged?: string): typeof fetch {
   }) as typeof fetch
 }
 
-// The separator's window sizes (docs/reference/models.md#htdemucs).
-const X_LENGTH = 4 * 2048 * 336
-const XT_LENGTH = 2 * 343_980
-
-// Computes what the test separator file computes: each output holds four
-// copies of its input, one per stem, each multiplied by 0.125.
-function separatorStandIn(windows: { count: number }): SeparatorRunner {
-  const stems = (input: Float32Array) => {
-    const out = new Float32Array(input.length * 4)
-    for (let stem = 0; stem < 4; stem++) {
-      for (let i = 0; i < input.length; i++) out[stem * input.length + i] = input[i]! * 0.125
-    }
-    return out
-  }
-  return async (x, xt) => {
-    expect(x.length).toBe(X_LENGTH)
-    expect(xt.length).toBe(XT_LENGTH)
-    windows.count++
-    return { xOut: stems(x), xtOut: stems(xt), dispose() {} }
+// Runs the committed test separator file, as the web client does, on
+// WebAssembly in Node. `segments.count` counts the segments it ran.
+async function openTestSeparator(
+  graph: Uint8Array,
+  segments: { count: number },
+): Promise<{ run: SeparatorRunner; release(): Promise<void> }> {
+  env.wasm.numThreads = 1
+  env.wasm.proxy = false
+  env.wasm.wasmBinary = readFileSync(
+    new URL('../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm', import.meta.url),
+  )
+  const session = await InferenceSession.create(graph, { executionProviders: ['wasm'] })
+  const run = separatorRunner(session)
+  return {
+    run: async (spec) => {
+      segments.count++
+      return run(spec)
+    },
+    release: () => session.release(),
   }
 }
 
@@ -86,13 +88,11 @@ function alignerStandIn(kind: AlignerKind, file: Uint8Array): ModelRunner {
   return async (input) => new Float32Array((input.length / 320 - 1) * tokens).fill(value)
 }
 
-function fakeModels(o: { aligner: keyof typeof aligners; damaged?: string; windows: { count: number } }): SongModels {
+function fakeModels(o: { aligner: keyof typeof aligners; damaged?: string; segments: { count: number } }): SongModels {
   const files = new FakeModelFiles()
   return {
     load: (id) => loadModel(id, { files, fetch: fakeFetch(o.damaged), baseUri: 'http://lyre.test/' }),
-    async openSeparator() {
-      return { run: separatorStandIn(o.windows), release: async () => {} }
-    },
+    openSeparator: (graph) => openTestSeparator(graph, o.segments),
     async openAligner(kind) {
       return { run: alignerStandIn(kind, fixture(aligners[o.aligner].file)), release: async () => {} }
     },
@@ -149,7 +149,7 @@ function fakeMedia(): SongMedia & { karaokeFrames: number } {
 async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners; damaged?: string }): Promise<{
   reports: TaskReport[]
   areas: FakeWorkingAreas
-  windows: { count: number }
+  segments: { count: number }
   media: ReturnType<typeof fakeMedia>
 }> {
   const aligner = aligners[o.aligner ?? 'omnilingual']
@@ -158,16 +158,16 @@ async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners; da
     lyrics: o.lyrics ?? fixture('song/lyrics.txt'),
     details: { title: 'Test song', artist: 'Test artist', composer: '' },
     vocalRole: 'female',
-    separator: { graph: 'test-htdemucs-graph', weights: 'test-htdemucs-weights' },
+    separator: 'test-mel-roformer',
     aligner: { kind: aligner.kind, model: aligner.model, vocabulary: aligner.vocabulary },
   }
-  const windows = { count: 0 }
+  const segments = { count: 0 }
   const media = fakeMedia()
-  const models = fakeModels({ aligner: o.aligner ?? 'omnilingual', damaged: o.damaged, windows })
+  const models = fakeModels({ aligner: o.aligner ?? 'omnilingual', damaged: o.damaged, segments })
   const reports: TaskReport[] = []
   const areas = new FakeWorkingAreas()
   await runTask({ taskId, stages: songStages(input, media, models), areas, report: (report) => reports.push(report) })
-  return { reports, areas, windows, media }
+  return { reports, areas, segments, media }
 }
 
 // The bytes of the song file's Lyrics chunk, read through the core.
@@ -192,7 +192,7 @@ describe('a song task', () => {
       `with the test separator and the ${aligner} test aligner, gives a song file with the lyrics byte for byte`,
       async () => {
         const lyrics = fixture('song/lyrics.txt')
-        const { reports, areas, media } = await run({ lyrics, aligner })
+        const { reports, areas, media, segments } = await run({ lyrics, aligner })
 
         const done = reports.at(-1)
         expect(done?.type).toBe('done')
@@ -204,6 +204,8 @@ describe('a song task', () => {
         expect(await lyricsChunk(song)).toEqual(fixture('song/lyrics.txt'))
         // The supplied bytes were not changed on the way either (D5).
         expect(lyrics).toEqual(fixture('song/lyrics.txt'))
+        // The 10 s source went through the test separator in 5 segments.
+        expect(segments.count).toBe(5)
         // The karaoke track came from separation, resampled to 48 kHz.
         expect(media.karaokeFrames).toBe(SOURCE_SECONDS * 48_000)
         expect(areas.areas.has(taskId)).toBe(false)
@@ -230,6 +232,19 @@ describe('a song task', () => {
   )
 
   test(
+    'separates with the test separator and goes on to alignment',
+    async () => {
+      const { reports } = await run({})
+      const progress = reports.filter((report) => report.type === 'progress')
+      const first = (stage: string) => progress.findIndex((report) => report.stage === stage)
+      expect(first('separate')).toBeGreaterThanOrEqual(0)
+      expect(first('align')).toBeGreaterThan(first('separate'))
+      expect(reports.at(-1)?.type).toBe('done')
+    },
+    TIMEOUT_MS,
+  )
+
+  test(
     'fails at alignment when a syllable has no character the vocabulary knows, and removes the working area',
     async () => {
       const { reports, areas } = await run({ lyrics: new TextEncoder().encode('Mưa rơi ♪ nhẹ\n') })
@@ -243,9 +258,9 @@ describe('a song task', () => {
   test(
     'fails before separation when a model file fails its check, and hands over no song',
     async () => {
-      const { reports, areas, windows } = await run({ damaged: 'htdemucs_fwd.onnx.data' })
+      const { reports, areas, segments } = await run({ damaged: 'mel-roformer.onnx' })
       expect(reports.at(-1)).toEqual({ type: 'failed', stage: 'separate', reason: 'model-check-failed' })
-      expect(windows.count).toBe(0)
+      expect(segments.count).toBe(0)
       expect(reports.some((report) => report.type === 'done')).toBe(false)
       expect(areas.areas.has(taskId)).toBe(false)
     },

@@ -81,8 +81,8 @@ async function separateOn(
   read: () => StageMemory,
 ): Promise<Awaited<ReturnType<MeasurementSteps['separate']>>> {
   const { result, memory } = await watchStage(read, async (sample) => {
-    const [graph, weights] = await Promise.all([bytesOf(request.separator.graph), bytesOf(request.separator.weights)])
-    const { session } = await openSeparator(graph, weights, {
+    const graph = await bytesOf(request.separator)
+    const { session } = await openSeparator(graph, {
       baseUri: request.baseUri,
       forced: backend,
       measuring: true,
@@ -92,23 +92,21 @@ async function separateOn(
       const separateStart = performance.now()
       const tracks = await separate(separatorRunner(session), left, right, sample)
       const separateMs = performance.now() - separateStart
-      const sumCheckDb = tracks.energyDb
       // Each getter copies a track out of the core, so each is read once.
       const planar = tracks.vocals
       const karaoke = tracks.karaoke
       tracks.free()
-      return { vocals: vocalsForAlignment(planar), planar, karaoke, separateMs, sumCheckDb }
+      return { vocals: vocalsForAlignment(planar), planar, karaoke, separateMs }
     } finally {
       await session.release().catch(() => undefined)
     }
   })
-  const { vocals, planar, karaoke, separateMs, sumCheckDb } = result
+  const { vocals, planar, karaoke, separateMs } = result
   const rate = SEPARATION_FORMAT.sampleRate
   return {
     vocals,
     tracks: { vocals: wavFile(planar, rate), karaoke: wavFile(karaoke, rate) },
     separateMs,
-    sumCheckDb,
     memory,
   }
 }

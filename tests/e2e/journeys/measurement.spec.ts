@@ -86,7 +86,7 @@ async function measure(
 const labelled = (scope: Page | Locator, name: string) =>
   scope.getByLabel(name, { exact: true });
 
-test("measuring the test aligners says WebGPU is not available, shows each one's stage times, sum check and none of the removed accuracy rows on WebAssembly, and sends nothing to another origin", async ({
+test("measuring the test aligners says WebGPU is not available, shows each one's stage times, the separator and none of the removed accuracy rows on WebAssembly, and sends nothing to another origin", async ({
   page,
 }) => {
   const problems = await watch(page);
@@ -114,7 +114,8 @@ test("measuring the test aligners says WebGPU is not available, shows each one's
     for (const row of ["Extract audio", "Separate", "Align", "Model load"]) {
       await expect(labelled(result, row)).toHaveText(/^\d+\.\d{2} s$/);
     }
-    await expect(labelled(result, "Sum check")).toHaveText(/^-?\d+\.\d dB$/);
+    await expect(labelled(result, "Separator")).toHaveText("Test separator");
+    await expect(labelled(result, "Sum check")).toHaveCount(0);
     await expect(result.getByLabel(REMOVED_ROWS)).toHaveCount(0);
   }
   // The test models came from the site's own origin too.
@@ -142,7 +143,8 @@ test("measuring shows each WebAssembly result's figures without the removed accu
     for (const row of ["Extract audio", "Separate", "Align", "Model load"]) {
       await expect(labelled(result, row)).toHaveText(/^\d+\.\d{2} s$/);
     }
-    await expect(labelled(result, "Sum check")).toHaveText(/^-?\d+\.\d dB$/);
+    await expect(labelled(result, "Separator")).toHaveText("Test separator");
+    await expect(labelled(result, "Sum check")).toHaveCount(0);
     await expect(result.getByLabel(REMOVED_ROWS)).toHaveCount(0);
   }
 
@@ -158,6 +160,39 @@ test("measuring shows each WebAssembly result's figures without the removed accu
     expect(block).not.toMatch(new RegExp(REMOVED_ROWS, "m"));
   }
   expect(copied).not.toMatch(new RegExp(REMOVED_ROWS, "m"));
+});
+
+test("a separator file with one byte changed is named as failed, deleted and not used, and the run stops", async ({
+  page,
+}) => {
+  await page.route("**/test-models/mel-roformer.onnx", async (route) => {
+    const response = await route.fetch();
+    const body = await response.body();
+    body[10] ^= 0x01;
+    await route.fulfill({ response, body });
+  });
+  await page.goto(WASM_PAGE);
+
+  await measure(page);
+
+  await expect(
+    page.getByText(
+      "The model file test-mel-roformer failed its check. It was deleted and not used.",
+    ),
+  ).toBeVisible({ timeout: RUN_TIMEOUT });
+  await expect(page.getByLabel(/ on WebAssembly$/)).toHaveCount(0);
+  const kept = await page.evaluate(async () => {
+    try {
+      const models = await (
+        await navigator.storage.getDirectory()
+      ).getDirectoryHandle("models");
+      await models.getFileHandle("test-mel-roformer");
+      return "found";
+    } catch (error) {
+      return (error as DOMException).name;
+    }
+  });
+  expect(kept).toBe("NotFoundError");
 });
 
 test("the measurement section has no timing file button, and Measure the aligners stays off until a source and the lyrics are picked", async ({

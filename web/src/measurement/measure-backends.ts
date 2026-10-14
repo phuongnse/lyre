@@ -13,7 +13,6 @@ export interface MeasurementSteps {
     vocals: Float32Array
     tracks: { vocals: Uint8Array<ArrayBuffer>; karaoke: Uint8Array<ArrayBuffer> }
     separateMs: number
-    sumCheckDb: number
     memory: StageMemory
   }>
   measure(
@@ -49,7 +48,6 @@ export async function measureBackends(
         type: 'separated',
         backend,
         separateMs: separated.separateMs,
-        sumCheckDb: separated.sumCheckDb,
         memory: separated.memory,
       })
       reply({ type: 'tracks', backend, ...separated.tracks })

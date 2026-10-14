@@ -13,18 +13,17 @@ function startWorker(): globalThis.Worker {
   return new Worker(new URL('../separation/separator-check.worker', import.meta.url), { type: 'module' })
 }
 
-// Checks both test separator files, then runs one window of the test
+// Checks the test separator's file, then runs one segment of the test
 // separator in a Web Worker. Only the checked bytes reach the worker. It
 // throws when a file fails its check or cannot be downloaded.
 export async function runSeparatorCheck(models: Models, forced?: Backend): Promise<SeparatorCheckReply> {
-  const graph = await models.load('test-htdemucs-graph')
-  const weights = await models.load('test-htdemucs-weights')
+  const separator = await models.load('test-mel-roformer')
   const worker = startWorker()
   try {
     return await new Promise<SeparatorCheckReply>((resolve) => {
       worker.onmessage = ({ data }: MessageEvent<SeparatorCheckReply>) => resolve(data)
       worker.onerror = () => resolve({ type: 'failed' })
-      const request: SeparatorCheckRequest = { type: 'run', graph, weights, baseUri: document.baseURI, forced }
+      const request: SeparatorCheckRequest = { type: 'run', separator, baseUri: document.baseURI, forced }
       worker.postMessage(request)
     })
   } finally {

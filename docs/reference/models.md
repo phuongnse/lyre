@@ -59,7 +59,8 @@ measurement page still measures it, as sherpa-onnx's int8 export.
 
 D15's separator, replaced by Mel-Band RoFormer
 ([D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)).
-It stays pinned only while the core and the web client still run it.
+The web client no longer runs it. The core keeps it, with its pins, until the
+next part removes it.
 
 | Repository | Revision | Path | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -154,9 +155,9 @@ as the fp16 ONNX export by audiojs, which the owner publishes unchanged.
 - **Frame rate:** 100 spectrogram frames per second (44,100 / 441).
 - **Vocabulary:** none. The karaoke track is the source minus the vocals.
 - **Test stand-in:** the [test separator](model-tool.md#make_test_separatorpy)
-  has the same input and output names, shapes and types. It is not pinned in
-  the core yet. The web client still loads the htdemucs test files until it
-  switches to this file.
+  has the same input and output names, shapes and types. The core pins it as
+  `test-mel-roformer`, and the web client runs it in place of this file with
+  `?model=test`.
 
 ## lyric-alignment
 
@@ -322,11 +323,6 @@ on each [target device](../decisions.md#d25-requirements-for-making-songs--propo
   check page's **Karaoke track** player, which appears after each separation
   in a measurement, and records whether clear leftover lead vocals remain. Backing vocals may remain and
   are noted, not failed.
-
-Until the web client switches to Mel-Band RoFormer, it still runs htdemucs,
-which D28 replaces, through the core's `separation` module and with its sum
-check: the karaoke track plus the vocals stem is compared with the source, and
-the core fails a run under a provisional 10 dB.
 
 ### The choice
 

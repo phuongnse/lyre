@@ -24,7 +24,8 @@ pub struct PinnedFile {
 // The real files are the rows of docs/reference/models.md, and a test keeps
 // them identical. Each `test-` entry is a file of tests/fixtures/models/. The
 // first two are SHA-256 test vectors of FIPS 180-2. The htdemucs test
-// separator's two are made by tools/model-tool/make_test_htdemucs.py, and the
+// separator's two are made by tools/model-tool/make_test_htdemucs.py, the Kim-shaped
+// test separator by tools/model-tool/make_test_separator.py, and the
 // test aligners' four by tools/model-tool/make_test_aligners.py. Their URLs are relative
 // `test-models/` paths that only the e2e server serves, so no release site has
 // them.
@@ -100,6 +101,12 @@ pub const PINNED_FILES: &[PinnedFile] = &[
         url: "test-models/htdemucs_fwd.onnx.data",
         size: 4,
         sha256: "31b67dba7cfd6e2d7540f9c96d90a45b8f2d44956620723024d4e1beeacd4602",
+    },
+    PinnedFile {
+        id: "test-mel-roformer",
+        url: "test-models/mel-roformer.onnx",
+        size: 191,
+        sha256: "c760a5f7e9387cefc876da59d10f11c87d97ff216ea3b1cdd880b571968197b8",
     },
     PinnedFile {
         id: "test-omnilingual-model",
@@ -269,6 +276,15 @@ mod tests {
     }
 
     #[test]
+    fn the_test_mel_roformer_entry_passes_with_the_committed_file() {
+        let model = include_bytes!("../../../tests/fixtures/models/mel-roformer.onnx");
+        assert_eq!(
+            check("test-mel-roformer", &[model]),
+            passed("test-mel-roformer")
+        );
+    }
+
+    #[test]
     fn the_test_aligner_entries_pass_with_the_committed_files() {
         let files: [(&str, &[u8]); 4] = [
             (
@@ -395,7 +411,7 @@ mod tests {
             .iter()
             .filter(|file| file.id.starts_with("test-"))
             .collect();
-        assert_eq!(tests.len(), 8);
+        assert_eq!(tests.len(), 9);
         for file in tests {
             assert!(file.url.starts_with("test-models/"), "{}", file.url);
             for part in [":", "..", "//"] {

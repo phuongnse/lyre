@@ -200,13 +200,13 @@ export const messages = {
   modelCheckFailed: (id: string) => `The model file ${id} failed its check. It was deleted and not used.`,
   modelDownloadFailed: (id: string) => `The model file ${id} could not be downloaded. Nothing was kept.`,
   modelsMayBeCleared: 'Your browser did not allow lasting storage, so it may remove the downloaded models.',
-  separatorCheckAbout: "Checks the test separator's two files, then runs it once on silence in a Web Worker.",
+  separatorCheckAbout: "Checks the test separator's file, then runs it once on one segment of silence in a Web Worker.",
   runTestSeparator: 'Run the test separator',
   separatorRunning: 'Running the test separator…',
   // Keyed by Backend.
   backendNames: { webgpu: 'WebGPU', wasm: 'WebAssembly' },
-  separatorRan: (backend: string, xOut: readonly number[], xtOut: readonly number[]) =>
-    `The test separator ran on ${backend}. x_out ${xOut.join('×')}, xt_out ${xtOut.join('×')}.`,
+  separatorRan: (backend: string, dims: readonly number[]) =>
+    `The test separator ran on ${backend}. stems_spec ${dims.join('×')}.`,
   separatorFailed: 'The test separator could not run.',
   alignerCheckAbout: 'Times the syllables of a lyrics file on 40 s of test audio with a test aligner, in a Web Worker.',
   testAligner: 'Test aligner',
@@ -263,7 +263,7 @@ export const messages = {
   measurementSeparate: 'Separate',
   measurementAlign: 'Align',
   measurementModelLoad: 'Model load',
-  measurementSumCheck: 'Sum check',
+  measurementSeparator: 'Separator',
   measurementExtractWasmMemory: 'Extract audio WebAssembly memory',
   measurementExtractHeap: 'Extract audio JavaScript heap',
   measurementSeparateWasmMemory: 'Separate WebAssembly memory',
@@ -283,7 +283,7 @@ export const messages = {
   decibels: (value: string) => `${value} dB`,
   // A candidate that did not run, because the separation on its backend failed.
   notRun: 'Not run.',
-  // Keyed by RunProblem's kind. A failed sum check gets sumCheckFailed.
+  // Keyed by RunProblem's kind. A broken run gets brokenRun.
   runProblems: {
     'webgpu-unavailable': 'WebGPU is not available.',
     model: 'The model could not be loaded on this backend.',
@@ -291,28 +291,34 @@ export const messages = {
     'alignment-refused': 'The alignment was refused.',
     timing: "The song file timing check refused this aligner's timing.",
     other: 'The run could not finish.',
-  } satisfies Record<Exclude<RunProblem['kind'], 'sum-check'>, string>,
+  } satisfies Record<Exclude<RunProblem['kind'], 'broken-run'>, string>,
   separationCheckTitle: 'Separation check',
   separationCheckAbout:
     "Separates a source's audio into vocals and a karaoke track in a Web Worker. The source is not changed or sent anywhere.",
   separationPreparing: 'Loading the separator and decoding the audio…',
   separationProgress: 'Separation progress',
   separationRunning: (backend: string, done: number, total: number) =>
-    `Separating on ${backend}: ${done} of ${total} windows done`,
+    `Separating on ${backend}: ${done} of ${total} segments done`,
   separationDone: (backend: string, done: number, total: number) =>
-    `Separated on ${backend}: ${done} of ${total} windows done`,
+    `Separated on ${backend}: ${done} of ${total} segments done`,
   separatedAudio: 'Separated audio',
   separationBackend: 'Backend',
   separationSourceLength: 'Source length',
   separationVocalsLength: 'Vocals length',
   separationKaraokeLength: 'Karaoke track length',
-  // Keyed by SumCheckRule. Each rule has its own sentence, so each translates whole.
-  sumCheckFailed: {
-    energy: (db: string) => `The separation failed the sum check's energy rule: ${db} dB, at least 10 dB needed.`,
+  // Keyed by BrokenRunRule. Each rule has its own sentence, so each translates whole.
+  // The value is the position of the first sample that is not finite, or the peak in dB.
+  brokenRun: {
+    'vocals-not-finite': (sample: string) =>
+      `The separation failed the broken-run check's vocals not-finite rule: sample ${sample} is not finite.`,
+    'karaoke-not-finite': (sample: string) =>
+      `The separation failed the broken-run check's karaoke track not-finite rule: sample ${sample} is not finite.`,
     'vocals-peak': (db: string) =>
-      `The separation failed the sum check's vocals peak rule: ${db} dB, more than 1 dB above the input.`,
+      `The separation failed the broken-run check's vocals clipping rule: ${db} dB, more than 1 dB above the source.`,
     'karaoke-peak': (db: string) =>
-      `The separation failed the sum check's karaoke track peak rule: ${db} dB, more than 1 dB above the input.`,
+      `The separation failed the broken-run check's karaoke track clipping rule: ${db} dB, more than 1 dB above the source.`,
   },
+  // Keyed by the separator's pinned file ID.
+  separatorNames: { 'mel-roformer-fp16': 'Mel-Band RoFormer (Kim)', 'test-mel-roformer': 'Test separator' },
   separatorNotLoaded: 'The separator could not be loaded.',
 } as const

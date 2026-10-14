@@ -36,7 +36,7 @@ export interface SongTaskInput {
   details: { title: string; artist: string; composer: string }
   vocalRole: VocalRole
   // The IDs of the pinned model files.
-  separator: { graph: string; weights: string }
+  separator: string
   aligner: { kind: 'omnilingual' | 'lyric-alignment'; model: string; vocabulary: string }
 }
 
@@ -54,7 +54,7 @@ export interface SongMedia {
 // that passed its check.
 export interface SongModels {
   load(id: string): Promise<Blob>
-  openSeparator(graph: Uint8Array, weights: Uint8Array): Promise<{ run: SeparatorRunner; release(): Promise<void> }>
+  openSeparator(graph: Uint8Array): Promise<{ run: SeparatorRunner; release(): Promise<void> }>
   openAligner(kind: AlignerKind, graph: Uint8Array): Promise<{ run: ModelRunner; release(): Promise<void> }>
 }
 
@@ -149,7 +149,7 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
       async run({ area, progress }) {
         // Every model file the task needs is checked before any audio is
         // separated, so a bad aligner file never wastes a long separation.
-        const ids = [input.separator.graph, input.separator.weights, input.aligner.model, input.aligner.vocabulary]
+        const ids = [input.separator, input.aligner.model, input.aligner.vocabulary]
         const files: Blob[] = []
         try {
           for (const id of ids) files.push(await models.load(id))
@@ -158,12 +158,12 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
           if (error instanceof ModelDownloadFailed) throw new StageFailure('model-unavailable')
           throw error
         }
-        const [graph, weights, model, vocabulary] = files as [Blob, Blob, Blob, Blob]
+        const [graph, model, vocabulary] = files as [Blob, Blob, Blob]
         aligner = { model, vocabulary }
 
         const audio = await floatsOf(await area.read(AUDIO))
         const frames = audio.length / 2
-        const separator = await models.openSeparator(await bytesOf(graph), await bytesOf(weights))
+        const separator = await models.openSeparator(await bytesOf(graph))
         try {
           const separated = await separate(
             separator.run,

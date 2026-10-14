@@ -72,8 +72,8 @@ test("the test separator splits the tone into vocals and a karaoke track as long
   expect(await secondsIn(page, "Vocals length")).toBe(sourceSeconds);
   expect(await secondsIn(page, "Karaoke track length")).toBe(sourceSeconds);
   await expect(labelled(page, "Backend")).toHaveText("WebAssembly");
-  // The core cuts a 2 s source into one window.
-  await expect(page.getByRole("status")).toContainText("1 of 1 windows done");
+  // The core cuts a 2 s source into one segment.
+  await expect(page.getByRole("status")).toContainText("1 of 1 segments done");
   await expect(
     page.getByRole("progressbar", { name: "Separation progress" }),
   ).toHaveAttribute("aria-valuenow", "100");
