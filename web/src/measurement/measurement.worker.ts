@@ -5,7 +5,7 @@ import { alignerRunner } from '../alignment/aligner-session'
 import { openSession } from '../onnx-session'
 import { Backend } from '../separation/backend'
 import { decode, separate } from '../separation/separate'
-import { openSeparator } from '../separation/separator-session'
+import { openSeparator, separatorRunner } from '../separation/separator-session'
 import { SEPARATION_FORMAT } from '../source-audio'
 import { SourceError } from '../source-error'
 import { CandidateKind } from './candidates'
@@ -89,7 +89,7 @@ async function separateOn(
     try {
       sample()
       const separateStart = performance.now()
-      const tracks = await separate(session, left, right, sample)
+      const tracks = await separate(separatorRunner(session), left, right, sample)
       const separateMs = performance.now() - separateStart
       const sumCheckDb = tracks.energyDb
       // Each getter copies a track out of the core, so each is read once.

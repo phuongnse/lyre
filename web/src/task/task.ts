@@ -5,7 +5,18 @@ import { WorkingArea, WorkingAreas } from './working-area'
 // progress. This file has no DOM or worker dependency, so tests run it as is.
 
 // Why a task stopped. The page shows a message for each.
-export type TaskFailure = 'test-stage-failed' | 'another-task-running' | 'unexpected'
+export type TaskFailure =
+  | 'test-stage-failed'
+  | 'another-task-running'
+  | 'source-refused'
+  | 'model-check-failed'
+  | 'model-unavailable'
+  | 'separation-failed'
+  | 'alignment-failed'
+  | 'timing-refused'
+  | 'media-refused'
+  | 'song-refused'
+  | 'unexpected'
 
 // What a stage throws to stop the task with a reason the page can show.
 export class StageFailure extends Error {
@@ -19,6 +30,8 @@ export interface StageContext {
   area: WorkingArea
   // Reports the fraction of the stage done, from 0 to 1.
   progress(fraction: number): void
+  // Hands over the song file's bytes, which the done report carries.
+  handOver(song: Uint8Array): void
 }
 
 export interface Stage {
@@ -36,7 +49,9 @@ export type ProgressReport = {
   timeLeftMs?: number
 }
 
-export type TaskReport = ProgressReport | { type: 'done' } | { type: 'failed'; stage: string; reason: TaskFailure }
+// The done report carries the song file only when a stage handed one over.
+export type TaskReport =
+  ProgressReport | { type: 'done'; song?: Uint8Array } | { type: 'failed'; stage: string; reason: TaskFailure }
 
 // How long a stage runs before its time left is measured. Before that, or
 // before any progress, an estimate would be a guess.
@@ -51,8 +66,8 @@ export function timeLeft(elapsedMs: number, fraction: number): number | undefine
 }
 
 // Runs `stages` in order in the working area of `taskId`. The area is removed
-// when the task ends, whether it is done or failed. Nothing hands over a song
-// yet: the stage that writes the song file comes later.
+// when the task ends, whether it is done or failed. Only a task that is done
+// hands over a song: a failure never carries one.
 export async function runTask(o: {
   taskId: string
   stages: readonly Stage[]
@@ -63,6 +78,7 @@ export async function runTask(o: {
   const now = o.now ?? (() => performance.now())
   const count = o.stages.length
   let stage = ''
+  let song: Uint8Array | undefined
   try {
     const area = await o.areas.create(o.taskId)
     for (const [index, current] of o.stages.entries()) {
@@ -78,6 +94,9 @@ export async function runTask(o: {
           if (left !== undefined) report.timeLeftMs = left
           o.report(report)
         },
+        handOver(bytes) {
+          song = bytes
+        },
       })
     }
   } catch (error) {
@@ -87,5 +106,5 @@ export async function runTask(o: {
     return
   }
   await o.areas.remove(o.taskId).catch(() => {})
-  o.report({ type: 'done' })
+  o.report(song === undefined ? { type: 'done' } : { type: 'done', song })
 }

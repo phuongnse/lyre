@@ -1,7 +1,12 @@
-import { InferenceSession } from 'onnxruntime-web/webgpu'
 import { SeparatedTracks, Separation } from '../lyre-wasm/lyre_wasm.js'
 import { decodeAudio, SEPARATION_FORMAT } from '../source-audio'
-import { runWindow } from './separator-session'
+
+// Runs the separator on one window: `x` in the shape X_SHAPE and `xt` in the
+// shape XT_SHAPE. `dispose` frees the outputs once the core has read them.
+export type SeparatorRunner = (
+  x: Float32Array,
+  xt: Float32Array,
+) => Promise<{ xOut: Float32Array; xtOut: Float32Array; dispose(): void }>
 
 // Decodes the whole source at 44.1 kHz stereo, because the core's separation
 // needs all of it. It gives the left channel, then the right.
@@ -24,14 +29,14 @@ function concatenate(pieces: Float32Array[]): Float32Array {
   return joined
 }
 
-// Separates decoded 44.1 kHz stereo audio into vocals and a karaoke track in
-// an open separator session, window by window: stage 3 of processing
+// Separates decoded 44.1 kHz stereo audio into vocals and a karaoke track
+// with a separator runner, window by window: stage 3 of processing
 // (docs/architecture.md#processing-planned-for-m2). `onProgress` gets the
 // windows done out of the total, first with none done. The caller has loaded
 // the core and frees the tracks. A refused step or a failed sum check throws
 // the core's SeparationFault.
 export async function separate(
-  session: InferenceSession,
+  runWindow: SeparatorRunner,
   left: Float32Array,
   right: Float32Array,
   onProgress: (done: number, total: number) => void,
@@ -46,12 +51,11 @@ export async function separate(
       const x = input.x
       const xt = input.xt
       input.free()
-      const { xOut, xtOut } = await runWindow(session, x, xt)
+      const { xOut, xtOut, dispose } = await runWindow(x, xt)
       try {
-        separation.output(index, xOut.data as Float32Array, xtOut.data as Float32Array)
+        separation.output(index, xOut, xtOut)
       } finally {
-        xOut.dispose()
-        xtOut.dispose()
+        dispose()
       }
       onProgress(index + 1, total)
     }

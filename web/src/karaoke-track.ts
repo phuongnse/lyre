@@ -9,16 +9,16 @@ import {
   checkTrackLimits,
   concat,
 } from './original-track'
-import { AudioFormat, decodeAudio } from './source-audio'
+import { AudioFormat } from './source-audio'
 import { SourceError } from './source-error'
 
 // Encodes the karaoke track: part of stage 8 of processing
 // (docs/domain/knowledge.md#processing). It is the only audio that is encoded
-// (D24). Until separation exists, a second picked file stands in for it. Its
-// audio is decoded on its own timeline, fitted to the original track's length
-// and encoded to Opus. It is then cut where the original track is cut, so
-// switching tracks keeps the position. The code uses no DOM, so it can run in
-// a Web Worker.
+// (D24). A task gives it the karaoke track from separation. On the source
+// check page, a second picked file stands in for it, decoded on its own
+// timeline. The audio is fitted to the original track's length and encoded to
+// Opus. It is then cut where the original track is cut, so switching tracks
+// keeps the position. The code uses no DOM, so it can run in a Web Worker.
 
 // The stored type and format the song file format sets for the karaoke track
 // (docs/reference/song-file-format-v0.md#media).
@@ -130,10 +130,14 @@ export async function canEncodeKaraoke(): Promise<boolean> {
   }
 }
 
-// Makes the karaoke track from the audio of `file`, fitted to the end of
-// `original` and cut where it is cut. A file without audio is refused with
-// 'no-audio'. Any other failure is a PackageError.
-export async function makeKaraoke(file: Blob, original: PackagedTrack): Promise<PackagedTrack> {
+// Makes the karaoke track from `audio`, planar pieces at KARAOKE_FORMAT,
+// fitted to the end of `original` and cut where it is cut. A SourceError from
+// the audio, such as decodeAudio's 'no-audio', is thrown as it is. Any other
+// failure is a PackageError.
+export async function makeKaraoke(
+  audio: AsyncIterable<Float32Array[]>,
+  original: PackagedTrack,
+): Promise<PackagedTrack> {
   try {
     // Where the original's segments start, and where it ends.
     const originalStarts: number[] = []
@@ -186,11 +190,11 @@ export async function makeKaraoke(file: Blob, original: PackagedTrack): Promise<
       }
       written += frames
     }
-    for await (const planes of decodeAudio(file, KARAOKE_FORMAT)) {
+    for await (const planes of audio) {
       const fitted = fit.push(planes)
       await encode(fitted)
-      // The rest is past the original's end, so it is not decoded. Leaving
-      // the loop closes the file.
+      // The rest is past the original's end, so it is not read. Leaving the
+      // loop ends the audio, which closes a decoded file.
       if ((fitted[0]?.length ?? 0) < (planes[0]?.length ?? 0)) break
     }
     await encode(fit.finish())

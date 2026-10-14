@@ -64,8 +64,13 @@ export interface SourceFacts {
 // Matroska (WebM). Mediabunny has no composer field of its own.
 const COMPOSER_KEYS = ['©wrt', 'TCOM', 'COMPOSER']
 
-// Whether this browser can play a stored type: the Player's own check.
-const defaultCanPlay = (type: string) => typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(type)
+// Whether this browser can play a stored type: the Player's own check. A
+// task's worker asks too, so MediaSource is looked up on the global, which
+// the worker's types do not declare.
+const defaultCanPlay = (type: string) => {
+  const mediaSource = (globalThis as { MediaSource?: { isTypeSupported(type: string): boolean } }).MediaSource
+  return mediaSource !== undefined && mediaSource.isTypeSupported(type)
+}
 
 // The caller must have initialised the core first, for its stored types.
 export async function readSource(file: Blob, canPlay = defaultCanPlay): Promise<SourceDetails> {

@@ -1,6 +1,7 @@
 import { InferenceSession, Tensor } from 'onnxruntime-web/webgpu'
 import { openSession } from '../onnx-session'
 import { Backend } from './backend'
+import { SeparatorRunner } from './separate'
 
 // The name the graph gives its weights file (docs/reference/models.md#htdemucs).
 const WEIGHTS_NAME = 'htdemucs_fwd.onnx.data'
@@ -27,4 +28,19 @@ export async function runWindow(
 ): Promise<{ xOut: Tensor; xtOut: Tensor }> {
   const outputs = await session.run({ x: new Tensor('float32', x, X_SHAPE), xt: new Tensor('float32', xt, XT_SHAPE) })
   return { xOut: outputs['x_out'], xtOut: outputs['xt_out'] }
+}
+
+// Runs the separator in an open session, one window at a time, for `separate`.
+export function separatorRunner(session: InferenceSession): SeparatorRunner {
+  return async (x, xt) => {
+    const { xOut, xtOut } = await runWindow(session, x, xt)
+    return {
+      xOut: xOut.data as Float32Array,
+      xtOut: xtOut.data as Float32Array,
+      dispose() {
+        xOut.dispose()
+        xtOut.dispose()
+      },
+    }
+  }
 }

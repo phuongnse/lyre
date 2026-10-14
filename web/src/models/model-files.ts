@@ -61,8 +61,11 @@ export function opfsModelFiles(): ModelFiles {
     async persisted() {
       return (await navigator.storage?.persisted?.()) ?? false
     },
+    // Only a page can ask: a worker's StorageManager has no persist, so a
+    // task's worker never asks and is never granted it.
     async persist() {
-      return (await navigator.storage?.persist?.()) ?? false
+      const storage = navigator.storage as { persist?: () => Promise<boolean> } | undefined
+      return (await storage?.persist?.()) ?? false
     },
   }
 }

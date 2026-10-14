@@ -5,7 +5,8 @@ import { TaskRunner } from '../../task/task-runner'
 import { messages } from '../messages'
 
 // The task check page (docs/ui-conventions.md#check-pages). It runs a task of
-// test stages until the real stages exist. Opened by its URL, #/task-check.
+// test stages, so cancel and cleanup are checked without a source or models.
+// Opened by its URL, #/task-check.
 @Component({
   selector: 'lyre-task-check',
   imports: [MatButton, MatProgressBar],
