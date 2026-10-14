@@ -341,6 +341,8 @@ not come from the seed.
 
 ## D20. Non-commercial models are allowed, and M2 compares two aligners — Agreed
 
+Partly replaced by [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed).
+
 Replaces the CC-BY-NC part of the "Not used" point of
 [D15](#d15-models-for-separation-and-alignment--agreed), and adds a second
 aligner.
@@ -356,10 +358,8 @@ aligner.
   `nguyenvulebinh/lyric-alignment`, a wav2vec2 model built for Vietnamese
   lyric alignment. Its model card states CC-BY-NC-4.0. Both do only forced
   alignment of the supplied syllables. Neither transcribes (D5).
-- **The choice:** among the aligners that run on the
-  [target devices](#d25-target-devices-for-making-songs--proposed), the one
-  with the lower syllable onset error is chosen. The results are recorded in
-  the docs.
+- **The choice:** replaced by [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed). The results are recorded in the
+  docs.
 - **The measurement page is built at the start of M2.** It needs the ONNX
   files, their download and hash check, and alignment, which M2 builds anyway.
   M1 keeps only the passkey check page.
@@ -503,3 +503,23 @@ Lyre is built and tested so that making a song runs well on them.
 
 *Why:* D20 and D21 judge the models on the target devices, but no doc listed
 them. A named list says which devices the measurements must cover.
+
+## D26. The owner chooses the aligner by watching its timing in the Player — Agreed
+
+Replaces the choice rule of [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
+
+- **Candidates:** the aligner files that run on every
+  [target device](#d25-target-devices-for-making-songs--proposed).
+- **The choice:** the owner watches each candidate's timing on the measured
+  songs in the Player and chooses the one that looks better. The reason is
+  recorded with the results in the docs.
+- **Watching:** after a measurement, the owner plays the source with each
+  candidate's timing through **Play with this timing** on the model check
+  page's Player *(planned for M2)*.
+- **Onset error is optional:** it is measured only when the owner gives a
+  timing file written by hand. It is reported for information and does not
+  decide the choice.
+
+*Why:* Writing a timing file by hand for every syllable of several songs
+costs too much for a choice between two aligners. Sync the owner can see is
+what a singer will see.

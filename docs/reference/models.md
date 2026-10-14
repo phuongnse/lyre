@@ -203,22 +203,24 @@ this section together.
 ## Measurement method
 
 The model measurement page runs the separator and each aligner file on the
-owner's devices. This section says what it measures and how the results
-choose the aligner. The results name the devices they were taken on.
+owner's devices. This section says what it measures and how the results,
+together with the owner's viewing in the Player, inform the choice of aligner. The results name the devices they were taken on.
 
 For now, the measurement section of the
 [model check page](../ui-conventions.md#check-pages) runs it. Each run
 measures WebGPU, then one-thread WebAssembly, and does not yet report the
 download time. The page's Copy results button copies the results as plain
-text, for recording in these docs.
+text, for recording in these docs. The page still requires a timing file.
+Making it optional is *(planned for M2)*.
 
 ### Inputs
 
-- **A source**, its **lyrics** and a **timing file** written by hand in the
+- **A source** and its **lyrics**, plus, if the owner has one, a **timing
+  file** written by hand in the
   [lyre-cli timing file format](lyre-cli.md#timing-file).
 - The owner picks them. They stay on the device: the page never uploads
   them, and they are never committed.
-- The page measures a few hand-timed Vietnamese songs
+- The page measures a few Vietnamese songs
   ([roadmap](../roadmap.md#early-checks-on-real-devices)).
 
 ### Time
@@ -251,6 +253,9 @@ system's figure by hand when it is needed.
 
 ### Onset error
 
+- It is measured only when the owner gives a timing file. It is reported for
+  information and does not decide the choice
+  ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
 - For each syllable, the [onset error](../domain/concepts.md#processing) is
   the absolute difference between the aligned start and the hand-written
   start.
@@ -290,10 +295,8 @@ on each [target device](../decisions.md#d25-target-devices-for-making-songs--pro
   measured song there on WebGPU, without an error and without running out of
   memory.
 - **The rule:** among the candidates that run on every
-  [target device](../decisions.md#d25-target-devices-for-making-songs--proposed), the one
-  with the lower median onset error is chosen
-  ([D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
-  The median pools every syllable of every measured song. It is not a median
-  of each song's median.
+  [target device](../decisions.md#d25-target-devices-for-making-songs--proposed), the owner
+  chooses the one whose timing looks better in the Player
+  ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
 - **One-thread WebAssembly** results are reported for information. They do
-  not decide the choice.
+  not decide the choice. Onset error is also reported for information only.

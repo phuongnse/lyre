@@ -89,7 +89,7 @@ What was learned:
 
 - **Alignment and role classification are the heaviest stages,** then
   separation. On a phone or in a browser they set what Lyre can do, so the
-  M2 measurements choose the aligner and confirm the separator (D15, D20).
+  M2 measurements choose the aligner and confirm the separator (D15, D20, D26).
 - **Check separation by sum.** Vocals plus karaoke track should add back up to
   the original, without clipping and at plausible levels. A large difference
   means a broken run. Two rules apply. The energy rule: the original's energy

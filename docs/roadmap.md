@@ -117,7 +117,7 @@ Done when all ten were merged and the owner accepted the Player.
   `lyric-alignment`, on WebGPU and on the one-thread WebAssembly fallback
   (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
   reports time, memory as the browser reports it and syllable onset error
-  against a few hand-timed Vietnamese songs. The
+  only when a hand-written timing file is given. The
   [models reference](reference/models.md#measurement-method) sets the method.
   Its first part is the measurement section of the model check page, at
   `#/model-check`. Each run measures WebGPU, then one-thread WebAssembly,
@@ -126,8 +126,13 @@ Done when all ten were merged and the owner accepted the Player.
   syllable against a timing file written by hand. It also gives the median,
   the 90th percentile and the share of syllables within 100 ms, 100 ms
   included. Both statistics interpolate linearly between ranks.
-- Its results choose the aligner. They are recorded in the docs before the
-  later M2 work relies on that choice.
+- The owner chooses the aligner by watching each candidate's timing in the
+  Player
+  ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
+  After a measurement, **Play with this timing** on the model check page's
+  Player plays the source with that candidate's timing *(planned for M2)*.
+  The choice and its reason are recorded in the docs before the later M2 work
+  relies on it.
 
 ## Later milestones
 
@@ -135,9 +140,9 @@ Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
 - **M2:** the measurement page comes first. It compares Omnilingual and
-  `lyric-alignment`. The aligner with the lower syllable onset error, among
-  those that run on the [target devices](decisions.md#d25-target-devices-for-making-songs--proposed), is chosen
-  ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)). A newer decision replaces D15 if the separator
+  `lyric-alignment`. Among the aligners that run on the
+  [target devices](decisions.md#d25-target-devices-for-making-songs--proposed), the owner chooses the one whose timing looks better in the Player
+  ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)). A newer decision replaces D15 if the separator
   misses its target
   ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
   as [D22](decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed) splits it).
