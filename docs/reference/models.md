@@ -109,8 +109,8 @@ It stays pinned only while the core and the web client still run it.
 - **Vocabulary:** none. The karaoke track is the sum of the drums, bass and
   other stems (D15).
 - **Test stand-in:** tests use the
-  [test separator](model-tool.md#make_test_separatorpy) instead, which has the
-  same inputs and outputs and is pinned as `test-htdemucs-graph` and
+  [htdemucs test separator](model-tool.md#make_test_htdemucspy) instead, which
+  has the same inputs and outputs and is pinned as `test-htdemucs-graph` and
   `test-htdemucs-weights`.
 
 ## Mel-Band RoFormer
@@ -146,14 +146,17 @@ as the fp16 ONNX export by audiojs, which the owner publishes unchanged.
   fade-out. A song of 8 s or less is not reflected at its ends. A part shorter
   than a segment is reflected when it is longer than half a segment, and
   silent otherwise. These rules follow ZFTurbo's inference code.
-- **Input and output:** both have shape (1, 4, 1025, 801), holding the real
+- **Input and output:** the input is `mix_spec` and the output is
+  `stems_spec`. Both are float32 with shape (1, 4, 1025, 801), holding the real
   part of the left channel, its imaginary part, the real part of the right
   channel and its imaginary part. The input is the segment's spectrogram. The
   output is the vocals' spectrogram.
 - **Frame rate:** 100 spectrogram frames per second (44,100 / 441).
 - **Vocabulary:** none. The karaoke track is the source minus the vocals.
-- **Test stand-in:** none yet. Tests use the htdemucs test separator until the
-  core and the web client switch to this file.
+- **Test stand-in:** the [test separator](model-tool.md#make_test_separatorpy)
+  has the same input and output names, shapes and types. It is not pinned in
+  the core yet. The web client still loads the htdemucs test files until it
+  switches to this file.
 
 ## lyric-alignment
 

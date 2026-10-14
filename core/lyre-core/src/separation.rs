@@ -928,7 +928,7 @@ mod tests {
         let mut separation = Separation::new(&tone, &tone).unwrap();
         assert_eq!(separation.window_count(), 1);
         let input = separation.input(0).unwrap();
-        // 0.125 is SCALE in tools/model-tool/make_test_separator.py: every
+        // 0.125 is SCALE in tools/model-tool/make_test_htdemucs.py: every
         // stem of both branches is the branch's input times 0.125.
         let x_out = stems_of(&input.x, [0.125; 4]);
         let xt_out = stems_of(&input.xt, [0.125; 4]);
