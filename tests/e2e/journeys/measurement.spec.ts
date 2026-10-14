@@ -232,6 +232,59 @@ test("after a WebAssembly measurement, the vocals and karaoke track players each
   }
 });
 
+test("Copy results puts the Device section and every result on the clipboard as label: value lines, and says the results are copied", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(WASM_PAGE);
+
+  await measure(page, timing);
+
+  await expect(page.getByText("The measurement is done.")).toBeVisible({
+    timeout: RUN_TIMEOUT,
+  });
+  await page.getByRole("button", { name: "Copy results" }).click();
+  await expect(page.getByText("The results are copied.")).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+
+  const sections = ["Device", ...CANDIDATES.map((c) => `${c} on WebAssembly`)];
+  for (const name of sections) {
+    const section = labelled(page, name);
+    const labels = await section.locator("dt").allInnerTexts();
+    const values = await section.locator("dd").allInnerTexts();
+    expect(labels.length).toBeGreaterThan(0);
+    expect(values).toHaveLength(labels.length);
+    expect(copied).toContain(name);
+    labels.forEach((label, index) =>
+      expect(copied).toContain(`${label}: ${values[index]}`),
+    );
+  }
+});
+
+test("Copy results says the browser refused when the clipboard rejects the write", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", {
+      configurable: true,
+      get: () => ({
+        writeText: () =>
+          Promise.reject(new DOMException("denied", "NotAllowedError")),
+      }),
+    });
+  });
+  await page.goto(WASM_PAGE);
+
+  await expect(labelled(page, "Device")).toBeVisible();
+  await page.getByRole("button", { name: "Copy results" }).click();
+
+  await expect(
+    page.getByText("The browser refused to copy the results."),
+  ).toBeVisible();
+  await expect(page.getByText("The results are copied.")).toHaveCount(0);
+});
+
 test("a timing file with an overlap gets the message naming its line, and no result", async ({
   page,
 }) => {

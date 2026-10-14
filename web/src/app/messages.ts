@@ -218,6 +218,11 @@ export const messages = {
   measurementSeparating: (backend: string) => `Separating the vocals on ${backend}…`,
   measurementAligning: (candidate: string, backend: string) => `Aligning with ${candidate} on ${backend}…`,
   measurementDone: 'The measurement is done.',
+  copyResults: 'Copy results',
+  resultsCopied: 'The results are copied.',
+  resultsNotCopied: 'The browser refused to copy the results.',
+  // One line of the copied text: a figure's label and its value.
+  copiedRow: (label: string, value: string) => `${label}: ${value}`,
   // Names the backend whose separation the players play.
   measurementTracks: (backend: string) => `Tracks separated on ${backend}`,
   measurementTracksAbout: "The tracks play from this device's memory. They are not sent anywhere or kept.",
