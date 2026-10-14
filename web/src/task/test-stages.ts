@@ -4,8 +4,8 @@ const STEPS = 20
 const STEP_MS = 100
 const FILE_BYTES = 1024
 
-// Stands in for a real stage until those exist. Each step keeps the CPU busy,
-// as a model run does, then writes a small file to the working area.
+// Stands in for a real stage on the task check page. Each step keeps the CPU
+// busy, as a model run does, then writes a small file to the working area.
 function testStage(name: string): Stage {
   return {
     name,

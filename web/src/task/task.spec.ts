@@ -132,6 +132,25 @@ describe('runTask', () => {
     const fractions = reports.flatMap((report) => (report.type === 'progress' ? [report.fraction] : []))
     expect(fractions).toEqual([undefined, 0, 1])
   })
+
+  test('the done report carries the song a stage handed over', async () => {
+    const song = new Uint8Array([1, 2, 3])
+    const ran: string[] = []
+    const { reports } = await run([stage('a', ran, ({ handOver }) => handOver(song)), stage('b', ran)])
+    expect(reports.at(-1)).toEqual({ type: 'done', song })
+  })
+
+  test('a failure after a song was handed over carries no song', async () => {
+    const ran: string[] = []
+    const { reports, areas } = await run([
+      stage('a', ran, ({ handOver }) => handOver(new Uint8Array([1, 2, 3]))),
+      stage('b', ran, () => {
+        throw new StageFailure('song-refused')
+      }),
+    ])
+    expect(reports.at(-1)).toEqual({ type: 'failed', stage: 'b', reason: 'song-refused' })
+    expect(areas.areas.has(taskId)).toBe(false)
+  })
 })
 
 describe('timeLeft', () => {

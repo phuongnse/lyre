@@ -3,7 +3,7 @@ import { SourceError } from '../source-error'
 import { SEPARATION_FORMAT } from '../source-audio'
 import { decode, separate } from './separate'
 import { replyForFault, SeparationReply, SeparationRequest } from './separation-messages'
-import { openSeparator } from './separator-session'
+import { openSeparator, separatorRunner } from './separator-session'
 
 // The model files could not be opened as a separator.
 class ModelError extends Error {}
@@ -33,7 +33,7 @@ async function run(request: SeparationRequest): Promise<SeparationReply> {
   })
   try {
     const [left, right] = await decode(request.source)
-    const tracks = await separate(session, left, right, (done, total) =>
+    const tracks = await separate(separatorRunner(session), left, right, (done, total) =>
       postMessage({ type: 'progress', backend, done, total } satisfies SeparationReply),
     )
     // The tracks are not kept yet, so only their lengths leave the worker.

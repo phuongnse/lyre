@@ -1,16 +1,9 @@
-import { makeKaraoke } from './karaoke-track'
-import init, {
-  parseTimingFile,
-  SongWriteErrorKind,
-  SongWriteFault,
-  SongWriter,
-  TimingFileErrorKind,
-  TimingFileFault,
-  TrackKind,
-  VocalRole,
-} from './lyre-wasm/lyre_wasm.js'
-import { PackageReply, PackageRequest, SegmentTimes, SongRefusal } from './original-track-messages'
+import { KARAOKE_FORMAT, makeKaraoke } from './karaoke-track'
+import init, { parseTimingFile, TimingFileErrorKind, TimingFileFault } from './lyre-wasm/lyre_wasm.js'
+import { PackageReply, PackageRequest, SegmentTimes } from './original-track-messages'
 import { PackagedTrack, packageOriginal } from './original-track'
+import { SongRefused, writeSong } from './song-writer'
+import { decodeAudio } from './source-audio'
 import { makeThumbnail } from './thumbnail'
 import { checkVideoEnd, packageVideo, videoRefusal } from './video-track'
 
@@ -60,15 +53,6 @@ addEventListener('message', (event: MessageEvent<PackageRequest>) => {
   }
 })
 
-// The core refused the song for a reason the page names. Its text never
-// reaches the UI.
-class SongRefused extends Error {
-  constructor(readonly reason: SongRefusal) {
-    super(reason)
-    this.name = 'SongRefused'
-  }
-}
-
 async function makeAudio(
   file: File,
   karaokeFile: File,
@@ -76,7 +60,7 @@ async function makeAudio(
   videoType: string | undefined,
 ): Promise<PackageReply> {
   const original = await packageOriginal(file, storedType)
-  const karaoke = await makeKaraoke(karaokeFile, original)
+  const karaoke = await makeKaraoke(decodeAudio(karaokeFile, KARAOKE_FORMAT), original)
   const karaokeTimes = segmentTimes(karaoke)
   // The song lasts as long as its karaoke track.
   const songDurationMs = karaokeTimes[karaokeTimes.length - 1]!.endMs
@@ -107,32 +91,23 @@ async function makeSong(request: Extract<PackageRequest, { type: 'make-song' }>)
   const timesMs = readTimes(timing, lyrics)
 
   const original = await packageOriginal(request.file, request.storedType)
-  const karaoke = await makeKaraoke(request.karaokeFile, original)
+  const karaoke = await makeKaraoke(decodeAudio(request.karaokeFile, KARAOKE_FORMAT), original)
   const karaokeTimes = segmentTimes(karaoke)
   const songDurationMs = karaokeTimes[karaokeTimes.length - 1]!.endMs
   const video = request.videoType === undefined ? null : await packageVideo(request.file, request.videoType)
   if (video !== null) checkVideoEnd(video, songDurationMs)
   const thumbnail = await makeThumbnail(request.file)
 
-  const { title, artist, composer, vocalRole } = request.details
-  const role = vocalRole === 'male' ? VocalRole.Male : VocalRole.Female
-  const writer = new SongWriter(request.songId, title, artist, composer, role, lyrics, timesMs)
-  try {
-    if (thumbnail !== null) writer.setThumbnail(thumbnail)
-    if (video !== null) addTrack(writer, TrackKind.Video, video)
-    addTrack(writer, TrackKind.Karaoke, karaoke)
-    addTrack(writer, TrackKind.Original, original)
-    return writer.write()
-  } catch (error) {
-    if (!(error instanceof SongWriteFault)) throw error
-    const kind = error.kind
-    error.free()
-    if (kind === SongWriteErrorKind.PastEnd) throw new SongRefused('past-end')
-    if (kind === SongWriteErrorKind.Lyrics) throw new SongRefused('lyrics')
-    throw new Error('refused')
-  } finally {
-    writer.free()
-  }
+  return writeSong({
+    songId: request.songId,
+    details: request.details,
+    lyrics,
+    timesMs,
+    original,
+    karaoke,
+    video,
+    thumbnail,
+  })
 }
 
 // Each syllable's start and end, in lyric order, from the timing file read
@@ -150,12 +125,6 @@ function readTimes(timing: Uint8Array, lyrics: Uint8Array): Uint32Array {
   const times = Uint32Array.from(syllables.flatMap(({ startMs, endMs }) => [startMs, endMs]))
   for (const syllable of syllables) syllable.free()
   return times
-}
-
-// Gives the writer a track's start, stored type, init bytes and segments.
-function addTrack(writer: SongWriter, kind: TrackKind, track: PackagedTrack): void {
-  writer.setTrack(kind, track.startMs, track.storedType, track.init)
-  for (const segment of track.segments) writer.addSegment(kind, segment.durationMs, segment.bytes)
 }
 
 function segmentTimes({ startMs, segments }: PackagedTrack): SegmentTimes[] {

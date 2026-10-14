@@ -173,7 +173,8 @@ reference doc and reviewed before M3 implements them.
   tabs. The startup cleanup waits for it, so it never removes the area of a
   task still running in another tab.
 - On the web, stage 1, reading the source, runs on the main thread as soon as
-  a source is picked, for now on the source check page. It reads only the
+  a source is picked, for now on the source check page. A task runs it again
+  in its worker. It reads only the
   container and decodes nothing. Mediabunny reads MP4, WebM and MP3. It reads
   a WebM's tags, but not the segment title where ffmpeg writes a WebM title.
   The core works out the stored type D24 gives the primary video track and
@@ -188,22 +189,24 @@ reference doc and reviewed before M3 implements them.
   timeline's start: audio that starts later gets leading silence. Audio the
   browser cannot decode gets the no-audio refusal. For now it runs on the main
   thread from the source check page, and in a Web Worker from the separation
-  check page.
+  check page and in a task.
 - On the web, stage 8 repackages the source's primary audio into the
-  original track with Mediabunny, in a Web Worker, for now from the source
-  check page. The coded packets are copied as they are. The track is WebM or
+  original track with Mediabunny, in a Web Worker, from the source check page
+  and in a task. The coded packets are copied as they are. The track is WebM or
   fragmented MP4, by the stored type the core gives it, and its times are
   shifted to the timeline's start. Audio whose first frame comes more than
   50 ms after that start is refused. Mediabunny writes Clusters or fragments
   of about 1 s, and the web client groups them into media segments of up to
   10 s. It checks the format's limits, which the core's writer checks again.
-  The same worker can then make the karaoke track, for now from a second
-  picked file that stands in for it. It decodes the file at 48 kHz stereo on
-  its own timeline, fits it to the original track's end with silence or a
-  cut, and encodes it to Opus at 128 kbps through WebCodecs. Mediabunny
-  writes one Cluster per Opus packet. The web client cuts the track at the
-  packet edge nearest each of the original track's cuts, so both tracks have
-  the same number of segments, each start and end within 50 ms. A packet
+  The same worker can then make the karaoke track. A task makes it from the
+  karaoke track separation gave, resampled to 48 kHz. The source check page
+  makes it from a second picked file that stands in for it, decoded at 48 kHz
+  stereo on its own timeline. Either is fitted to the original track's end
+  with silence or a cut, and encoded to Opus at 128 kbps through WebCodecs.
+  Mediabunny writes one Cluster per Opus packet. The web client cuts the
+  track at the packet edge nearest each of the original track's cuts, so
+  both tracks have the same number of segments, each start and end within
+  50 ms. A packet
   that starts at the original's end, which the encoder adds for the audio it
   held back, is left out. The page checks that the browser can encode Opus
   before it starts the worker. The same worker then repackages the source's
@@ -217,11 +220,12 @@ reference doc and reviewed before M3 implements them.
   than 50 ms after the timeline's start is refused too. The video must end
   within 1,000 ms of the song's duration, which the core's writer checks
   again. An audio-only source gives no video.
-- On the web, stage 9 writes the song file in the same worker, for now from
-  the source check page, with a hand-written timing file in place of
-  alignment. The worker first reads the timing file against the lyrics
-  through the core, so a timing file that does not fit fails before any media
-  work. It then makes the tracks and the thumbnail, and passes them, the
+- On the web, stage 9 writes the song file in a task, with the timing from
+  alignment. The source check page also writes one, in the same worker as
+  stage 8, with a hand-written timing file in place of alignment. That worker
+  first reads the timing file against the lyrics through the core, so a
+  timing file that does not fit fails before any media work. Both then make
+  the tracks and the thumbnail, and pass them, the
   lyrics' bytes unchanged, the timing, the song details and a random 16-byte
   song ID to lyre-wasm's `SongWriter`. That calls the core's writer, which
   runs every check the reader runs, so the web client never lays out song
@@ -237,15 +241,15 @@ reference doc and reviewed before M3 implements them.
   worker gets only model bytes that already passed their check.
   ONNX Runtime's WebAssembly file is served from the site itself, at `ort/`,
   never from a CDN.
-- On the web, stage 3, separation, runs in a Web Worker, for now from the
-  separation check page. The worker decodes the whole source at 44.1 kHz
+- On the web, stage 3, separation, runs in a Web Worker, from the separation
+  check page and in a task. The worker decodes the whole source at 44.1 kHz
   stereo, because the core's separation needs all of it. The core cuts the
   audio into windows, the model runs on each, and the core joins them and
   checks the sum. Progress counts the windows done out of the total. The page
   runs htdemucs, or the
   [test separator](reference/model-tool.md#make_test_separatorpy) when its
-  URL asks for it. The vocals and the karaoke track are not kept yet: only
-  their lengths reach the page. The model check page's measurement runs the
+  URL asks for it. On the separation check page, only the tracks' lengths
+  reach the page. The model check page's measurement runs the
   same separation once per backend, then stage 4 on that backend's vocals,
   in one Web Worker.
 - On the web, stage 4, alignment, is a loop in the web client that takes the
@@ -271,9 +275,26 @@ reference doc and reviewed before M3 implements them.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is
-  all worker and storage work. The web client runs test stages until the real
-  stages run in [the Make a song section](ui-conventions.md#making-a-song)
-  *(planned for M2)*.
+  all worker and storage work. Given a source, its lyrics, the song details,
+  the vocal role and the IDs of the model files to use, a task runs stages 1
+  to 4 and 7 to 9 in its worker and hands over the song file's bytes. It never
+  picks an aligner itself. No page starts one yet:
+  [the Make a song section](ui-conventions.md#making-a-song) will
+  *(planned for M2)*. The task check page still runs three test stages.
+- In a task, the decoded audio, the vocals and the karaoke track from
+  separation, and the timing go through the working area. The packaged
+  tracks stay in memory from stage 8 to stage 9, because the song writer
+  holds them all anyway.
+- A task loads every model file it needs at the start of separation, before
+  any window runs, through the same download and check as the model check
+  page. A file that fails its check stops the task, so it never runs.
+- In a task, stage 7 stores no display lines, because they are laid out at
+  play time ([D17](decisions.md#d17-display-lines-are-laid-out-at-play-time--agreed)).
+  It runs the song file's timing check against the lyrics and the length of
+  the extracted audio.
+- A failed task names its stage and one fixed reason, such as a refused
+  source, a model file that failed its check or a refused alignment, never
+  the error's text.
 
 ## Testing
 
