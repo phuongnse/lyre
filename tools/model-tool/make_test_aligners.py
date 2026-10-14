@@ -24,7 +24,7 @@ import struct
 import sys
 from pathlib import Path
 
-from make_test_htdemucs import _bytes, _int, _string
+from make_test_separator import _bytes, _int, _string
 
 DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / 'tests' / 'fixtures' / 'models'
 OMNILINGUAL_GRAPH = 'omnilingual.onnx'

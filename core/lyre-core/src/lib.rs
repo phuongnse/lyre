@@ -11,7 +11,6 @@ pub mod lyrics;
 pub mod lyrics_rows;
 pub mod mel_roformer;
 pub mod model;
-pub mod separation;
 pub mod song_file;
 pub mod timing_file;
 pub mod words;

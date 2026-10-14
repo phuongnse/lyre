@@ -55,65 +55,6 @@ measurement page still measures it, as sherpa-onnx's int8 export.
   Omnilingual stand-in has the same input and output names, and is pinned as
   `test-omnilingual-model` and `test-omnilingual-tokens`.
 
-## htdemucs
-
-D15's separator, replaced by Mel-Band RoFormer
-([D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)).
-The web client no longer runs it. The core keeps it, with its pins, until the
-next part removes it.
-
-| Repository | Revision | Path | Bytes | SHA-256 |
-| --- | --- | --- | --- | --- |
-| `webnn/stem-separator` | `b56f9e66ceffca2401f83d2469dadaddd06e4994` | `onnx/htdemucs_fwd.onnx` | 2,385,507 | `555f511fb653348a1c9495ab6b6091767d1920798f3fba68629a1fe5b135a45f` |
-| `webnn/stem-separator` | `b56f9e66ceffca2401f83d2469dadaddd06e4994` | `onnx/htdemucs_fwd.onnx.data` | 168,361,984 | `23a7c68669c041363caaef94641e961dc8c4e16b9891cb87f58f0e199a5e8820` |
-
-- **Licence:** the model card states MIT. That is the licence of the Demucs
-  code. Meta's repository states no separate grant for the weights, so Lyre
-  treats the weights' licence as unclear
-  ([knowledge](../domain/knowledge.md#models-and-licences)).
-- **Attribution:** Demucs v4 `htdemucs` by Meta
-  ([facebookresearch/demucs](https://github.com/facebookresearch/demucs)),
-  checkpoint `955717e8-8726e21a.th`, converted to ONNX for the WebNN
-  Developer Preview with the repository's
-  `tools/convert_htdemucs_fwd_only.py`.
-  [The files at the pinned commit](https://huggingface.co/webnn/stem-separator/tree/b56f9e66ceffca2401f83d2469dadaddd06e4994).
-- **The weights file** must sit next to the graph under the name
-  `htdemucs_fwd.onnx.data`, which the graph gives.
-- **Sample rate:** 44.1 kHz.
-- **Channels:** stereo.
-- **Window length:** a fixed segment of 343,980 samples (7.8 s). The source's
-  audio is cut into segments of this length, and the last is padded with
-  silence. A segment starts every 257,985 samples, so neighbours overlap by a
-  quarter, as in Demucs's `apply_model`. The segments' stems are joined with
-  Demucs's triangular weights and trimmed to the source's length.
-- **Inputs:** two, both float32.
-  - `x`, shape (1, 4, 2048, 336): the segment's spectrogram, with the real and
-    imaginary parts of each channel as separate channels. It is an STFT with
-    n_fft 4096 and hop 1024, as in Demucs 4.0.1.
-  - `xt`, shape (1, 2, 343980): the segment's waveform.
-- **Input normalisation:** outside the file, so Lyre does it. Each input is
-  normalised over the segment as (v − mean) / (std + 1e-5), with its own
-  mean and standard deviation. The standard deviation divides by N − 1, as
-  PyTorch's does. Undoing it multiplies by the standard deviation and adds the
-  mean, without the epsilon. The core's `separation` module does these steps
-  and those under **After the file**. The
-  [model tool](../../tools/model-tool/compare_htdemucs.py) shows the steps.
-- **Outputs:** two, both float32, with the stems in the order drums, bass,
-  other, vocals.
-  - `x_out`, shape (1, 16, 2048, 336): four spectrograms, one per stem, in the
-    layout of `x`.
-  - `xt_out`, shape (1, 8, 343980): four stereo waveforms, one per stem.
-- **After the file:** Lyre undoes each output's normalisation, turns `x_out`
-  back into waveforms with the inverse STFT, and adds the two branches to get
-  each stem.
-- **Frame rate:** about 43.07 spectrogram frames per second (44,100 / 1024).
-- **Vocabulary:** none. The karaoke track is the sum of the drums, bass and
-  other stems (D15).
-- **Test stand-in:** tests use the
-  [htdemucs test separator](model-tool.md#make_test_htdemucspy) instead, which
-  has the same inputs and outputs and is pinned as `test-htdemucs-graph` and
-  `test-htdemucs-weights`.
-
 ## Mel-Band RoFormer
 
 The separator of
@@ -211,7 +152,7 @@ python3 - <<'EOF'
 import hashlib, json, re, sys, urllib.request
 row = re.compile(r'^\| `([^`]+)` \| `([0-9a-f]{40})` \| `([^`]+)` \| ([\d,]+) \| `([0-9a-f]{64})` \|')
 rows = [m.groups() for m in map(row.match, open('docs/reference/models.md', encoding='utf-8')) if m]
-ok = len(rows) == 8
+ok = len(rows) == 6
 for repo, rev, path, size, sha in rows:
     folder = path.rpartition('/')[0]
     api = f'https://huggingface.co/api/models/{repo}/tree/{rev}' + (f'/{folder}' if folder else '')
@@ -226,7 +167,7 @@ EOF
 ```
 
 - It prints one line per file and the number of files. It exits with 0 when
-  there are exactly eight files and all match, and with 1 otherwise.
+  there are exactly six files and all match, and with 1 otherwise.
 - For a large file, the API gives the SHA-256 directly. For a small file it
   does not, so the command downloads the file and hashes it.
 - To change a pin, update its row and the expected number of files in the

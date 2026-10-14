@@ -58,7 +58,7 @@ describe('parts picked from changed paths', () => {
   })
 
   test('tests/fixtures/models also picks the model tool, whose test checks the test separator', () => {
-    assert.deepEqual(checkedParts(['tests/fixtures/models/htdemucs_fwd.onnx']), ['core', 'web', 'e2e', 'models'])
+    assert.deepEqual(checkedParts(['tests/fixtures/models/mel-roformer.onnx']), ['core', 'web', 'e2e', 'models'])
   })
 
   test('lyre-cli picks the same parts as the rest of the core', () => {

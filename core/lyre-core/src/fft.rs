@@ -1,4 +1,4 @@
-//! The FFT that both separators share.
+//! The FFT of Mel-Band RoFormer's STFT.
 
 use std::f64::consts::PI;
 
