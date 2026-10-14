@@ -297,6 +297,19 @@ Compose uses the same three values *(planned for M4)*.
   `#/model-check?backend=wasm`, makes it run on WebAssembly even when the
   browser has a GPU. The Playwright journeys use it to check the run without
   a GPU, under the page's policy and from the site's own origin.
+  An **Align test audio** control has a choice of test aligner, Omnilingual
+  or lyric-alignment, and a **Force WebAssembly** checkbox, which starts
+  ticked with `?backend=wasm`. The button opens a lyrics file picker, and
+  picking a file times its syllables on 40 s of test audio in a Web Worker
+  ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
+  line shows the backend and the windows done out of the total, such as
+  "Aligning on WebAssembly: 1 of 2 windows done". When it ends, the line says
+  "Aligned on WebAssembly: 2 of 2 windows done", and another gives the number
+  of syllables timed and says that the song file timing check accepted the
+  timing. A timing the check refuses gets its own message, and any other
+  failure one plain message. Neither shows lyric text or error text. The
+  Playwright journeys use it to check a run of each test aligner on
+  WebAssembly, under the page's policy.
 - The separation check page separates a picked source's audio into vocals and
   a karaoke track in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
