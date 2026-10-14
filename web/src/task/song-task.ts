@@ -37,7 +37,7 @@ export interface SongTaskInput {
   vocalRole: VocalRole
   // The IDs of the pinned model files.
   separator: string
-  aligner: { kind: 'omnilingual' | 'lyric-alignment'; model: string; vocabulary: string }
+  aligner: { kind: 'lyric-alignment'; model: string; vocabulary: string }
 }
 
 // The media work of stages 1, 2 and 8.
@@ -59,7 +59,6 @@ export interface SongModels {
 }
 
 const kinds: Record<SongTaskInput['aligner']['kind'], AlignerKind> = {
-  omnilingual: AlignerKind.Omnilingual,
   'lyric-alignment': AlignerKind.LyricAlignment,
 }
 

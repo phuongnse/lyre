@@ -17,44 +17,6 @@ and [D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed).
 Each file is downloaded from `https://huggingface.co/<repository>/resolve/<revision>/<path>`,
 never from a branch. Bytes are the file's exact size.
 
-## Omnilingual CTC-300M
-
-D15's aligner, no longer a candidate (D29). It stays pinned only while the
-measurement page still measures it, as sherpa-onnx's int8 export.
-
-| Repository | Revision | Path | Bytes | SHA-256 |
-| --- | --- | --- | --- | --- |
-| `csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12` | `6fc542a3b0661c8278cca1230c34deb989f31202` | `model.int8.onnx` | 365,352,120 | `e7c4e54ee4c4c47829cc6667d5d00ed8ea7bef1dcfeef0fce766f77752a2726c` |
-| `csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12` | `6fc542a3b0661c8278cca1230c34deb989f31202` | `tokens.txt` | 86,423 | `a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31` |
-
-- **Licence:** Apache-2.0, in the repository's `LICENSE` file. The model card
-  states no licence field.
-- **Attribution:** Omnilingual ASR by Meta
-  ([facebookresearch/omnilingual-asr](https://github.com/facebookresearch/omnilingual-asr)),
-  converted to ONNX and quantized to int8 by Fangjun Kuang for sherpa-onnx,
-  with [`export-onnx.py`](https://github.com/k2-fsa/sherpa-onnx/blob/6e7ea3e409f90aaf1541c87f21a013c4f20b9680/scripts/omnilingual-asr/export-onnx.py).
-  [The files at the pinned commit](https://huggingface.co/csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/tree/6fc542a3b0661c8278cca1230c34deb989f31202).
-- **Sample rate:** 16 kHz.
-- **Channels:** mono.
-- **Input:** `x`, shape (1, samples), float32.
-- **Input normalisation:** outside the file, so Lyre does it. Samples in
-  [−1, 1] are brought to zero mean and unit variance over the window:
-  (x − mean) / √(variance + 1e-5), where the variance divides by the number
-  of samples. This is what sherpa-onnx does, in
-  [`offline-omnilingual-asr-ctc-model.cc`](https://github.com/k2-fsa/sherpa-onnx/blob/6e7ea3e409f90aaf1541c87f21a013c4f20b9680/sherpa-onnx/csrc/offline-omnilingual-asr-ctc-model.cc)
-  and [`test.py`](https://github.com/k2-fsa/sherpa-onnx/blob/6e7ea3e409f90aaf1541c87f21a013c4f20b9680/scripts/omnilingual-asr/test.py).
-- **Window length:** under 40 s (D15). Lyre uses 30 s windows with 2 s of
-  overlap, planned by the core.
-- **Output:** `logits`, shape (1, frames, 9812), float32. These are raw
-  logits: the log-softmax is outside the file.
-- **Frame rate:** 50 frames per second (one frame per 320 samples).
-- **Vocabulary:** the 9,812 lines of `tokens.txt`, each a token and its index.
-  Index 0, `<s>`, is the CTC blank. Index 4 is the space between words.
-- **Test stand-in:** tests use the
-  [test aligners](model-tool.md#make_test_alignerspy) instead. Their
-  Omnilingual stand-in has the same input and output names, and is pinned as
-  `test-omnilingual-model` and `test-omnilingual-tokens`.
-
 ## Mel-Band RoFormer
 
 The separator of
@@ -131,12 +93,12 @@ and fp32, is a candidate on the measurement page.
   take 96 and 97. Index 95, `<pad>`, is the CTC blank. Index 0, `|`, is the
   space between words.
 - **Test stand-in:** tests use the
-  [test aligners](model-tool.md#make_test_alignerspy) instead. Their
-  lyric-alignment stand-in has the same input and output names, and is pinned
-  as `test-lyric-alignment-model` and `test-lyric-alignment-vocab`.
+  [test aligner](model-tool.md#make_test_alignerspy) instead. It has the same
+  input and output names, and is pinned as `test-lyric-alignment-model` and
+  `test-lyric-alignment-vocab`.
 
-The core's `aligner` module applies each aligner's input normalisation and
-log-softmax, and reads its vocabulary file. It refuses a vocabulary file
+The core's `aligner` module checks that the aligner's output is whole frames,
+and reads its vocabulary file. It refuses a vocabulary file
 over 1 MiB, with more than 16,384 entries, with an entry over 64 bytes, with
 indexes that are not 0 to n − 1 each used once, or with no blank where the
 aligner keeps it.
@@ -152,7 +114,7 @@ python3 - <<'EOF'
 import hashlib, json, re, sys, urllib.request
 row = re.compile(r'^\| `([^`]+)` \| `([0-9a-f]{40})` \| `([^`]+)` \| ([\d,]+) \| `([0-9a-f]{64})` \|')
 rows = [m.groups() for m in map(row.match, open('docs/reference/models.md', encoding='utf-8')) if m]
-ok = len(rows) == 6
+ok = len(rows) == 4
 for repo, rev, path, size, sha in rows:
     folder = path.rpartition('/')[0]
     api = f'https://huggingface.co/api/models/{repo}/tree/{rev}' + (f'/{folder}' if folder else '')
@@ -167,7 +129,7 @@ EOF
 ```
 
 - It prints one line per file and the number of files. It exits with 0 when
-  there are exactly six files and all match, and with 1 otherwise.
+  there are exactly four files and all match, and with 1 otherwise.
 - For a large file, the API gives the SHA-256 directly. For a small file it
   does not, so the command downloads the file and hashes it.
 - To change a pin, update its row and the expected number of files in the
@@ -268,8 +230,7 @@ on each [target device](../decisions.md#d25-requirements-for-making-songs--propo
 ### The choice
 
 - **Aligner:** `lyric-alignment` ([D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
-- **Candidates:** its fp32 and int8 files. The page still measures Omnilingual
-  int8 until a later change removes it. That result decides nothing.
+- **Candidates:** its fp32 and int8 files.
 - **Runs on a device:** a candidate runs on a device when it finishes every
   measured song there on WebGPU, without an error and without running out of
   memory.

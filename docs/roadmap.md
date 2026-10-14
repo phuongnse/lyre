@@ -114,7 +114,7 @@ Done when all ten were merged and the owner accepted the Player.
   does not link to it.
 - The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
   It runs the separator (D28) and both files of the `lyric-alignment` aligner
-  (D29), and still measures Omnilingual int8 until a later change removes it.
+  (D29).
   It runs on WebGPU and on one-thread WebAssembly for information
   (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
   reports time and memory as the browser reports it. The

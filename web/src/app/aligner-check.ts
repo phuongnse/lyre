@@ -1,5 +1,4 @@
 import { AlignerCheckReply, AlignerCheckRequest } from '../alignment/aligner-check-messages'
-import { TestAligner } from '../alignment/aligner-session'
 import { Backend } from '../separation/backend'
 import { trustedScriptUrl } from '../worker-url'
 import { Models } from './models'
@@ -14,11 +13,8 @@ function startWorker(): globalThis.Worker {
   return new Worker(new URL('../alignment/aligner-check.worker', import.meta.url), { type: 'module' })
 }
 
-// Each test aligner's model and vocabulary files (docs/reference/models.md).
-const files: Record<TestAligner, { graph: string; vocabulary: string }> = {
-  omnilingual: { graph: 'test-omnilingual-model', vocabulary: 'test-omnilingual-tokens' },
-  'lyric-alignment': { graph: 'test-lyric-alignment-model', vocabulary: 'test-lyric-alignment-vocab' },
-}
+// The test aligner's model and vocabulary files (docs/reference/models.md).
+const files = { graph: 'test-lyric-alignment-model', vocabulary: 'test-lyric-alignment-vocab' }
 
 // Checks the test aligner's two files, then times the syllables of `lyrics`
 // on the test audio in a Web Worker. Only the checked bytes reach the worker.
@@ -26,7 +22,6 @@ const files: Record<TestAligner, { graph: string; vocabulary: string }> = {
 // worker ends once it answers.
 export async function runAlignerCheck(
   models: Models,
-  aligner: TestAligner,
   lyrics: File,
   forced: Backend | undefined,
   onProgress: (progress: Extract<AlignerCheckReply, { type: 'progress' }>) => void,
@@ -34,8 +29,8 @@ export async function runAlignerCheck(
   let graph: Blob
   let vocabulary: Blob
   try {
-    graph = await models.load(files[aligner].graph)
-    vocabulary = await models.load(files[aligner].vocabulary)
+    graph = await models.load(files.graph)
+    vocabulary = await models.load(files.vocabulary)
   } catch {
     // A file that failed its check or could not be downloaded is not run.
     return { type: 'failed', problem: 'other' }
@@ -50,7 +45,6 @@ export async function runAlignerCheck(
       worker.onerror = () => resolve({ type: 'failed', problem: 'other' })
       const request: AlignerCheckRequest = {
         type: 'run',
-        aligner,
         graph,
         vocabulary,
         lyrics,

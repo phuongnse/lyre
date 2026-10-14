@@ -385,9 +385,9 @@ Compose uses the same three values *(planned for M4)*.
   `#/model-check?backend=wasm`, makes it run on WebAssembly even when the
   browser has a GPU. The Playwright journeys use it to check the run without
   a GPU, under the page's policy and from the site's own origin.
-  An **Align test audio** control has a choice of test aligner, Omnilingual
-  or lyric-alignment, and a **Force WebAssembly** checkbox, which starts
-  ticked with `?backend=wasm`. The button opens a lyrics file picker, and
+  An **Align test audio** control has no aligner choice: it runs the
+  lyric-alignment test aligner. It has a **Force WebAssembly** checkbox, which
+  starts ticked with `?backend=wasm`. The button opens a lyrics file picker, and
   picking a file times its syllables on 40 s of test audio in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
   line shows the backend and the windows done out of the total, such as
@@ -396,7 +396,7 @@ Compose uses the same three values *(planned for M4)*.
   of syllables timed and says that the song file timing check accepted the
   timing. A timing the check refuses gets its own message, and any other
   failure one plain message. Neither shows lyric text or error text. The
-  Playwright journeys use it to check a run of each test aligner on
+  Playwright journeys use it to check a run of the test aligner on
   WebAssembly, under the page's policy.
   Its measurement section measures the aligner files, as the
   [measurement method](reference/models.md#measurement-method) says.
@@ -409,15 +409,13 @@ Compose uses the same three values *(planned for M4)*.
   separator file with one byte changed the same way. In one Web Worker, it decodes the
   source once. Then it runs each backend in turn, first WebGPU and then
   WebAssembly on one thread. On each, it separates the source with the separator,
-  then times the lyrics on those vocals with Omnilingual int8,
-  `lyric-alignment` fp32 and `lyric-alignment` int8 in turn. Omnilingual int8
-  is no longer a candidate (D29). The page measures it until a later change
-  removes it. A model never
+  then times the lyrics on those vocals with `lyric-alignment` fp32 and
+  `lyric-alignment` int8 in turn. A model never
   switches backend during a measurement: it runs on the backend measured, or
   its result says why not. A line, which is not a status line, names the
-  stage running and its backend, such as "Aligning with Omnilingual int8 on
+  stage running and its backend, such as "Aligning with lyric-alignment int8 on
   WebAssembly…". Each candidate gets a result per backend, named after both,
-  such as "Omnilingual int8 on WebGPU". It shows the backend, the extract,
+  such as "lyric-alignment int8 on WebGPU". It shows the backend, the extract,
   separate and align times, the model load time and the separator, which is
   "Mel-Band RoFormer (Kim)", or "Test separator" with `?model=test`. It
   also shows the highest WebAssembly memory and the highest JavaScript heap seen in each
@@ -447,7 +445,7 @@ Compose uses the same three values *(planned for M4)*.
   or kept. A new measurement, or leaving the page, removes the players and
   frees the tracks. Each result whose alignment finished has a **Play with
   this timing** button, whose accessible name also names the result, such as
-  "Play with this timing: Omnilingual int8 on WebAssembly". A result that
+  "Play with this timing: lyric-alignment int8 on WebAssembly". A result that
   failed or never ran has none. Pressing it makes a song in another Web
   Worker from the source and the lyrics the measurement used, the karaoke
   track of that result's backend and that result's timing
@@ -457,7 +455,7 @@ Compose uses the same three values *(planned for M4)*.
   being made, and a song that cannot be made gets "The song could not be made
   with this timing." A Player under the results then plays it, with its
   lyrics highlighted and the Karaoke / Original switch. Its section is named
-  after the result, such as "Playing with the timing of Omnilingual int8 on
+  after the result, such as "Playing with the timing of lyric-alignment int8 on
   WebAssembly". This Player has no **Open a song file** button and no library
   list. The song is made in the device's memory, and is never kept in the
   library, downloaded or sent anywhere. Pressing another result's button
@@ -475,11 +473,11 @@ Compose uses the same three values *(planned for M4)*.
   button says "The results are copied." or "The browser refused to copy the
   results." A browser without a clipboard API counts as a refusal. A new
   measurement clears the line. Only a source without audio or an unreadable source stops the run, with the
-  separation check page's messages. `?model=test` measures the two test
-  aligners after the test separator, and `?backend=wasm` measures only
+  separation check page's messages. `?model=test` measures the test
+  aligner after the test separator, and `?backend=wasm` measures only
   WebAssembly. The source and the lyrics are never sent
   anywhere. The Playwright journeys use it to check a whole measurement of
-  the test aligners in Chromium with its GPU turned off, so WebGPU gives no
+  the test aligner in Chromium with its GPU turned off, so WebGPU gives no
   adapter. Each WebGPU result then says WebGPU is not available, and each
   WebAssembly result has its figures, with a WebAssembly memory above 0 bytes
   in each stage. They check that the Vocals and Karaoke track players each
@@ -491,7 +489,7 @@ Compose uses the same three values *(planned for M4)*.
   the results and the copied text have no accuracy rows from a hand-written
   timing, that the measurement section has no timing file button, and that
   **Measure the aligners** stays off until a source and the lyrics are
-  picked. They play each test aligner's
+  picked. They play the test aligner's
   timing after a measurement on WebAssembly, and check that a syllable is
   highlighted, that the Karaoke / Original switch keeps the position, and
   that the library gets no new song. They also check that a measurement with

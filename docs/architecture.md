@@ -28,7 +28,7 @@ flowchart LR
   codes, lyric parsing, forced alignment, display line layout, timing, and
   the pinned model files with the check of a download against them. It also
   does the separator's STFT, its inverse and any normalisation around the
-  model, and each aligner's input normalisation, log-softmax and vocabulary
+  model, and the aligner's output check and vocabulary
   reading. Both clients call it; neither has its own copy of
   this logic.
 - **The web client** is a static site (D9). Its UI, media playback and model

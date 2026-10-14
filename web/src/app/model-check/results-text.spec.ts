@@ -7,7 +7,7 @@ const device: Row[] = [
 ]
 
 const measured: Result = {
-  name: 'Test Omnilingual on WebAssembly',
+  name: 'Test lyric-alignment on WebAssembly',
   rows: [
     { id: 'a', label: 'Separate', value: '0.42 s' },
     { id: 'b', label: 'Within 100 ms', value: '80%' },
@@ -21,7 +21,7 @@ test('holds the device block, then each result as a block of label: value lines'
       'Browser: Chrome 140',
       'WebGPU: Not available',
       '',
-      'Test Omnilingual on WebAssembly',
+      'Test lyric-alignment on WebAssembly',
       'Separate: 0.42 s',
       'Within 100 ms: 80%',
     ].join('\n'),
@@ -29,7 +29,7 @@ test('holds the device block, then each result as a block of label: value lines'
 })
 
 test('leaves the device block out before the device is known', () => {
-  expect(resultsText(undefined, [measured]).startsWith('Test Omnilingual on WebAssembly\n')).toBe(true)
+  expect(resultsText(undefined, [measured]).startsWith('Test lyric-alignment on WebAssembly\n')).toBe(true)
   expect(resultsText(undefined, [])).toBe('')
 })
 

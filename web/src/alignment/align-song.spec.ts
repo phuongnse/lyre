@@ -9,7 +9,6 @@ const fixture = (path: string): Uint8Array =>
   new Uint8Array(readFileSync(new URL(`../../../tests/fixtures/${path}`, import.meta.url)))
 
 const vocabularyFiles = {
-  [AlignerKind.Omnilingual]: 'models/omnilingual-tokens.txt',
   [AlignerKind.LyricAlignment]: 'models/lyric-alignment-vocab.json',
 }
 
@@ -29,17 +28,17 @@ function width(kind: AlignerKind, file: Uint8Array): number {
 }
 
 // A stand-in model that gives every token the same probability in every
-// frame: logits for Omnilingual, log probabilities for lyric-alignment.
+// frame, as log probabilities.
 function standIn(kind: AlignerKind, file: Uint8Array, frames = WINDOW_FRAMES): ModelRunner {
   const tokens = width(kind, file)
-  const value = kind === AlignerKind.Omnilingual ? 0 : Math.log(1 / tokens)
+  const value = Math.log(1 / tokens)
   return async (input) => {
     expect(input.length).toBe(WINDOW_SAMPLES)
     return new Float32Array(frames * tokens).fill(value)
   }
 }
 
-for (const kind of [AlignerKind.Omnilingual, AlignerKind.LyricAlignment]) {
+for (const kind of [AlignerKind.LyricAlignment]) {
   describe(`alignment with ${AlignerKind[kind]}`, () => {
     const vocabularyFile = fixture(vocabularyFiles[kind])
 

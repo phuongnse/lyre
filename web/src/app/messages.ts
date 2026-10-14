@@ -208,10 +208,8 @@ export const messages = {
   separatorRan: (backend: string, dims: readonly number[]) =>
     `The test separator ran on ${backend}. stems_spec ${dims.join('×')}.`,
   separatorFailed: 'The test separator could not run.',
-  alignerCheckAbout: 'Times the syllables of a lyrics file on 40 s of test audio with a test aligner, in a Web Worker.',
-  testAligner: 'Test aligner',
-  // Keyed by TestAligner.
-  alignerNames: { omnilingual: 'Omnilingual', 'lyric-alignment': 'lyric-alignment' },
+  alignerCheckAbout:
+    'Times the syllables of a lyrics file on 40 s of test audio with the lyric-alignment test aligner, in a Web Worker.',
   forceWebAssembly: 'Force WebAssembly',
   alignTestAudio: 'Align test audio',
   alignerPreparing: 'Loading the test aligner…',
@@ -250,10 +248,8 @@ export const messages = {
   measuredSongFailed: 'The song could not be made with this timing.',
   // Keyed by Candidate.
   candidateNames: {
-    'omnilingual-int8': 'Omnilingual int8',
     'lyric-alignment-fp32': 'lyric-alignment fp32',
     'lyric-alignment-int8': 'lyric-alignment int8',
-    'test-omnilingual': 'Test Omnilingual',
     'test-lyric-alignment': 'Test lyric-alignment',
   },
   // The name of one result: a candidate on one backend.

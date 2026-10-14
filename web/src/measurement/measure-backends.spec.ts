@@ -12,8 +12,8 @@ beforeAll(() => {
 })
 
 const candidates: MeasurementRequest['candidates'] = [
-  { candidate: 'test-omnilingual', kind: 'omnilingual', graph: new Blob(), vocabulary: new Blob() },
-  { candidate: 'test-lyric-alignment', kind: 'lyric-alignment', graph: new Blob(), vocabulary: new Blob() },
+  { candidate: 'lyric-alignment-fp32', kind: 'lyric-alignment', graph: new Blob(), vocabulary: new Blob() },
+  { candidate: 'lyric-alignment-int8', kind: 'lyric-alignment', graph: new Blob(), vocabulary: new Blob() },
 ]
 
 const alignMemory = { wasmBytes: 300, heapBytes: 400 }
@@ -99,10 +99,10 @@ describe('a measurement on each backend', () => {
     const replies = await run(['webgpu', 'wasm'], fake)
     expect(separatedOn).toEqual(['webgpu', 'wasm'])
     expect(measured.map(({ candidate, backend }) => `${candidate} ${backend}`)).toEqual([
-      'test-omnilingual webgpu',
-      'test-lyric-alignment webgpu',
-      'test-omnilingual wasm',
-      'test-lyric-alignment wasm',
+      'lyric-alignment-fp32 webgpu',
+      'lyric-alignment-int8 webgpu',
+      'lyric-alignment-fp32 wasm',
+      'lyric-alignment-int8 wasm',
     ])
     // Each backend's candidates run on its own vocals.
     expect(measured.map(({ vocals }) => vocals[0])).toEqual([1, 1, 2, 2])
@@ -112,33 +112,33 @@ describe('a measurement on each backend', () => {
     ])
     expect(replies.filter((reply) => reply.type === 'stage')).toEqual([
       { type: 'stage', stage: 'separate', backend: 'webgpu' },
-      { type: 'stage', stage: 'align', backend: 'webgpu', candidate: 'test-omnilingual' },
-      { type: 'stage', stage: 'align', backend: 'webgpu', candidate: 'test-lyric-alignment' },
+      { type: 'stage', stage: 'align', backend: 'webgpu', candidate: 'lyric-alignment-fp32' },
+      { type: 'stage', stage: 'align', backend: 'webgpu', candidate: 'lyric-alignment-int8' },
       { type: 'stage', stage: 'separate', backend: 'wasm' },
-      { type: 'stage', stage: 'align', backend: 'wasm', candidate: 'test-omnilingual' },
-      { type: 'stage', stage: 'align', backend: 'wasm', candidate: 'test-lyric-alignment' },
+      { type: 'stage', stage: 'align', backend: 'wasm', candidate: 'lyric-alignment-fp32' },
+      { type: 'stage', stage: 'align', backend: 'wasm', candidate: 'lyric-alignment-int8' },
     ])
     expect(ends(replies)).toEqual([
-      { type: 'measured', candidate: 'test-omnilingual', backend: 'webgpu', ...figures },
-      { type: 'measured', candidate: 'test-lyric-alignment', backend: 'webgpu', ...figures },
-      { type: 'measured', candidate: 'test-omnilingual', backend: 'wasm', ...figures },
-      { type: 'measured', candidate: 'test-lyric-alignment', backend: 'wasm', ...figures },
+      { type: 'measured', candidate: 'lyric-alignment-fp32', backend: 'webgpu', ...figures },
+      { type: 'measured', candidate: 'lyric-alignment-int8', backend: 'webgpu', ...figures },
+      { type: 'measured', candidate: 'lyric-alignment-fp32', backend: 'wasm', ...figures },
+      { type: 'measured', candidate: 'lyric-alignment-int8', backend: 'wasm', ...figures },
     ])
   })
 
   test('gives a candidate whose session fails to open the model reason, and still measures the next one', async () => {
     const { steps: fake } = steps({
-      measure: (candidate) => (candidate === 'test-omnilingual' ? new SessionFault('model') : undefined),
+      measure: (candidate) => (candidate === 'lyric-alignment-fp32' ? new SessionFault('model') : undefined),
     })
     expect(ends(await run(['wasm'], fake))).toEqual([
       {
         type: 'candidate-failed',
-        candidate: 'test-omnilingual',
+        candidate: 'lyric-alignment-fp32',
         backend: 'wasm',
         ran: true,
         problem: { kind: 'model' },
       },
-      { type: 'measured', candidate: 'test-lyric-alignment', backend: 'wasm', ...figures },
+      { type: 'measured', candidate: 'lyric-alignment-int8', backend: 'wasm', ...figures },
     ])
   })
 
@@ -149,10 +149,10 @@ describe('a measurement on each backend', () => {
     const replies = await run(['webgpu', 'wasm'], fake)
     const problem = { kind: 'webgpu-unavailable' }
     expect(ends(replies)).toEqual([
-      { type: 'candidate-failed', candidate: 'test-omnilingual', backend: 'webgpu', ran: false, problem },
-      { type: 'candidate-failed', candidate: 'test-lyric-alignment', backend: 'webgpu', ran: false, problem },
-      { type: 'measured', candidate: 'test-omnilingual', backend: 'wasm', ...figures },
-      { type: 'measured', candidate: 'test-lyric-alignment', backend: 'wasm', ...figures },
+      { type: 'candidate-failed', candidate: 'lyric-alignment-fp32', backend: 'webgpu', ran: false, problem },
+      { type: 'candidate-failed', candidate: 'lyric-alignment-int8', backend: 'webgpu', ran: false, problem },
+      { type: 'measured', candidate: 'lyric-alignment-fp32', backend: 'wasm', ...figures },
+      { type: 'measured', candidate: 'lyric-alignment-int8', backend: 'wasm', ...figures },
     ])
     expect(measured.every(({ backend }) => backend === 'wasm')).toBe(true)
   })
@@ -163,7 +163,7 @@ describe('a measurement on each backend', () => {
     const { steps: fake } = steps({ separate: (backend) => (backend === 'webgpu' ? fault : undefined) })
     const replies = ends(await run(['webgpu', 'wasm'], fake))
     expect(replies.slice(0, 2)).toEqual(
-      ['test-omnilingual', 'test-lyric-alignment'].map((candidate) => ({
+      ['lyric-alignment-fp32', 'lyric-alignment-int8'].map((candidate) => ({
         type: 'candidate-failed',
         candidate,
         backend: 'webgpu',

@@ -1,12 +1,10 @@
 import { TimingCheckFault } from '../lyre-wasm/lyre_wasm.js'
 import { Backend } from '../separation/backend'
-import { TestAligner } from './aligner-session'
 
-// What the page sends the aligner check worker: the test aligner to run, its
-// checked files and the lyrics file the user picked.
+// What the page sends the aligner check worker: the test aligner's checked
+// files and the lyrics file the user picked.
 export type AlignerCheckRequest = {
   type: 'run'
-  aligner: TestAligner
   graph: Blob
   vocabulary: Blob
   lyrics: Blob
