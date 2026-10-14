@@ -34,14 +34,17 @@ export type RunProblem =
   | { kind: 'sum-check'; rule: SumCheckRule; measuredDb: number }
 
 // What the worker answers: the stage it starts, the extract time, each
-// backend's separation figures, each candidate's figures or failure on each
-// backend, and the end of the run. Only a source that cannot be read ends the
-// run early. Times are in milliseconds and memory is in bytes: the highest
-// seen in the stage. Never the lyric text, the tracks or an error's text.
+// backend's separation figures and its tracks as WAV files, each candidate's
+// figures or failure on each backend, and the end of the run. Only a source
+// that cannot be read ends the run early. Times are in milliseconds and memory
+// is in bytes: the highest seen in the stage. Never the lyric text or an
+// error's text.
 export type MeasurementReply =
   | { type: 'stage'; stage: MeasurementStage; backend?: Backend; candidate?: Candidate }
   | { type: 'extracted'; extractMs: number; memory: StageMemory }
   | { type: 'separated'; backend: Backend; separateMs: number; sumCheckDb: number; memory: StageMemory }
+  // The vocals and the karaoke track of one backend's separation, as WAV files for the page's players.
+  | { type: 'tracks'; backend: Backend; vocals: Uint8Array<ArrayBuffer>; karaoke: Uint8Array<ArrayBuffer> }
   | {
       type: 'measured'
       candidate: Candidate

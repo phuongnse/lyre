@@ -155,7 +155,10 @@ function reasonFor(problem: RunProblem): string {
 // ?backend=wasm measures only WebAssembly. A Device section names the browser,
 // the OS and the GPU, and says whether WebGPU is available. Each result also
 // shows the highest WebAssembly memory and JavaScript heap seen in each stage,
-// or "not reported" for a figure the browser does not give.
+// or "not reported" for a figure the browser does not give. After each
+// separation, players play its vocals and karaoke track from memory, so the
+// owner can listen for leftover lead vocals. A later separation replaces the
+// earlier one's, and a new measurement or leaving the page frees them.
 @Component({
   selector: 'lyre-model-check',
   imports: [MatButton, MatCheckbox, MatProgressBar, MatRadioButton, MatRadioGroup],
@@ -303,6 +306,24 @@ function reasonFor(problem: RunProblem): string {
     </button>
     <!-- Not role="status", so the download's status line stays the page's only one. -->
     <p aria-live="polite">{{ measurementLine() }}</p>
+    @if (tracks(); as tracks) {
+      <section aria-labelledby="tracks-name">
+        <h3 id="tracks-name">{{ messages.measurementTracks(messages.backendNames[tracks.backend]) }}</h3>
+        <p>{{ messages.measurementTracksAbout }}</p>
+        <audio
+          controls
+          preload="metadata"
+          [src]="tracks.vocalsUrl"
+          [attr.aria-label]="messages.measurementVocals"
+        ></audio>
+        <audio
+          controls
+          preload="metadata"
+          [src]="tracks.karaokeUrl"
+          [attr.aria-label]="messages.measurementKaraoke"
+        ></audio>
+      </section>
+    }
     @for (result of results(); track result.id) {
       <section [attr.aria-labelledby]="result.id + '-name'">
         <h3 [id]="result.id + '-name'">{{ result.name }}</h3>
@@ -350,6 +371,8 @@ export class ModelCheckPage {
   protected readonly extract = signal<{ ms: number; memory: StageMemory } | undefined>(undefined)
   // The separation's figures on each backend that separated.
   protected readonly separations = signal<Partial<Record<Backend, Separation>>>({})
+  // The object URLs of the latest separation's tracks, played from memory.
+  protected readonly tracks = signal<{ backend: Backend; vocalsUrl: string; karaokeUrl: string } | undefined>(undefined)
   // Each candidate that has finished on a backend, in the order it ran.
   protected readonly outcomes = signal<{ candidate: Candidate; backend: Backend; outcome: Outcome }[]>([])
   protected readonly deviceRows = computed(() => {
@@ -386,6 +409,7 @@ export class ModelCheckPage {
       // A run's later replies then show nowhere.
       this.attempts++
       this.run?.stop()
+      this.revokeTracks()
     })
   }
 
@@ -460,6 +484,7 @@ export class ModelCheckPage {
     this.extract.set(undefined)
     this.separations.set({})
     this.outcomes.set([])
+    this.revokeTracks()
     // The timing file is read before anything is downloaded, so a bad one fails at once.
     const handStartsMs = await this.handStarts(lyricsFile, timingFile).catch((): MeasurementState => ({
       status: 'files-unreadable',
@@ -568,6 +593,12 @@ export class ModelCheckPage {
         }))
         break
       }
+      case 'tracks': {
+        this.revokeTracks()
+        const url = (wav: Uint8Array<ArrayBuffer>) => URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }))
+        this.tracks.set({ backend: reply.backend, vocalsUrl: url(reply.vocals), karaokeUrl: url(reply.karaoke) })
+        break
+      }
       case 'measured': {
         const { candidate, backend, loadMs, alignMs, medianMs, p90Ms, within100Ms, memory } = reply
         const outcome: Outcome = { status: 'measured', loadMs, alignMs, medianMs, p90Ms, within100Ms, memory }
@@ -587,6 +618,15 @@ export class ModelCheckPage {
         this.measurement.set({ status: 'done' })
         break
     }
+  }
+
+  // Frees the tracks shown, if any.
+  private revokeTracks(): void {
+    const tracks = this.tracks()
+    if (!tracks) return
+    URL.revokeObjectURL(tracks.vocalsUrl)
+    URL.revokeObjectURL(tracks.karaokeUrl)
+    this.tracks.set(undefined)
   }
 
   private lineFor(state: MeasurementState): string {

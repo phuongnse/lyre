@@ -202,6 +202,36 @@ test("each stage of a WebAssembly run shows the WebAssembly memory it used, and 
   }
 });
 
+test("after a WebAssembly measurement, the vocals and karaoke track players each play the separated 2 s tone from memory", async ({
+  page,
+}) => {
+  await page.goto(WASM_PAGE);
+  const origin = new URL(page.url()).origin;
+  const urls: string[] = [];
+  page.on("request", (request) => urls.push(request.url()));
+
+  await measure(page, timing);
+
+  await expect(page.getByText("The measurement is done.")).toBeVisible({
+    timeout: RUN_TIMEOUT,
+  });
+  await expect(labelled(page, "Tracks separated on WebAssembly")).toBeVisible();
+  for (const name of ["Vocals", "Karaoke track"]) {
+    const player = labelled(page, name);
+    const duration = () =>
+      player.evaluate((audio: HTMLAudioElement) => audio.duration);
+    await expect.poll(duration, { timeout: 10_000 }).toBeGreaterThan(0);
+    // The fixture tone lasts 2 s.
+    expect(Math.abs((await duration()) - 2)).toBeLessThanOrEqual(0.15);
+    expect(await player.getAttribute("src")).toMatch(/^blob:/);
+  }
+  // The players load their tracks from blob: URLs, never from another origin.
+  expect(urls.length).toBeGreaterThan(0);
+  for (const url of urls) {
+    if (!url.startsWith("blob:")) expect(new URL(url).origin).toBe(origin);
+  }
+});
+
 test("a timing file with an overlap gets the message naming its line, and no result", async ({
   page,
 }) => {

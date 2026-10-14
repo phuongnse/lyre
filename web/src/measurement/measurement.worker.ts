@@ -6,19 +6,24 @@ import { openSession } from '../onnx-session'
 import { Backend } from '../separation/backend'
 import { decode, separate } from '../separation/separate'
 import { openSeparator } from '../separation/separator-session'
+import { SEPARATION_FORMAT } from '../source-audio'
 import { SourceError } from '../source-error'
 import { CandidateKind } from './candidates'
 import { measureBackends, MeasurementSteps } from './measure-backends'
 import { readMemory, StageMemory, watchStage, watchWasmMemories } from './memory'
 import { MeasurementReply, MeasurementRequest } from './measurement-messages'
 import { vocalsForAlignment } from './vocals'
+import { wavFile } from './wav'
 
 const kinds: Record<CandidateKind, AlignerKind> = {
   omnilingual: AlignerKind.Omnilingual,
   'lyric-alignment': AlignerKind.LyricAlignment,
 }
 
-const reply = (message: MeasurementReply) => postMessage(message)
+// The WAV files of the tracks are handed over to the page, not copied, so
+// the worker keeps none.
+const reply = (message: MeasurementReply) =>
+  postMessage(message, message.type === 'tracks' ? [message.vocals.buffer, message.karaoke.buffer] : [])
 
 const bytesOf = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer())
 
@@ -28,8 +33,9 @@ const bytesOf = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer())
 // source and times the lyrics on the vocals with each candidate: stages 3 and
 // 4 of processing (docs/architecture.md#processing-planned-for-m2). Every
 // session opens in measurement mode, so a backend's figures always come from
-// that backend. It answers with figures, never with the lyric text, the
-// tracks or an error's text. Each stage's figures include the highest memory
+// that backend. It answers with figures, and with each separation's tracks as
+// WAV files for the page's players, never with the lyric text or an error's
+// text. Each stage's figures include the highest memory
 // seen in it. The WebAssembly memory is the total of every memory in this
 // worker, the core's and ONNX Runtime's, and it never shrinks.
 addEventListener('message', (event: MessageEvent<MeasurementRequest>) => {
@@ -63,15 +69,16 @@ async function run(request: MeasurementRequest): Promise<void> {
 }
 
 // Separates the source on `backend`, and gives the vocals as 16 kHz mono for
-// the candidates. The separator's load time is not part of the separate time,
-// but its memory is part of the stage's.
+// the candidates, and both tracks as WAV files. The separator's load time is
+// not part of the separate time, but its memory is part of the stage's. So is
+// reading the karaoke track out of the core, but not making the WAV files.
 async function separateOn(
   request: MeasurementRequest,
   backend: Backend,
   left: Float32Array,
   right: Float32Array,
   read: () => StageMemory,
-): Promise<{ vocals: Float32Array; separateMs: number; sumCheckDb: number; memory: StageMemory }> {
+): Promise<Awaited<ReturnType<MeasurementSteps['separate']>>> {
   const { result, memory } = await watchStage(read, async (sample) => {
     const [graph, weights] = await Promise.all([bytesOf(request.separator.graph), bytesOf(request.separator.weights)])
     const { session } = await openSeparator(graph, weights, {
@@ -85,15 +92,24 @@ async function separateOn(
       const tracks = await separate(session, left, right, sample)
       const separateMs = performance.now() - separateStart
       const sumCheckDb = tracks.energyDb
-      // The getter copies the vocals out of the core, so it is read once.
+      // Each getter copies a track out of the core, so each is read once.
       const planar = tracks.vocals
+      const karaoke = tracks.karaoke
       tracks.free()
-      return { vocals: vocalsForAlignment(planar), separateMs, sumCheckDb }
+      return { vocals: vocalsForAlignment(planar), planar, karaoke, separateMs, sumCheckDb }
     } finally {
       await session.release().catch(() => undefined)
     }
   })
-  return { ...result, memory }
+  const { vocals, planar, karaoke, separateMs, sumCheckDb } = result
+  const rate = SEPARATION_FORMAT.sampleRate
+  return {
+    vocals,
+    tracks: { vocals: wavFile(planar, rate), karaoke: wavFile(karaoke, rate) },
+    separateMs,
+    sumCheckDb,
+    memory,
+  }
 }
 
 // Times the lyrics on the vocals with one candidate on `backend`, and

@@ -368,8 +368,14 @@ Compose uses the same three values *(planned for M4)*.
   rule and the value), the alignment was refused, the song file timing check
   refused the timing, or the run could not finish. When the separation fails
   on a backend, each candidate's result on it says "Not run." and the same
-  reason. Either way the next candidate and the next backend still run. Only
-  a source without audio or an unreadable source stops the run, with the
+  reason. Either way the next candidate and the next backend still run. As
+  soon as a separation ends, a section named after its backend, such as
+  "Tracks separated on WebAssembly", shows a **Vocals** player and a
+  **Karaoke track** player, so the owner can listen while the aligners still
+  run. A later separation replaces the earlier one's tracks. The tracks play
+  as 16-bit WAV files from the device's memory, and are never sent anywhere
+  or kept. A new measurement, or leaving the page, removes the players and
+  frees the tracks. Only a source without audio or an unreadable source stops the run, with the
   separation check page's messages. `?model=test` measures the two test
   aligners after the test separator, and `?backend=wasm` measures only
   WebAssembly. The source, the lyrics and the timing file are never sent
@@ -377,7 +383,8 @@ Compose uses the same three values *(planned for M4)*.
   the test aligners in Chromium with its GPU turned off, so WebGPU gives no
   adapter. Each WebGPU result then says WebGPU is not available, and each
   WebAssembly result has its figures, with a WebAssembly memory above 0 bytes
-  in each stage. They also check the Device section with no WebGPU object
+  in each stage. They check that the Vocals and Karaoke track players each
+  last as long as the 2 s source. They also check the Device section with no WebGPU object
   and with a stubbed adapter, an overlap in the timing file, that the main
   page does not load the page's code, and that every request goes to the
   site's own origin.
