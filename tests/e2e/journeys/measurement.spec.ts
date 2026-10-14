@@ -438,7 +438,7 @@ async function syllableCurrent(page: Page): Promise<boolean> {
   return false;
 }
 
-test("after a WebAssembly measurement, the test aligner's timing plays the source in the Player with its lyrics highlighted, the Karaoke / Original switch keeps the position, and the library gets no new song", async ({
+test("after a WebAssembly measurement, the test aligner's timing, which the song file timing check accepts, plays the source in the Player with its lyrics highlighted, the Karaoke / Original switch keeps the position, and the library gets no new song", async ({
   page,
 }) => {
   await openSongFile(page, fixture);
@@ -463,6 +463,10 @@ test("after a WebAssembly measurement, the test aligner's timing plays the sourc
         name: `Playing with the timing of ${result}`,
       }),
     ).toBeVisible({ timeout: 30_000 });
+    // The timing passed the song file's timing check.
+    await expect(
+      page.getByText("The song could not be made with this timing."),
+    ).toHaveCount(0);
     await expect(page.getByLabel("Song video")).toBeVisible();
     // The Player has no open button and no library list.
     await expect(

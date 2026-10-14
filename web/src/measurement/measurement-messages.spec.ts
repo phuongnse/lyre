@@ -52,7 +52,9 @@ describe("the measurement worker's reason for a failed run", () => {
 
   test('is a refused alignment for an alignment the core refused', () => {
     // Lyrics that are not UTF-8 are refused.
-    const fault = thrown(() => align(Uint8Array.of(0xff), new Float32Array(2), ['<blank>', 'a'], 0, 20_000, 1_000))
+    const fault = thrown(() =>
+      align(Uint8Array.of(0xff), new Float32Array(2), ['<blank>', 'a'], 0, 20_000, new Float32Array(0), 1_000),
+    )
     expect(fault).toBeInstanceOf(AlignmentFault)
     expect(runProblem(fault)).toEqual({ kind: 'alignment-refused' })
   })

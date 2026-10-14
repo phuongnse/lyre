@@ -258,8 +258,9 @@ reference doc and reviewed before M3 implements them.
   model runner as a function, so it is tested without ONNX Runtime. The core
   plans the windows over 16 kHz mono audio, prepares each window's input for
   the aligner, gives the frame length and turns the model's output into
-  frames. It then joins the frames, times the syllables and runs the song
-  file's timing check, so a timing the check refuses is never returned.
+  frames. It then joins the frames, times the syllables, with the same
+  audio to tell where the singing stops, and runs the song file's timing
+  check, so a timing the check refuses is never returned.
   Progress counts the windows done out of the total. For now, the model check
   page runs it in a Web Worker with a
   [test aligner](reference/model-tool.md#make_test_alignerspy) on test audio.
