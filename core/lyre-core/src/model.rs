@@ -54,6 +54,12 @@ pub const PINNED_FILES: &[PinnedFile] = &[
         sha256: "23a7c68669c041363caaef94641e961dc8c4e16b9891cb87f58f0e199a5e8820",
     },
     PinnedFile {
+        id: "mel-roformer-fp16",
+        url: "https://huggingface.co/phuongnse/mel-roformer-kim-onnx/resolve/9151f81ee8e4f7dd96598dbeeb1b186b939911be/mel-roformer.fp16.onnx",
+        size: 464_050_097,
+        sha256: "adcbbb826f12453fbb86652b503242d565a9c81cdef1bca2fe0e54752eba91ef",
+    },
+    PinnedFile {
         id: "lyric-alignment-fp32",
         url: "https://huggingface.co/phuongnse/lyric-alignment-onnx/resolve/ec46b2179bfbe521e22c36d0c08bd3993c63fe71/model.onnx",
         size: 1_275_253_998,
@@ -463,7 +469,7 @@ mod tests {
     #[test]
     fn the_real_files_are_the_rows_of_the_models_reference() {
         let documented = documented_files();
-        assert_eq!(documented.len(), 7);
+        assert_eq!(documented.len(), 8);
         let documented: std::collections::BTreeSet<_> = documented.into_iter().collect();
         let pinned: std::collections::BTreeSet<_> = real_files()
             .map(|file| (file.url.to_owned(), file.size, file.sha256.to_owned()))

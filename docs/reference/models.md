@@ -10,7 +10,8 @@ The terms in this doc are defined in the [concepts](../domain/concepts.md).
 Why these models were chosen is in
 [D15](../decisions.md#d15-models-for-separation-and-alignment--agreed),
 [D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
-[D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)
+[D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
+[D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)
 and [D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed).
 
 Each file is downloaded from `https://huggingface.co/<repository>/resolve/<revision>/<path>`,
@@ -56,7 +57,9 @@ measurement page still measures it, as sherpa-onnx's int8 export.
 
 ## htdemucs
 
-The separator of D15, as the community fp32 export of its inner network.
+D15's separator, replaced by Mel-Band RoFormer
+([D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)).
+It stays pinned only while the core and the web client still run it.
 
 | Repository | Revision | Path | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -110,6 +113,42 @@ The separator of D15, as the community fp32 export of its inner network.
   same inputs and outputs and is pinned as `test-htdemucs-graph` and
   `test-htdemucs-weights`.
 
+## Mel-Band RoFormer
+
+The separator of
+[D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed),
+as the fp16 ONNX export by audiojs, which the owner publishes unchanged.
+
+| Repository | Revision | Path | Bytes | SHA-256 |
+| --- | --- | --- | --- | --- |
+| `phuongnse/mel-roformer-kim-onnx` | `9151f81ee8e4f7dd96598dbeeb1b186b939911be` | `mel-roformer.fp16.onnx` | 464,050,097 | `adcbbb826f12453fbb86652b503242d565a9c81cdef1bca2fe0e54752eba91ef` |
+
+- **Licence:** MIT, as the checkpoint's repository states in its metadata and
+  the export's `LICENSE` file states.
+- **Attribution:** Mel-Band RoFormer vocal model by Kimberley Jensen, from the
+  Mel-Band RoFormer authors' architecture and ZFTurbo's training code, in the
+  ONNX export by audiojs
+  ([`audiojs/mel-roformer` at `c1aba02c00a0bee852d6754fe6ede8164f90a4b3`](https://huggingface.co/audiojs/mel-roformer/tree/c1aba02c00a0bee852d6754fe6ede8164f90a4b3)),
+  published unchanged by the owner.
+  [The files at the pinned commit](https://huggingface.co/phuongnse/mel-roformer-kim-onnx/tree/9151f81ee8e4f7dd96598dbeeb1b186b939911be).
+- **Sample rate:** 44.1 kHz.
+- **Channels:** stereo.
+- **Window length:** a segment of 8 s (352,800 samples). A segment starts every
+  4 s (176,400 samples). The segments' vocals are joined with linear fades of
+  0.8 s (35,280 samples), with the source reflected at its ends.
+- **Input normalisation:** none.
+- **STFT:** outside the file, so Lyre does it. n_fft 2048, hop 441, and a Hann
+  window of 2048, centred with reflect padding, not normalised. The inverse
+  STFT uses the same settings.
+- **Input and output:** both have shape (1, 4, 1025, 801), holding the real
+  part of the left channel, its imaginary part, the real part of the right
+  channel and its imaginary part. The input is the segment's spectrogram. The
+  output is the vocals' spectrogram.
+- **Frame rate:** 100 spectrogram frames per second (44,100 / 441).
+- **Vocabulary:** none. The karaoke track is the source minus the vocals.
+- **Test stand-in:** none yet. Tests use the htdemucs test separator until the
+  core and the web client switch to this file.
+
 ## lyric-alignment
 
 The aligner of D29, as Lyre's own ONNX export, made by the
@@ -162,7 +201,7 @@ python3 - <<'EOF'
 import hashlib, json, re, sys, urllib.request
 row = re.compile(r'^\| `([^`]+)` \| `([0-9a-f]{40})` \| `([^`]+)` \| ([\d,]+) \| `([0-9a-f]{64})` \|')
 rows = [m.groups() for m in map(row.match, open('docs/reference/models.md', encoding='utf-8')) if m]
-ok = len(rows) == 7
+ok = len(rows) == 8
 for repo, rev, path, size, sha in rows:
     folder = path.rpartition('/')[0]
     api = f'https://huggingface.co/api/models/{repo}/tree/{rev}' + (f'/{folder}' if folder else '')
@@ -177,7 +216,7 @@ EOF
 ```
 
 - It prints one line per file and the number of files. It exits with 0 when
-  there are exactly seven files and all match, and with 1 otherwise.
+  there are exactly eight files and all match, and with 1 otherwise.
 - For a large file, the API gives the SHA-256 directly. For a small file it
   does not, so the command downloads the file and hashes it.
 - To change a pin, update its row and the expected number of files in the
@@ -254,18 +293,19 @@ system's figure by hand when it is needed.
 ### Separator target
 
 The page checks the separator target of
-[D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)
-and the listening split of [D22](../decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)
+[D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
+the listening split of [D22](../decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)
+and [D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)
 on each [target device](../decisions.md#d25-requirements-for-making-songs--proposed), with a song of about 4 minutes:
 
 - **Time:** the separate stage on WebGPU takes no longer than the song lasts.
   The download and the load time do not count.
 - **Memory:** the stage finishes without running out of memory.
-- **Sum check:** the karaoke track plus the vocals stem is compared with the
-  source's audio, sample by sample. The page reports the source's energy over
-  the energy of the difference, in dB. The core fails a run under a
-  provisional 10 dB, which guards against broken runs. The page confirms or
-  changes the mark.
+- **Broken run:** the core fails a run when any sample of the vocals or the
+  karaoke track is not finite (NaN or infinite). The karaoke track is the
+  source minus the vocals, so it always adds back up to the source. The sum
+  check no longer guards a run
+  ([D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)).
 - **Clipping:** the core fails a run only when the vocals or the karaoke track
   peaks more than 1 dB above the source's own peak. A sample over 1.0 alone
   does not fail, because decoded loud masters already exceed it.
@@ -273,6 +313,11 @@ on each [target device](../decisions.md#d25-requirements-for-making-songs--propo
   check page's **Karaoke track** player, which appears after each separation
   in a measurement, and records whether clear leftover lead vocals remain. Backing vocals may remain and
   are noted, not failed.
+
+Until the core and the web client switch to Mel-Band RoFormer, they run
+htdemucs, which D28 replaces, with its sum check: the karaoke track plus the
+vocals stem is compared with the source, and the core fails a run under a
+provisional 10 dB.
 
 ### The choice
 

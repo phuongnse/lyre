@@ -89,13 +89,12 @@ What was learned:
 
 - **Alignment and role classification are the heaviest stages,** then
   separation. In a browser, on a desktop or a phone, they set what Lyre can do, so the
-  M2 measurements choose the aligner's file and confirm the separator (D15, D26, D29).
-- **Check separation by sum.** Vocals plus karaoke track should add back up to
-  the original, without clipping and at plausible levels. A large difference
-  means a broken run. Two rules apply. The energy rule: the original's energy
-  over the energy of what the two tracks leave out must be at least 10 dB. The
-  mark is provisional until the model measurement page confirms or changes it.
-  The clipping rule: vocals or the karaoke track may not peak more than 1 dB
+  M2 measurements choose the aligner's file and confirm the separator (D26, D28, D29).
+- **Check separation for broken runs.** The karaoke track is the source minus
+  the vocals, so the two always add back up to the source. A sum check cannot
+  find a broken run, and a run fails on two rules instead. The finite rule:
+  every sample of the vocals and the karaoke track must be finite. The
+  clipping rule: vocals or the karaoke track may not peak more than 1 dB
   above the original's own peak. A sample over 1.0 alone does not fail, because
   decoded loud masters already exceed it.
 - **Scan the whole vocal track for leftovers,** not only where lyrics are
@@ -105,12 +104,13 @@ What was learned:
   to tell voices from instruments can take sustained, wordless backing vowels
   in a high register for an instrument, so they leak into the karaoke track.
   In the owner's test of a duet, the male backing vocals on the same phrase
-  were removed. More time shifts and the fine-tuned `htdemucs_ft` vocals model
-  did not help. M2 accepts these leftovers, and M8 cleans them up
+  were removed. With htdemucs, the separator before D28, more time shifts and
+  its fine-tuned `htdemucs_ft` vocals model did not help. M2 accepts these
+  leftovers, and M8 cleans them up
   ([D22](../decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)).
 - **Remove a leftover only when a second separator agrees.** Separators
   sometimes put a shared instrument in both outputs. Removing on the word of
-  one separator damages the music. D15 has one separator, so the clean-up
+  one separator damages the music. D28 has one separator, so the clean-up
   waits for M8, with the vocal roles.
 - **Forced alignment times only the supplied syllables.** The core takes a
   CTC model's per-frame log-probabilities for the whole song and the model's
@@ -219,20 +219,22 @@ What was learned:
 ## Models and licences
 
 [D15](../decisions.md#d15-models-for-separation-and-alignment--agreed),
-[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed) and
+[D20](../decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
+[D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed) and
 [D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed) chose the models for separation and alignment.
 [D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)
 pinned their files, which the [models reference](../reference/models.md) lists:
 
 | Purpose | Model | Status | Licence |
 | --- | --- | --- | --- |
-| Separation | Demucs v4 `htdemucs` (community fp32 ONNX export, STFT outside the file) | chosen (D15, D21) | code MIT, no separate grant stated for the weights |
+| Separation | Mel-Band RoFormer by Kimberley Jensen (audiojs fp16 ONNX export, published by the owner, STFT outside the file) | chosen (D28) | MIT |
+| Separation | Demucs v4 `htdemucs` (community fp32 ONNX export, STFT outside the file) | replaced (D28) | code MIT, no separate grant stated for the weights |
 | Alignment | Meta Omnilingual ASR CTC-300M (sherpa-onnx int8 ONNX export) | no longer a candidate (D29) | Apache-2.0 for code and models |
 | Separation | UVR MDX-Net Inst HQ 4 | fallback | not yet confirmed in writing |
 | Alignment on weak devices | Whisper base multilingual with forced decoding | fallback | MIT |
 | Alignment | `nguyenvulebinh/lyric-alignment` (wav2vec2 for Vietnamese lyrics, as Lyre's fp32 and int8 ONNX export) | chosen (D29), int8 or fp32 by measurement | CC-BY-NC-4.0 |
 | Alignment | other Vietnamese wav2vec2 fine-tunes and MMS | not a candidate | CC-BY-NC-4.0 |
-| Separation | RoFormer separators | not used (heavy) | unclear for some |
+| Separation | other RoFormer separators | not a candidate | unclear for some |
 
 - **Non-commercial licences are allowed while Lyre is non-commercial.** A
   CC-BY-NC-4.0 model may be used with the attribution its licence requires.
@@ -240,8 +242,8 @@ pinned their files, which the [models reference](../reference/models.md) lists:
 - **"Not stated" is not permission.** A model without a clear licence must
   have one before Lyre distributes it or downloads it for other people. A
   licence that grants nothing for the weights is not permission either. This
-  applies to the Demucs weights, where the repository states no separate
-  grant.
+  applied to the Demucs weights, where the repository states no separate
+  grant. Lyre no longer uses htdemucs (D28).
 - Every model needs an ONNX export that runs in ONNX Runtime Web on WebGPU.
   M2 measures whether the separator and the aligner's int8 and fp32 files run fast enough there.
 - **The aligner's vocabulary is Vietnamese.** Lyrics in other languages may be

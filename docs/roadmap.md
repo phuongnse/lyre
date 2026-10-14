@@ -113,7 +113,7 @@ Done when all ten were merged and the owner accepted the Player.
   example <https://phuongnse.github.io/lyre/#/passkey-check>. The main page
   does not link to it.
 - The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
-  It runs the D15 separator and both files of the `lyric-alignment` aligner
+  It runs the separator (D28) and both files of the `lyric-alignment` aligner
   (D29), and still measures Omnilingual int8 until a later change removes it.
   It runs on WebGPU and on one-thread WebAssembly for information
   (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
@@ -140,8 +140,9 @@ must settle:
   files of `lyric-alignment`. Among the files that run on the
   [target devices](decisions.md#d25-requirements-for-making-songs--proposed),
   int8 is used unless its timing looks worse than fp32's in the Player
-  ([D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)). A newer
-  decision replaces D15 if the separator misses its target
+  ([D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)). [D28](decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)
+  replaced D15's separator. If Mel-Band RoFormer misses the time target, Lyre
+  makes its own export of the same weights
   ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
   as [D22](decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed) splits it).
   The measurement results settle the values of the requirements of

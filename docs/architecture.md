@@ -27,7 +27,7 @@ flowchart LR
   must agree on: the song file format, encryption, access files, device
   codes, lyric parsing, forced alignment, display line layout, timing, and
   the pinned model files with the check of a download against them. It also
-  does the separator's STFT, its inverse and the normalisation around the
+  does the separator's STFT, its inverse and any normalisation around the
   model, and each aligner's input normalisation, log-softmax and vocabulary
   reading. Both clients call it; neither has its own copy of
   this logic.
@@ -247,8 +247,8 @@ reference doc and reviewed before M3 implements them.
   check page and in a task. The worker decodes the whole source at 44.1 kHz
   stereo, because the core's separation needs all of it. The core cuts the
   audio into windows, the model runs on each, and the core joins them and
-  checks the sum. Progress counts the windows done out of the total. The page
-  runs htdemucs, or the
+  checks the result for a broken run. Progress counts the windows done out of the total. The page
+  runs the separator ([models reference](reference/models.md)), or the
   [test separator](reference/model-tool.md#make_test_separatorpy) when its
   URL asks for it. On the separation check page, only the tracks' lengths
   reach the page. The model check page's measurement runs the

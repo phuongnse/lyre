@@ -151,7 +151,8 @@ Open points, each settled by a later decision:
 - the vocal separation and alignment models: settled by
   [D15](#d15-models-for-separation-and-alignment--agreed),
   [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
-  [D21](#d21-pinned-model-files-and-the-separator-target--agreed) and
+  [D21](#d21-pinned-model-files-and-the-separator-target--agreed),
+  [D28](#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed) and
   [D29](#d29-the-aligner-is-lyric-alignment--agreed), confirmed by the M2 measurements;
 - the lowest Android version and the browsers Lyre supports.
 
@@ -212,8 +213,10 @@ else can be built and verified through it, issue by issue.
 ## D15. Models for separation and alignment — Agreed
 
 Partly replaced by [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
-[D21](#d21-pinned-model-files-and-the-separator-target--agreed) and
-[D29](#d29-the-aligner-is-lyric-alignment--agreed). D29 replaces its alignment point.
+[D21](#d21-pinned-model-files-and-the-separator-target--agreed),
+[D28](#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed) and
+[D29](#d29-the-aligner-is-lyric-alignment--agreed). D28 replaces its separation point
+and its "Not used: RoFormer separators" point. D29 replaces its alignment point.
 
 The owner delegated this choice.
 
@@ -348,8 +351,9 @@ not come from the seed.
 
 ## D20. Non-commercial models are allowed, and M2 compares two aligners — Agreed
 
-Partly replaced by [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)
-and [D29](#d29-the-aligner-is-lyric-alignment--agreed).
+Partly replaced by [D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed),
+[D28](#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed) and [D29](#d29-the-aligner-is-lyric-alignment--agreed). D28 replaces its
+"Separation stays" point.
 
 Replaces the CC-BY-NC part of the "Not used" point of
 [D15](#d15-models-for-separation-and-alignment--agreed), and adds a second
@@ -380,8 +384,9 @@ is out of scope.
 
 ## D21. Pinned model files and the separator target — Agreed
 
-Partly replaced by [D22](#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)
-and [D29](#d29-the-aligner-is-lyric-alignment--agreed).
+Partly replaced by [D22](#d22-the-separator-target-splits-lead-and-backing-vocals--agreed),
+[D28](#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed) and [D29](#d29-the-aligner-is-lyric-alignment--agreed). D28 replaces its
+htdemucs point and the sum check in its separator target.
 
 Says which files the models of
 [D15](#d15-models-for-separation-and-alignment--agreed) and
@@ -420,6 +425,8 @@ Published exports spare Lyre from making its own, except for
 keeps the wait for a song shorter than listening to it.
 
 ## D22. The separator target splits lead and backing vocals — Agreed
+
+Partly replaced by [D28](#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed): it replaces "The separator stays" point.
 
 Replaces the listening clause of the separator target of
 [D21](#d21-pinned-model-files-and-the-separator-target--agreed).
@@ -560,6 +567,43 @@ runtime and WebAssembly fallback of
 long runs heat the phone, and every task would need a second implementation.
 The web client on a capable phone can still make songs. A requirement says
 more than a list of device types.
+
+## D28. The separator is Mel-Band RoFormer by Kimberley Jensen — Agreed
+
+Replaces the separator of [D15](#d15-models-for-separation-and-alignment--agreed)
+and its "Not used: RoFormer separators" point, the "Separation stays" point of
+[D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
+the htdemucs point and the sum check of the target in
+[D21](#d21-pinned-model-files-and-the-separator-target--agreed), and "The
+separator stays" point of
+[D22](#d22-the-separator-target-splits-lead-and-backing-vocals--agreed).
+
+- **Separator:** Mel-Band RoFormer by Kimberley Jensen, in the ONNX export by
+  audiojs (`audiojs/mel-roformer` at `c1aba02c00a0bee852d6754fe6ede8164f90a4b3`).
+  The karaoke track is the source minus the vocals.
+- **Hosted by the owner:** the owner published that file unchanged in
+  `phuongnse/mel-roformer-kim-onnx` at `9151f81ee8e4f7dd96598dbeeb1b186b939911be`,
+  with its licence and attribution, as for lyric-alignment. Lyre downloads it
+  from there: `mel-roformer.fp16.onnx`, 464,050,097 bytes, SHA-256
+  `adcbbb826f12453fbb86652b503242d565a9c81cdef1bca2fe0e54752eba91ef`. The
+  [models reference](reference/models.md#mel-band-roformer) pins it and says
+  what Lyre does around it.
+- **Licence:** MIT, as the checkpoint's repository states in its metadata and
+  the export's LICENSE file states. The owner accepts it. Attribution names
+  Kimberley Jensen, the Mel-Band RoFormer authors, ZFTurbo and audiojs.
+- **Download:** about 464 MB instead of about 171 MB, once, then kept.
+- **Broken runs:** source minus vocals always adds back up to the source, so
+  the sum check no longer guards a run. A run fails only when a sample is not
+  finite or the clipping rule fails
+  ([separator target](reference/models.md#separator-target)).
+- **If it misses the time target** on the owner's computer, Lyre makes its own
+  export of the same weights, as it did for lyric-alignment.
+- The time, memory and lead-vocal parts of the target stay.
+
+*Why:* htdemucs leaves faint lead vocals in the karaoke track, also with Meta's
+own PyTorch model. In the owner's listening test on the same Vietnamese song,
+Kim's karaoke track was the cleanest of htdemucs, Mel-Band RoFormer Duality and
+Kim, without distorting the music.
 
 ## D29. The aligner is lyric-alignment — Agreed
 

@@ -7,11 +7,13 @@ runs it by hand. It does two jobs for the
 
 - It makes the ONNX files of the `nguyenvulebinh/lyric-alignment` aligner,
   which has no ONNX export of its own, and checks them against PyTorch.
-- It checks the community htdemucs ONNX file against Meta's PyTorch
+- It checks the community htdemucs ONNX file, the separator Lyre used before
+  [D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed), against Meta's PyTorch
   checkpoint.
 
 A third job is for tests: it makes the
-[test separator](#make_test_separatorpy), a tiny stand-in for htdemucs, and
+[test separator](#make_test_separatorpy), a tiny stand-in for htdemucs, which
+tests use until the code switches to D28's separator, and
 the [test aligners](#make_test_alignerspy), tiny stand-ins for Omnilingual
 and lyric-alignment.
 
@@ -109,6 +111,9 @@ both.
 
 ### compare_htdemucs.py
 
+htdemucs is no longer Lyre's separator ([D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)). The script stays until
+the core and the web client switch.
+
 1. It downloads Meta's htdemucs checkpoint `955717e8-8726e21a.th` and
    `onnx/htdemucs_fwd.onnx` from `webnn/stem-separator`, with the weights file
    next to it.
@@ -124,6 +129,9 @@ both.
 A run takes about 0.3 GB of disk for downloads and about 6 GB of memory.
 
 ### make_test_separator.py
+
+htdemucs is no longer Lyre's separator ([D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)). The script stays until
+the core and the web client switch.
 
 ```sh
 python3 tools/model-tool/make_test_separator.py
@@ -228,7 +236,7 @@ Each comparison prints its measures and fails when one is out of bounds.
 | --- | --- |
 | Aligner, fp32 | Every probability (any frame, any token) is within 0.001 of PyTorch's, and the most likely token is the same on every frame. |
 | Aligner, int8 | On at least 95% of frames, the log-probability of PyTorch's most likely token is within 0.5 of PyTorch's value. |
-| htdemucs, per stem | PyTorch's stem energy over the energy of the difference is at least 30 dB. |
+| htdemucs (before D28), per stem | PyTorch's stem energy over the energy of the difference is at least 30 dB. |
 
 - **fp32 compares probabilities, not log-probabilities.** Many tokens have a
   log-probability between −100 and −250 on a frame. Float32 rounding alone

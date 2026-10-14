@@ -48,7 +48,7 @@ songs at the same time.
 
 - Commercial use and distribution of songs to the public. Commercial use
   would first need every non-commercial (CC-BY-NC) model replaced. Not every
-  model licence is settled yet, for example for the separation weights, see
+  model licence is settled yet, for example for the fallback separator, see
   [knowledge](domain/knowledge.md#models-and-licences).
 - Recognising lyrics from the audio. Lyre always needs the owner's lyrics.
 - Revoking a share once it is given (D9).
