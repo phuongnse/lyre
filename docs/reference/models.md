@@ -206,6 +206,10 @@ The model measurement page runs the separator and each aligner file on the
 owner's devices. This section says what it measures and how the results
 choose the aligner. The results name the devices they were taken on.
 
+For now, the measurement section of the
+[model check page](../ui-conventions.md#check-pages) runs it. It measures one
+backend per run, and does not yet report memory or the download time.
+
 ### Inputs
 
 - **A source**, its **lyrics** and a **timing file** written by hand in the

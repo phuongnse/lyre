@@ -1,13 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, WritableSignal } from '@angular/core'
 import { MatButton } from '@angular/material/button'
 import { MatCheckbox } from '@angular/material/checkbox'
 import { MatProgressBar } from '@angular/material/progress-bar'
 import { MatRadioButton, MatRadioGroup } from '@angular/material/radio'
 import { ActivatedRoute } from '@angular/router'
 import { TestAligner } from '../../alignment/aligner-session'
+import { loadCore } from '../../core'
+import { parseTimingFile, TimingFileErrorKind, TimingFileFault } from '../../lyre-wasm/lyre_wasm.js'
+import { Candidate, candidateFiles, candidatesFor, separatorFiles } from '../../measurement/candidates'
+import { MeasurementReply, MeasurementRequest, MeasurementStage } from '../../measurement/measurement-messages'
 import { ModelCheckFailed } from '../../models/model-download'
 import { Backend } from '../../separation/backend'
+import { SumCheckRule } from '../../separation/separation-messages'
+import { SourceProblem } from '../../source-error'
 import { runAlignerCheck } from '../aligner-check'
+import { MeasurementRun, runMeasurement } from '../measurement-run'
 import { messages } from '../messages'
 import { Models } from '../models'
 import { runSeparatorCheck } from '../separator-check'
@@ -35,6 +42,54 @@ type AlignerState =
   | { status: 'aligned'; backend: Backend; done: number; total: number; syllables: number }
   | { status: 'failed'; problem: 'timing' | 'other' }
 
+type MeasurementState =
+  | { status: 'idle' }
+  | { status: 'reading' }
+  | { status: 'files-unreadable' }
+  | { status: 'timing-refused'; kind: TimingFileErrorKind; line: number }
+  | { status: 'downloading' }
+  | { status: 'download-failed'; id: string; checkFailed: boolean }
+  | { status: 'running'; stage: MeasurementStage; candidate?: Candidate }
+  | { status: 'done' }
+  | { status: 'sum-check-failed'; rule: SumCheckRule; measuredDb: number }
+  | { status: 'failed'; problem: SourceProblem | 'model' }
+
+// What the shared stages measured, once for every candidate.
+type Shared = Omit<Extract<MeasurementReply, { type: 'separated' }>, 'type'>
+
+// What a candidate gave: its figures, or why it failed.
+type Outcome =
+  | ({ status: 'measured' } & Omit<Extract<MeasurementReply, { type: 'measured' }>, 'type' | 'candidate'>)
+  | { status: 'failed'; problem: 'timing' | 'other' }
+
+// One labelled figure of a candidate's result.
+interface Row {
+  id: string
+  label: string
+  value: string
+}
+
+const seconds = (ms: number) => messages.seconds((ms / 1000).toFixed(2))
+const milliseconds = (ms: number) => messages.milliseconds(ms.toFixed(0))
+
+// A measured candidate's figures. The shared stages' figures repeat in
+// every candidate's result. Each ID starts with the candidate, so it is unique.
+function rowsFor(candidate: Candidate, outcome: Outcome, shared: Shared | undefined): Row[] {
+  if (outcome.status !== 'measured' || shared === undefined) return []
+  const row = (key: string, label: string, value: string): Row => ({ id: `${candidate}-${key}`, label, value })
+  return [
+    row('backend', messages.measurementBackend, messages.backendNames[outcome.backend]),
+    row('extract', messages.measurementExtract, seconds(shared.extractMs)),
+    row('separate', messages.measurementSeparate, seconds(shared.separateMs)),
+    row('align', messages.measurementAlign, seconds(outcome.alignMs)),
+    row('load', messages.measurementModelLoad, seconds(outcome.loadMs)),
+    row('sum-check', messages.measurementSumCheck, messages.decibels(shared.sumCheckDb.toFixed(1))),
+    row('median', messages.measurementOnsetMedian, milliseconds(outcome.medianMs)),
+    row('p90', messages.measurementOnsetP90, milliseconds(outcome.p90Ms)),
+    row('within-100', messages.measurementWithin100Ms, messages.percent((outcome.within100Ms * 100).toFixed(0))),
+  ]
+}
+
 // The model check page (docs/ui-conventions.md#check-pages). It downloads,
 // checks and keeps a pinned test file, until the real models are added. It
 // also runs the test separator with ONNX Runtime Web in a Web Worker, and
@@ -42,7 +97,11 @@ type AlignerState =
 // aligner in another, stage 4 of processing. Opened by its URL,
 // #/model-check. With ?backend=wasm, the separator runs on WebAssembly even
 // when the browser has a GPU, and Force WebAssembly starts ticked for the
-// aligner.
+// aligner. Its measurement section measures each candidate aligner against a
+// hand-written timing (docs/reference/models.md#measurement-method): it
+// separates a picked source once, then times the picked lyrics on the vocals
+// with each candidate, in a Web Worker. With ?model=test it measures the test
+// aligners after the test separator, and ?backend=wasm runs it on WebAssembly.
 @Component({
   selector: 'lyre-model-check',
   imports: [MatButton, MatCheckbox, MatProgressBar, MatRadioButton, MatRadioGroup],
@@ -51,11 +110,15 @@ type AlignerState =
     @let current = state();
     @let separator = separatorState();
     @let aligning = alignerState();
+    @let measuring = measurement();
     @let busy =
       current.status === 'running' ||
       separator.status === 'running' ||
       aligning.status === 'preparing' ||
-      aligning.status === 'running';
+      aligning.status === 'running' ||
+      measuring.status === 'reading' ||
+      measuring.status === 'downloading' ||
+      measuring.status === 'running';
     <h2>{{ messages.modelCheckTitle }}</h2>
     <p>{{ messages.modelCheckAbout }}</p>
     <button matButton="filled" type="button" [disabled]="busy" (click)="load()">
@@ -140,6 +203,57 @@ type AlignerState =
     @if (aligning.status === 'aligned') {
       <p>{{ messages.syllablesTimed(aligning.syllables) }}</p>
     }
+    <p>{{ messages.measurementAbout }}</p>
+    <button matButton="filled" type="button" [disabled]="busy" (click)="sourceInput.click()">
+      {{ messages.chooseSource }}
+    </button>
+    <input
+      #sourceInput
+      type="file"
+      accept="video/mp4,video/webm,audio/mpeg,.mp4,.webm,.mp3"
+      hidden
+      (change)="pick(sourceInput, source)"
+    />
+    <button matButton="filled" type="button" [disabled]="busy" (click)="measuredLyricsInput.click()">
+      {{ messages.chooseLyrics }}
+    </button>
+    <input
+      #measuredLyricsInput
+      type="file"
+      accept="text/plain,.txt"
+      hidden
+      (change)="pick(measuredLyricsInput, lyrics)"
+    />
+    <button matButton="filled" type="button" [disabled]="busy" (click)="timingInput.click()">
+      {{ messages.chooseTiming }}
+    </button>
+    <input #timingInput type="file" accept="text/plain,.txt" hidden (change)="pick(timingInput, timing)" />
+    <button
+      matButton="filled"
+      type="button"
+      [disabled]="busy || !source() || !lyrics() || !timing()"
+      (click)="measure()"
+    >
+      {{ messages.measureAligners }}
+    </button>
+    <!-- Not role="status", so the download's status line stays the page's only one. -->
+    <p aria-live="polite">{{ measurementLine() }}</p>
+    @for (result of results(); track result.candidate) {
+      <section [attr.aria-labelledby]="result.candidate + '-name'">
+        <h3 [id]="result.candidate + '-name'">{{ messages.candidateNames[result.candidate] }}</h3>
+        @if (result.problem) {
+          <p>{{ messages.candidateFailed[result.problem] }}</p>
+        } @else {
+          <!-- Each value is alone in its row, so the row's text is exactly the value. -->
+          <dl>
+            @for (row of result.rows; track row.id) {
+              <dt [id]="row.id">{{ row.label }}</dt>
+              <dd [attr.aria-labelledby]="row.id">{{ row.value }}</dd>
+            }
+          </dl>
+        }
+      </section>
+    }
     @if (models.mayBeCleared()) {
       <p>{{ messages.modelsMayBeCleared }}</p>
     }
@@ -154,9 +268,30 @@ export class ModelCheckPage {
   protected readonly alignerState = signal<AlignerState>({ status: 'idle' })
   protected readonly aligners: readonly TestAligner[] = ['omnilingual', 'lyric-alignment']
   protected readonly aligner = signal<TestAligner>('omnilingual')
-  private readonly forced: Backend | undefined =
-    inject(ActivatedRoute).snapshot.queryParamMap.get('backend') === 'wasm' ? 'wasm' : undefined
+  private readonly query = inject(ActivatedRoute).snapshot.queryParamMap
+  private readonly forced: Backend | undefined = this.query.get('backend') === 'wasm' ? 'wasm' : undefined
   protected readonly forceWasm = signal(this.forced === 'wasm')
+  private readonly test = this.query.get('model') === 'test'
+  // The files picked for a measurement.
+  protected readonly source = signal<File | undefined>(undefined)
+  protected readonly lyrics = signal<File | undefined>(undefined)
+  protected readonly timing = signal<File | undefined>(undefined)
+  protected readonly measurement = signal<MeasurementState>({ status: 'idle' })
+  protected readonly shared = signal<Shared | undefined>(undefined)
+  // Each candidate that has finished, in the order it ran.
+  protected readonly outcomes = signal<{ candidate: Candidate; outcome: Outcome }[]>([])
+  protected readonly measurementLine = computed(() => this.lineFor(this.measurement()))
+  protected readonly results = computed(() =>
+    this.outcomes().map(({ candidate, outcome }) => ({
+      candidate,
+      rows: rowsFor(candidate, outcome, this.shared()),
+      problem: outcome.status === 'failed' ? outcome.problem : undefined,
+    })),
+  )
+  // Counts the measurements started, so only the latest one shows.
+  private attempts = 0
+  // The measurement running, if any.
+  private run: MeasurementRun | undefined
   // The bytes downloaded so far, which stay shown after the download ends.
   protected readonly bytes = computed(() => {
     const progress = this.models.progress()
@@ -167,6 +302,14 @@ export class ModelCheckPage {
     if (!progress) return this.state().status === 'passed' ? 100 : 0
     return progress.totalBytes === 0 ? 100 : (progress.loadedBytes / progress.totalBytes) * 100
   })
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      // A run's later replies then show nowhere.
+      this.attempts++
+      this.run?.stop()
+    })
+  }
 
   protected async load(): Promise<void> {
     this.state.set({ status: 'running' })
@@ -217,5 +360,177 @@ export class ModelCheckPage {
     // The worker answers in order, so the last progress reply already counted every window.
     const { done, total } = current.status === 'running' ? current : { done: 0, total: 0 }
     this.alignerState.set({ status: 'aligned', backend: reply.backend, done, total, syllables: reply.syllables })
+  }
+
+  protected pick(input: HTMLInputElement, picked: WritableSignal<File | undefined>): void {
+    const file = input.files?.[0]
+    // Clears the choice, so picking the same file again still counts.
+    input.value = ''
+    if (file) picked.set(file)
+  }
+
+  protected async measure(): Promise<void> {
+    const source = this.source()
+    const lyricsFile = this.lyrics()
+    const timingFile = this.timing()
+    if (!source || !lyricsFile || !timingFile) return
+    this.run?.stop()
+    this.run = undefined
+    const attempt = ++this.attempts
+    const current = () => attempt === this.attempts
+    this.measurement.set({ status: 'reading' })
+    this.shared.set(undefined)
+    this.outcomes.set([])
+    // The timing file is read before anything is downloaded, so a bad one fails at once.
+    const handStartsMs = await this.handStarts(lyricsFile, timingFile).catch((): MeasurementState => ({
+      status: 'files-unreadable',
+    }))
+    if (!current()) return
+    if (!(handStartsMs instanceof Uint32Array)) {
+      this.measurement.set(handStartsMs)
+      return
+    }
+    this.measurement.set({ status: 'downloading' })
+    const loaded = await this.loadFiles()
+    if (!current()) return
+    if ('status' in loaded) {
+      this.measurement.set(loaded)
+      return
+    }
+    const request: MeasurementRequest = {
+      type: 'run',
+      source,
+      lyrics: lyricsFile,
+      handStartsMs,
+      ...loaded,
+      baseUri: document.baseURI,
+      forced: this.forced,
+    }
+    this.run = runMeasurement(request, (reply) => {
+      if (current()) this.show(reply)
+    })
+    await this.run.done
+    if (current()) this.run = undefined
+  }
+
+  // The starts of the hand-written timing, read by the core against the
+  // lyrics, or the state for a refused timing file.
+  private async handStarts(lyricsFile: Blob, timingFile: Blob): Promise<Uint32Array | MeasurementState> {
+    // The lyric bytes go to the core as they are (D5).
+    const [lyrics, timing] = await Promise.all(
+      [lyricsFile, timingFile].map(async (file) => new Uint8Array(await file.arrayBuffer())),
+    )
+    await loadCore()
+    try {
+      const syllables = parseTimingFile(timing, lyrics)
+      const starts = Uint32Array.from(syllables, (syllable) => syllable.startMs)
+      for (const syllable of syllables) syllable.free()
+      return starts
+    } catch (error) {
+      if (!(error instanceof TimingFileFault)) throw error
+      const { kind, line } = error
+      error.free()
+      return { status: 'timing-refused', kind, line: line ?? 0 }
+    }
+  }
+
+  // Loads the separator's files and each candidate's, downloading the ones
+  // missing. Any file that fails stops the run, so no comparison is incomplete.
+  private async loadFiles(): Promise<
+    Pick<MeasurementRequest, 'separator' | 'candidates'> | Extract<MeasurementState, { status: 'download-failed' }>
+  > {
+    const loaded = new Map<string, Blob>()
+    let id = ''
+    const load = async (next: string) => {
+      id = next
+      const blob = loaded.get(next) ?? (await this.models.load(next))
+      loaded.set(next, blob)
+      return blob
+    }
+    try {
+      const separator = separatorFiles(this.test)
+      const graph = await load(separator.graph)
+      const weights = await load(separator.weights)
+      const candidates: MeasurementRequest['candidates'] = []
+      for (const candidate of candidatesFor(this.test)) {
+        const files = candidateFiles[candidate]
+        candidates.push({
+          candidate,
+          kind: files.kind,
+          graph: await load(files.graph),
+          vocabulary: await load(files.vocabulary),
+        })
+      }
+      return { separator: { graph, weights }, candidates }
+    } catch (error) {
+      // Any other failure, such as storage the browser blocks, also keeps nothing.
+      return { status: 'download-failed', id, checkFailed: error instanceof ModelCheckFailed }
+    }
+  }
+
+  private show(reply: MeasurementReply): void {
+    switch (reply.type) {
+      case 'stage':
+        this.measurement.set({ status: 'running', stage: reply.stage, candidate: reply.candidate })
+        break
+      case 'separated': {
+        const { extractMs, separateMs, sumCheckDb } = reply
+        this.shared.set({ extractMs, separateMs, sumCheckDb })
+        break
+      }
+      case 'measured': {
+        const { candidate, backend, loadMs, alignMs, medianMs, p90Ms, within100Ms } = reply
+        const outcome: Outcome = { status: 'measured', backend, loadMs, alignMs, medianMs, p90Ms, within100Ms }
+        this.outcomes.update((outcomes) => [...outcomes, { candidate, outcome }])
+        break
+      }
+      case 'candidate-failed':
+        this.outcomes.update((outcomes) => [
+          ...outcomes,
+          { candidate: reply.candidate, outcome: { status: 'failed', problem: reply.problem } },
+        ])
+        break
+      case 'sum-check-failed':
+        this.measurement.set({ status: 'sum-check-failed', rule: reply.rule, measuredDb: reply.measuredDb })
+        break
+      case 'failed':
+        this.measurement.set({ status: 'failed', problem: reply.problem })
+        break
+      case 'done':
+        this.measurement.set({ status: 'done' })
+        break
+    }
+  }
+
+  private lineFor(state: MeasurementState): string {
+    switch (state.status) {
+      case 'idle':
+        return ''
+      case 'reading':
+        return messages.measurementReading
+      case 'files-unreadable':
+        return messages.measurementFilesUnreadable
+      case 'timing-refused':
+        return state.kind === TimingFileErrorKind.Lyrics
+          ? messages.songLyricsInvalid
+          : messages.measurementTimingFile[
+              TimingFileErrorKind[state.kind] as keyof typeof messages.measurementTimingFile
+            ](state.line)
+      case 'downloading':
+        return messages.measurementDownloading
+      case 'download-failed':
+        return state.checkFailed ? messages.modelCheckFailed(state.id) : messages.modelDownloadFailed(state.id)
+      case 'running':
+        if (state.stage === 'extract') return messages.measurementExtracting
+        if (state.stage === 'separate') return messages.measurementSeparating
+        return messages.measurementAligning(state.candidate ? messages.candidateNames[state.candidate] : '')
+      case 'done':
+        return messages.measurementDone
+      case 'sum-check-failed':
+        return messages.sumCheckFailed[state.rule](state.measuredDb.toFixed(1))
+      case 'failed':
+        if (state.problem === 'model') return messages.separatorNotLoaded
+        return state.problem === 'no-audio' ? messages.sourceNoAudio : messages.sourceUnreadable
+    }
   }
 }

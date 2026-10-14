@@ -327,6 +327,36 @@ Compose uses the same three values *(planned for M4)*.
   failure one plain message. Neither shows lyric text or error text. The
   Playwright journeys use it to check a run of each test aligner on
   WebAssembly, under the page's policy.
+  Its measurement section measures each candidate aligner against a
+  hand-written timing, as the
+  [measurement method](reference/models.md#measurement-method) says.
+  **Choose a source**, **Choose the lyrics** and **Choose a timing file**
+  buttons pick the three files, and a **Measure the aligners** button starts
+  once all three are picked. The page first reads the timing file against the
+  lyrics through the core, before it downloads or runs anything. A refused
+  timing file gets a sentence that names the line and the rule it broke, such
+  as "Line 4 of the timing file overlaps the line before it.", and invalid
+  lyrics get "The lyrics file is not valid lyrics." The page then downloads the
+  missing model files with the same progress bar, and a file that fails
+  stops the run with the message naming it. In one Web Worker, it decodes the
+  source and separates it once with htdemucs, then times the lyrics on the
+  vocals with Omnilingual int8, `lyric-alignment` fp32 and `lyric-alignment`
+  int8 in turn. A line, which is not a status line, names the stage running.
+  Each candidate gets a result named after it, with its backend, the extract,
+  separate and align times, the model load time, the sum check in dB, and the
+  onset error median, 90th percentile and share within 100 ms. The extract
+  time, separate time and sum check are the same in every result, because the
+  source is separated once. A candidate that fails shows its own message in
+  its result, one for a timing the song file timing check refused and one for
+  any other failure, and the next candidate still runs. A failed sum check, a
+  source without audio or an unreadable source stops the run, with the
+  separation check page's messages. `?model=test` measures the two test
+  aligners after the test separator, and `?backend=wasm` runs every model on
+  WebAssembly. The source, the lyrics and the timing file are never sent
+  anywhere. The Playwright journeys use it to check a whole measurement of the
+  test aligners on WebAssembly, an overlap in the timing file, that the main
+  page does not load the page's code, and that every request goes to the
+  site's own origin.
 - The separation check page separates a picked source's audio into vocals and
   a karaoke track in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
