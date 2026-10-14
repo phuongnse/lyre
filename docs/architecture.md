@@ -238,8 +238,12 @@ reference doc and reviewed before M3 implements them.
   the aligner, gives the frame length and turns the model's output into
   frames. It then joins the frames, times the syllables and runs the song
   file's timing check, so a timing the check refuses is never returned.
-  Progress counts the windows done out of the total. No page or worker runs
-  it yet.
+  Progress counts the windows done out of the total. For now, the model check
+  page runs it in a Web Worker with a
+  [test aligner](reference/model-tool.md#make_test_alignerspy) on test audio.
+  The model's input and output names come from the core's rules for each
+  aligner. The aligner opens its ONNX Runtime session through the same helper
+  as the separator.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is

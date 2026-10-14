@@ -180,6 +180,20 @@ export const messages = {
   separatorRan: (backend: string, xOut: readonly number[], xtOut: readonly number[]) =>
     `The test separator ran on ${backend}. x_out ${xOut.join('×')}, xt_out ${xtOut.join('×')}.`,
   separatorFailed: 'The test separator could not run.',
+  alignerCheckAbout: 'Times the syllables of a lyrics file on 40 s of test audio with a test aligner, in a Web Worker.',
+  testAligner: 'Test aligner',
+  // Keyed by TestAligner.
+  alignerNames: { omnilingual: 'Omnilingual', 'lyric-alignment': 'lyric-alignment' },
+  forceWebAssembly: 'Force WebAssembly',
+  alignTestAudio: 'Align test audio',
+  alignerPreparing: 'Loading the test aligner…',
+  alignmentRunning: (backend: string, done: number, total: number) =>
+    `Aligning on ${backend}: ${done} of ${total} windows done`,
+  alignmentDone: (backend: string, done: number, total: number) =>
+    `Aligned on ${backend}: ${done} of ${total} windows done`,
+  syllablesTimed: (count: number) => `${count} syllables timed. The song file timing check accepted the timing.`,
+  timingRefused: 'The song file timing check refused the timing.',
+  alignerFailed: 'The test aligner could not run.',
   separationCheckTitle: 'Separation check',
   separationCheckAbout:
     "Separates a source's audio into vocals and a karaoke track in a Web Worker. The source is not changed or sent anywhere.",
