@@ -3,13 +3,13 @@ import { MatButton } from '@angular/material/button'
 import { MatProgressBar } from '@angular/material/progress-bar'
 import { ActivatedRoute } from '@angular/router'
 import { Backend } from '../../separation/backend'
-import { SumCheckRule } from '../../separation/separation-messages'
+import { BrokenRunRule, brokenRunValue } from '../../separation/separation-messages'
 import { SourceProblem } from '../../source-error'
 import { messages } from '../messages'
 import { Models } from '../models'
 import { SeparationRun, runSeparation } from '../separation-run'
 
-// How far a run has come: windows done out of the total.
+// How far a run has come: segments done out of the total.
 interface Progress {
   backend: Backend
   done: number
@@ -28,14 +28,15 @@ type State =
   | { status: 'preparing' }
   | { status: 'running'; progress: Progress }
   | { status: 'separated'; progress: Progress; lengths: Lengths }
-  | { status: 'sum-check-failed'; rule: SumCheckRule; measuredDb: number }
+  | { status: 'broken-run'; rule: BrokenRunRule; value: number }
   | { status: 'failed'; problem: SourceProblem | 'model' }
 
 // The separation check page (docs/ui-conventions.md#check-pages). It decodes
 // a picked source and separates its audio into vocals and a karaoke track in
 // a Web Worker, stage 3 of processing, until the real song-making page
-// exists. Opened by its URL, #/separation-check. It runs htdemucs, or the test
-// separator with ?model=test. With ?backend=wasm, the separator runs on
+// exists. Opened by its URL, #/separation-check. It runs Kim's Mel-Band RoFormer,
+// or the test separator with ?model=test, and a run that fails the broken-run
+// check shows the rule and the value it measured. With ?backend=wasm, the separator runs on
 // WebAssembly even when the browser has a GPU.
 @Component({
   selector: 'lyre-separation-check',
@@ -59,8 +60,8 @@ type State =
       @case ('preparing') {
         <p role="status">{{ messages.separationPreparing }}</p>
       }
-      @case ('sum-check-failed') {
-        <p role="alert">{{ messages.sumCheckFailed[current.rule](current.measuredDb.toFixed(1)) }}</p>
+      @case ('broken-run') {
+        <p role="alert">{{ messages.brokenRun[current.rule](brokenRunText(current.rule, current.value)) }}</p>
       }
       @case ('failed') {
         <p role="alert">{{ failure(current.problem) }}</p>
@@ -144,7 +145,7 @@ export class SeparationCheck {
       case 'separated': {
         const { backend, sourceSeconds, vocalsSeconds, karaokeSeconds } = reply
         const current = this.state()
-        // The worker answers in order, so the last progress reply already counted every window.
+        // The worker answers in order, so the last progress reply already counted every segment.
         const progress = current.status === 'running' ? current.progress : { backend, done: 0, total: 0 }
         this.state.set({
           status: 'separated',
@@ -153,14 +154,16 @@ export class SeparationCheck {
         })
         break
       }
-      case 'sum-check-failed':
-        this.state.set({ status: 'sum-check-failed', rule: reply.rule, measuredDb: reply.measuredDb })
+      case 'broken-run':
+        this.state.set({ status: 'broken-run', rule: reply.rule, value: reply.value })
         break
       case 'failed':
         this.state.set({ status: 'failed', problem: reply.problem })
         break
     }
   }
+
+  protected readonly brokenRunText = brokenRunValue
 
   protected failure(problem: SourceProblem | 'model'): string {
     if (problem === 'model') return messages.separatorNotLoaded

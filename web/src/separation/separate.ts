@@ -1,12 +1,10 @@
 import { SeparatedTracks, Separation } from '../lyre-wasm/lyre_wasm.js'
 import { decodeAudio, SEPARATION_FORMAT } from '../source-audio'
 
-// Runs the separator on one window: `x` in the shape X_SHAPE and `xt` in the
-// shape XT_SHAPE. `dispose` frees the outputs once the core has read them.
-export type SeparatorRunner = (
-  x: Float32Array,
-  xt: Float32Array,
-) => Promise<{ xOut: Float32Array; xtOut: Float32Array; dispose(): void }>
+// Runs the separator on one segment: the spectrogram `spec` in the shape
+// SPEC_SHAPE. It gives the vocals' spectrogram. `dispose` frees it once the
+// core has read it.
+export type SeparatorRunner = (spec: Float32Array) => Promise<{ vocalsSpec: Float32Array; dispose(): void }>
 
 // Decodes the whole source at 44.1 kHz stereo, because the core's separation
 // needs all of it. It gives the left channel, then the right.
@@ -30,30 +28,26 @@ function concatenate(pieces: Float32Array[]): Float32Array {
 }
 
 // Separates decoded 44.1 kHz stereo audio into vocals and a karaoke track
-// with a separator runner, window by window: stage 3 of processing
+// with a separator runner, segment by segment: stage 3 of processing
 // (docs/architecture.md#processing-planned-for-m2). `onProgress` gets the
-// windows done out of the total, first with none done. The caller has loaded
-// the core and frees the tracks. A refused step or a failed sum check throws
-// the core's SeparationFault.
+// segments done out of the total, first with none done. The caller has loaded
+// the core and frees the tracks. A refused step or a failed broken-run check
+// throws the core's SeparationFault.
 export async function separate(
-  runWindow: SeparatorRunner,
+  runSegment: SeparatorRunner,
   left: Float32Array,
   right: Float32Array,
   onProgress: (done: number, total: number) => void,
 ): Promise<SeparatedTracks> {
   const separation = new Separation(left, right)
   try {
-    const total = separation.windowCount
+    const total = separation.segmentCount
     onProgress(0, total)
     for (let index = 0; index < total; index++) {
-      const input = separation.input(index)
-      // Each getter copies the values out of the core, so each is read once.
-      const x = input.x
-      const xt = input.xt
-      input.free()
-      const { xOut, xtOut, dispose } = await runWindow(x, xt)
+      const spec = separation.input(index)
+      const { vocalsSpec, dispose } = await runSegment(spec)
       try {
-        separation.output(index, xOut, xtOut)
+        separation.output(index, vocalsSpec)
       } finally {
         dispose()
       }

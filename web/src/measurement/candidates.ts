@@ -42,10 +42,9 @@ export function candidatesFor(test: boolean): readonly Candidate[] {
     : ['omnilingual-int8', 'lyric-alignment-fp32', 'lyric-alignment-int8']
 }
 
-// The IDs of the separator's graph and weights files. `test` gives the test separator.
-export function separatorFiles(test: boolean): { graph: string; weights: string } {
-  const prefix = test ? 'test-htdemucs' : 'htdemucs'
-  return { graph: `${prefix}-graph`, weights: `${prefix}-weights` }
+// The ID of the separator's pinned file. `test` gives the test separator.
+export function separatorFile(test: boolean): 'test-mel-roformer' | 'mel-roformer-fp16' {
+  return test ? 'test-mel-roformer' : 'mel-roformer-fp16'
 }
 
 // The backends a run measures, in order: WebGPU, then one-thread WebAssembly.

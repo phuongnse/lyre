@@ -379,9 +379,9 @@ Compose uses the same three values *(planned for M4)*.
   browser refuses persistent storage, a note says it may remove the
   downloaded models. The Playwright journeys use it to check a download, a
   later load that downloads nothing, and a file that fails its check.
-  A **Run the test separator** button checks both test separator files, runs
-  one window of silence in a Web Worker, and says which backend ran and the
-  shapes of the two outputs. Adding `?backend=wasm` to the URL, as in
+  A **Run the test separator** button checks the one test separator file, runs
+  one segment of silence in a Web Worker, and says which backend ran and the
+  shape of the `stems_spec` output, 1×4×1025×801. Adding `?backend=wasm` to the URL, as in
   `#/model-check?backend=wasm`, makes it run on WebAssembly even when the
   browser has a GPU. The Playwright journeys use it to check the run without
   a GPU, under the page's policy and from the site's own origin.
@@ -405,7 +405,8 @@ Compose uses the same three values *(planned for M4)*.
   picked. The page goes straight to the download, and invalid lyrics show as
   a refused alignment in each result. The page downloads the
   missing model files with the same progress bar, and a file that fails
-  stops the run with the message naming it. In one Web Worker, it decodes the
+  stops the run with the message naming it. The Playwright journeys check a
+  separator file with one byte changed the same way. In one Web Worker, it decodes the
   source once. Then it runs each backend in turn, first WebGPU and then
   WebAssembly on one thread. On each, it separates the source with the separator,
   then times the lyrics on those vocals with Omnilingual int8,
@@ -417,12 +418,13 @@ Compose uses the same three values *(planned for M4)*.
   stage running and its backend, such as "Aligning with Omnilingual int8 on
   WebAssembly…". Each candidate gets a result per backend, named after both,
   such as "Omnilingual int8 on WebGPU". It shows the backend, the extract,
-  separate and align times, the model load time and the sum check in dB. It
+  separate and align times, the model load time and the separator, which is
+  "Mel-Band RoFormer (Kim)", or "Test separator" with `?model=test`. It
   also shows the highest WebAssembly memory and the highest JavaScript heap seen in each
   of the three stages, in bytes. A figure the browser does not give, such as
   the heap in Firefox, shows "not reported". The extract time and memory are
   the same in every result, because the source is decoded once. The
-  separate time, memory and the sum check are the same in every result on one
+  separate time, memory and the separator are the same in every result on one
   backend, because the source is separated once per backend. The WebAssembly
   memory never shrinks, so a stage's figure includes what earlier stages grew
   (see the [memory method](reference/models.md#memory)). A Device section
@@ -432,8 +434,8 @@ Compose uses the same three values *(planned for M4)*.
   adapter. With none, the three GPU rows show "not reported". A run that fails
   shows one reason in its result: WebGPU is not available, the model could
   not be loaded on this backend, the run ran out of memory, the separation
-  failed the sum check (with the separation check page's message naming the
-  rule and the value), the alignment was refused, the song file timing check
+  failed the broken-run check (with the separation check page's message naming
+  the rule and the value), the alignment was refused, the song file timing check
   refused the timing, or the run could not finish. When the separation fails
   on a backend, each candidate's result on it says "Not run." and the same
   reason. Either way the next candidate and the next backend still run. As
@@ -498,12 +500,13 @@ Compose uses the same three values *(planned for M4)*.
 - The separation check page separates a picked source's audio into vocals and
   a karaoke track in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
-  progress bar and the status line show the backend and the windows done out
+  progress bar and the status line show the backend and the segments done out
   of the total. When it ends, the page shows the backend that ran and the
   lengths of the source, the vocals and the karaoke track. A run that fails
-  the sum check names the rule and the value it measured. A source without
+  the broken-run check names the rule and the value it measured: the position
+  of the first sample that is not finite, or the peak in dB above the source. A source without
   audio, or a file it cannot read, gets the source check page's messages, and
-  a separator that cannot be loaded gets its own. The page runs the separator.
+  a separator that cannot be loaded gets its own. The page runs Kim's Mel-Band RoFormer.
   `?model=test` runs the test separator instead, and `?backend=wasm` makes it
   run on WebAssembly, as on the model check page. The Playwright journeys use
   it to check a whole run of the test separator and that the page stays

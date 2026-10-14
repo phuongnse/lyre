@@ -38,8 +38,8 @@ export function realSongModels(baseUri: string): SongModels {
         fetch: (input, init) => fetch(input, init),
         baseUri,
       }),
-    async openSeparator(graph, weights) {
-      const { session } = await openSeparator(graph, weights, { baseUri })
+    async openSeparator(graph) {
+      const { session } = await openSeparator(graph, { baseUri })
       return { run: separatorRunner(session), release: () => session.release() }
     },
     async openAligner(kind, graph) {

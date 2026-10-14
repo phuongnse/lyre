@@ -1,20 +1,20 @@
 import { AlignmentRunError } from '../alignment/align-song'
 import { AlignmentFault, SeparationFault, TimingCheckFault, WindowFault } from '../lyre-wasm/lyre_wasm.js'
 import { Backend } from '../separation/backend'
-import { replyForFault, SumCheckRule } from '../separation/separation-messages'
+import { BrokenRunRule, replyForFault } from '../separation/separation-messages'
 import { isOutOfMemory, SessionFault } from '../session-backend'
 import { SourceProblem } from '../source-error'
 import { Candidate, CandidateKind } from './candidates'
 import { StageMemory } from './memory'
 
 // What the page sends the measurement worker: the source, the lyrics file,
-// the checked files of the separator and of each candidate, in the order to
+// the checked file of the separator and the checked files of each candidate, in the order to
 // run them, and the backends to run them on, in order.
 export type MeasurementRequest = {
   type: 'run'
   source: File
   lyrics: Blob
-  separator: { graph: Blob; weights: Blob }
+  separator: Blob
   candidates: { candidate: Candidate; kind: CandidateKind; graph: Blob; vocabulary: Blob }[]
   baseUri: string
   backends: Backend[]
@@ -25,11 +25,11 @@ export type MeasurementStage = 'extract' | 'separate' | 'align'
 
 // Why a run of one candidate on one backend failed: WebGPU is not available,
 // the model could not be loaded on the backend, the run ran out of memory,
-// the separation failed the sum check, the core refused the alignment, the
+// the separation failed the broken-run check, the core refused the alignment, the
 // song file timing check refused the timing, or anything else.
 export type RunProblem =
   | { kind: 'webgpu-unavailable' | 'model' | 'out-of-memory' | 'alignment-refused' | 'timing' | 'other' }
-  | { kind: 'sum-check'; rule: SumCheckRule; measuredDb: number }
+  | { kind: 'broken-run'; rule: BrokenRunRule; value: number }
 
 // What the worker answers: the stage it starts, the extract time, each
 // backend's separation figures and its tracks as WAV files, each candidate's
@@ -41,7 +41,7 @@ export type RunProblem =
 export type MeasurementReply =
   | { type: 'stage'; stage: MeasurementStage; backend?: Backend; candidate?: Candidate }
   | { type: 'extracted'; extractMs: number; memory: StageMemory }
-  | { type: 'separated'; backend: Backend; separateMs: number; sumCheckDb: number; memory: StageMemory }
+  | { type: 'separated'; backend: Backend; separateMs: number; memory: StageMemory }
   // The vocals and the karaoke track of one backend's separation, as WAV files for the page's players.
   | { type: 'tracks'; backend: Backend; vocals: Uint8Array<ArrayBuffer>; karaoke: Uint8Array<ArrayBuffer> }
   | {
@@ -63,11 +63,11 @@ export type MeasurementReply =
 export function runProblem(error: unknown): RunProblem {
   if (error instanceof SessionFault) return { kind: error.problem }
   if (error instanceof SeparationFault) {
-    const reply = replyForFault({ kind: error.kind, measuredDb: error.measuredDb })
+    const reply = replyForFault({ kind: error.kind, measuredDb: error.measuredDb, sample: error.sample })
     error.free()
     // A refused step names no rule.
-    return reply.type === 'sum-check-failed'
-      ? { kind: 'sum-check', rule: reply.rule, measuredDb: reply.measuredDb }
+    return reply.type === 'broken-run'
+      ? { kind: 'broken-run', rule: reply.rule, value: reply.value }
       : { kind: 'other' }
   }
   if (error instanceof TimingCheckFault) {

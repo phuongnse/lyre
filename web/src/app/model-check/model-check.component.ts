@@ -6,7 +6,7 @@ import { MatRadioButton, MatRadioGroup } from '@angular/material/radio'
 import { ActivatedRoute } from '@angular/router'
 import { TestAligner } from '../../alignment/aligner-session'
 import { Device, readDevice } from '../../measurement/device'
-import { backendsFor, Candidate, candidateFiles, candidatesFor, separatorFiles } from '../../measurement/candidates'
+import { backendsFor, Candidate, candidateFiles, candidatesFor, separatorFile } from '../../measurement/candidates'
 import { StageMemory } from '../../measurement/memory'
 import {
   MeasurementReply,
@@ -16,6 +16,7 @@ import {
 } from '../../measurement/measurement-messages'
 import { ModelCheckFailed } from '../../models/model-download'
 import { Backend } from '../../separation/backend'
+import { brokenRunValue } from '../../separation/separation-messages'
 import { SourceProblem } from '../../source-error'
 import { runAlignerCheck } from '../aligner-check'
 import { MeasurementRun, runMeasurement } from '../measurement-run'
@@ -39,7 +40,7 @@ type State =
 type SeparatorState =
   | { status: 'idle' }
   | { status: 'running' }
-  | { status: 'ran'; backend: Backend; xOut: number[]; xtOut: number[] }
+  | { status: 'ran'; backend: Backend; stemsSpec: number[] }
   | { status: 'failed' }
 
 type AlignerState =
@@ -79,6 +80,7 @@ function rowsFor(
   outcome: Outcome,
   extract: { ms: number; memory: StageMemory } | undefined,
   separation: Separation | undefined,
+  separator: ReturnType<typeof separatorFile>,
 ): Row[] {
   if (outcome.status !== 'measured' || extract === undefined || separation === undefined) return []
   const row = (key: string, label: string, value: string): Row => ({
@@ -92,7 +94,7 @@ function rowsFor(
     row('separate', messages.measurementSeparate, seconds(separation.separateMs)),
     row('align', messages.measurementAlign, seconds(outcome.alignMs)),
     row('load', messages.measurementModelLoad, seconds(outcome.loadMs)),
-    row('sum-check', messages.measurementSumCheck, messages.decibels(separation.sumCheckDb.toFixed(1))),
+    row('separator', messages.measurementSeparator, messages.separatorNames[separator]),
     row('extract-wasm', messages.measurementExtractWasmMemory, bytesOr(extract.memory.wasmBytes)),
     row('extract-heap', messages.measurementExtractHeap, bytesOr(extract.memory.heapBytes)),
     row('separate-wasm', messages.measurementSeparateWasmMemory, bytesOr(separation.memory.wasmBytes)),
@@ -121,7 +123,8 @@ function deviceRows(device: Device): Row[] {
 
 // Why a run failed, as the page says it.
 function reasonFor(problem: RunProblem): string {
-  if (problem.kind === 'sum-check') return messages.sumCheckFailed[problem.rule](problem.measuredDb.toFixed(1))
+  if (problem.kind === 'broken-run')
+    return messages.brokenRun[problem.rule](brokenRunValue(problem.rule, problem.value))
   return messages.runProblems[problem.kind]
 }
 
@@ -210,7 +213,7 @@ function reasonFor(problem: RunProblem): string {
           {{ messages.separatorRunning }}
         }
         @case ('ran') {
-          {{ messages.separatorRan(messages.backendNames[separator.backend], separator.xOut, separator.xtOut) }}
+          {{ messages.separatorRan(messages.backendNames[separator.backend], separator.stemsSpec) }}
         }
         @case ('failed') {
           {{ messages.separatorFailed }}
@@ -421,7 +424,7 @@ export class ModelCheckPage {
       backend,
       timesMs: outcome.status === 'measured' ? outcome.timesMs : undefined,
       name: messages.candidateOnBackend(messages.candidateNames[candidate], messages.backendNames[backend]),
-      rows: rowsFor(candidate, backend, outcome, this.extract(), this.separations()[backend]),
+      rows: rowsFor(candidate, backend, outcome, this.extract(), this.separations()[backend], separatorFile(this.test)),
       failure: outcome.status === 'failed' ? { ran: outcome.ran, reason: reasonFor(outcome.problem) } : undefined,
     })),
   )
@@ -476,7 +479,7 @@ export class ModelCheckPage {
       const reply = await runSeparatorCheck(this.models, this.forced)
       this.separatorState.set(
         reply.type === 'ran'
-          ? { status: 'ran', backend: reply.backend, xOut: reply.xOut, xtOut: reply.xtOut }
+          ? { status: 'ran', backend: reply.backend, stemsSpec: reply.stemsSpec }
           : { status: 'failed' },
       )
     } catch {
@@ -597,7 +600,7 @@ export class ModelCheckPage {
     }
   }
 
-  // Loads the separator's files and each candidate's, downloading the ones
+  // Loads the separator's file and each candidate's files, downloading the ones
   // missing. Any file that fails stops the run, so no comparison is incomplete.
   private async loadFiles(): Promise<
     Pick<MeasurementRequest, 'separator' | 'candidates'> | Extract<MeasurementState, { status: 'download-failed' }>
@@ -611,9 +614,7 @@ export class ModelCheckPage {
       return blob
     }
     try {
-      const separator = separatorFiles(this.test)
-      const graph = await load(separator.graph)
-      const weights = await load(separator.weights)
+      const separator = await load(separatorFile(this.test))
       const candidates: MeasurementRequest['candidates'] = []
       for (const candidate of candidatesFor(this.test)) {
         const files = candidateFiles[candidate]
@@ -624,7 +625,7 @@ export class ModelCheckPage {
           vocabulary: await load(files.vocabulary),
         })
       }
-      return { separator: { graph, weights }, candidates }
+      return { separator, candidates }
     } catch (error) {
       // Any other failure, such as storage the browser blocks, also keeps nothing.
       return { status: 'download-failed', id, checkFailed: error instanceof ModelCheckFailed }
@@ -645,10 +646,10 @@ export class ModelCheckPage {
         this.extract.set({ ms: reply.extractMs, memory: reply.memory })
         break
       case 'separated': {
-        const { backend, separateMs, sumCheckDb, memory } = reply
+        const { backend, separateMs, memory } = reply
         this.separations.update((separations) => ({
           ...separations,
-          [backend]: { separateMs, sumCheckDb, memory },
+          [backend]: { separateMs, memory },
         }))
         break
       }

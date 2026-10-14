@@ -3,43 +3,34 @@ import { openSession } from '../onnx-session'
 import { Backend } from './backend'
 import { SeparatorRunner } from './separate'
 
-// The name the graph gives its weights file (docs/reference/models.md#htdemucs).
-const WEIGHTS_NAME = 'htdemucs_fwd.onnx.data'
+// The model's input and output shape, without a batch of more than 1
+// (docs/reference/models.md#mel-band-roformer).
+export const SPEC_SHAPE = [1, 4, 1025, 801]
 
-// The model's input shapes (docs/reference/models.md#htdemucs).
-export const X_SHAPE = [1, 4, 2048, 336]
-export const XT_SHAPE = [1, 2, 343_980]
-
-// Opens a separator session from its checked graph and weights bytes, as
-// openSession does, in measurement mode too.
+// Opens a separator session from its checked file bytes, as openSession does,
+// in measurement mode too. The file has no external data.
 export function openSeparator(
   graph: Uint8Array,
-  weights: Uint8Array,
   options: { baseUri: string; forced?: Backend; measuring?: boolean },
 ): Promise<{ backend: Backend; session: InferenceSession }> {
-  return openSession(graph, { ...options, externalData: [{ path: WEIGHTS_NAME, data: weights }] })
+  return openSession(graph, options)
 }
 
-// Runs the separator on one window: `x` in the shape X_SHAPE and `xt` in the shape XT_SHAPE.
-export async function runWindow(
-  session: InferenceSession,
-  x: Float32Array,
-  xt: Float32Array,
-): Promise<{ xOut: Tensor; xtOut: Tensor }> {
-  const outputs = await session.run({ x: new Tensor('float32', x, X_SHAPE), xt: new Tensor('float32', xt, XT_SHAPE) })
-  return { xOut: outputs['x_out'], xtOut: outputs['xt_out'] }
+// Runs the separator on one segment: `spec` in the shape SPEC_SHAPE. It gives
+// the output `stems_spec`, in the same shape (docs/reference/models.md#mel-band-roformer).
+export async function runSegment(session: InferenceSession, spec: Float32Array): Promise<Tensor> {
+  const outputs = await session.run({ mix_spec: new Tensor('float32', spec, SPEC_SHAPE) })
+  return outputs['stems_spec']
 }
 
-// Runs the separator in an open session, one window at a time, for `separate`.
+// Runs the separator in an open session, one segment at a time, for `separate`.
 export function separatorRunner(session: InferenceSession): SeparatorRunner {
-  return async (x, xt) => {
-    const { xOut, xtOut } = await runWindow(session, x, xt)
+  return async (spec) => {
+    const stemsSpec = await runSegment(session, spec)
     return {
-      xOut: xOut.data as Float32Array,
-      xtOut: xtOut.data as Float32Array,
+      vocalsSpec: stemsSpec.data as Float32Array,
       dispose() {
-        xOut.dispose()
-        xtOut.dispose()
+        stemsSpec.dispose()
       },
     }
   }

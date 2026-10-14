@@ -20,9 +20,9 @@ export interface SeparationRun {
   stop(): void
 }
 
-// Checks the separator's two files, then separates the audio of `source` in a
+// Checks the separator's file, then separates the audio of `source` in a
 // Web Worker. Only the checked bytes reach the worker. `test` picks the test
-// separator instead of htdemucs. `onProgress` gets each progress reply, and
+// separator instead of Kim's model. `onProgress` gets each progress reply, and
 // `reply` the final one. The worker ends once it answers.
 export function runSeparation(
   models: Models,
@@ -41,12 +41,9 @@ export function runSeparation(
     }
   })
   void (async () => {
-    const prefix = options.test ? 'test-htdemucs' : 'htdemucs'
-    let graph: Blob
-    let weights: Blob
+    let separator: Blob
     try {
-      graph = await models.load(`${prefix}-graph`)
-      weights = await models.load(`${prefix}-weights`)
+      separator = await models.load(options.test ? 'test-mel-roformer' : 'mel-roformer-fp16')
     } catch {
       // A file that failed its check or could not be downloaded is not run.
       answer({ type: 'failed', problem: 'model' })
@@ -63,8 +60,7 @@ export function runSeparation(
     const request: SeparationRequest = {
       type: 'run',
       source,
-      graph,
-      weights,
+      separator,
       baseUri: document.baseURI,
       forced: options.forced,
     }

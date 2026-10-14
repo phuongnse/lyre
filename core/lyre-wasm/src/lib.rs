@@ -8,8 +8,8 @@ use lyre_core::display_lines::{self, DisplayLine, MeasuredSyllable};
 use lyre_core::highlight;
 use lyre_core::lyrics::Lyrics;
 use lyre_core::lyrics_rows;
+use lyre_core::mel_roformer::{self, BrokenRun, SeparationError};
 use lyre_core::model;
-use lyre_core::separation::{self, SeparationError, SumCheckFailure};
 use lyre_core::song_file::{
     self, Chunk, ChunkType, Header, Index, IndexEntry, Segment, Song, SongDetails, SongFileError,
     SyllableTime, Timing, Track,
@@ -1181,16 +1181,21 @@ impl ModelCheck {
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SeparationFaultKind {
-    /// The step was refused, for example empty audio, a window out of range
-    /// or outputs of the wrong length.
+    /// The step was refused, for example empty audio, a segment out of range
+    /// or an output of the wrong length.
     Refused = 0,
-    /// The sum check failed its energy rule.
-    Energy = 1,
-    /// The sum check failed its clipping rule: the vocals peak too high.
-    VocalsPeak = 2,
-    /// The sum check failed its clipping rule: the karaoke track peaks too
+    /// The broken-run check failed its not-finite rule: a vocals sample is
+    /// NaN or infinite.
+    VocalsNotFinite = 1,
+    /// The broken-run check failed its not-finite rule: a karaoke track
+    /// sample is NaN or infinite.
+    KaraokeNotFinite = 2,
+    /// The broken-run check failed its clipping rule: the vocals peak too
     /// high.
-    KaraokePeak = 3,
+    VocalsPeak = 3,
+    /// The broken-run check failed its clipping rule: the karaoke track peaks
+    /// too high.
+    KaraokePeak = 4,
 }
 
 /// Why a separation step failed. It holds no core message, because those are
@@ -1200,6 +1205,7 @@ pub enum SeparationFaultKind {
 pub struct SeparationFault {
     kind: SeparationFaultKind,
     measured_db: Option<f64>,
+    sample: Option<u32>,
 }
 
 #[wasm_bindgen]
@@ -1209,45 +1215,59 @@ impl SeparationFault {
         self.kind
     }
 
-    /// The value the failed rule measured, in dB. Set only for the sum check
-    /// kinds.
+    /// The peak the failed clipping rule measured, in dB above the source.
+    /// Set only for the clipping kinds.
     #[wasm_bindgen(getter, js_name = measuredDb)]
     pub fn measured_db(&self) -> Option<f64> {
         self.measured_db
     }
-}
 
-impl From<SeparationError> for SeparationFault {
-    fn from(error: SeparationError) -> SeparationFault {
-        let (kind, measured_db) = match error {
-            SeparationError::SumCheck(SumCheckFailure::Energy { db }) => {
-                (SeparationFaultKind::Energy, Some(db))
-            }
-            SeparationError::SumCheck(SumCheckFailure::VocalsPeak { db }) => {
-                (SeparationFaultKind::VocalsPeak, Some(db))
-            }
-            SeparationError::SumCheck(SumCheckFailure::KaraokePeak { db }) => {
-                (SeparationFaultKind::KaraokePeak, Some(db))
-            }
-            _ => (SeparationFaultKind::Refused, None),
-        };
-        SeparationFault { kind, measured_db }
+    /// The position of the first sample that is not finite, counting from 0
+    /// in the planar track. Set only for the not-finite kinds.
+    #[wasm_bindgen(getter)]
+    pub fn sample(&self) -> Option<u32> {
+        self.sample
     }
 }
 
-/// What the model takes for one window: the spectrogram `x` and the waveform
-/// `xt`, both normalised.
-#[wasm_bindgen]
-#[derive(Debug, Clone, PartialEq)]
-pub struct SeparationInput {
-    #[wasm_bindgen(getter_with_clone)]
-    pub x: Vec<f32>,
-    #[wasm_bindgen(getter_with_clone)]
-    pub xt: Vec<f32>,
+/// The fault for a refusal with no value to name.
+const REFUSED: SeparationFault = SeparationFault {
+    kind: SeparationFaultKind::Refused,
+    measured_db: None,
+    sample: None,
+};
+
+impl From<SeparationError> for SeparationFault {
+    fn from(error: SeparationError) -> SeparationFault {
+        let position = |at: usize| Some(u32::try_from(at).unwrap_or(u32::MAX));
+        match error {
+            SeparationError::BrokenRun(BrokenRun::VocalsNotFinite { at }) => SeparationFault {
+                kind: SeparationFaultKind::VocalsNotFinite,
+                measured_db: None,
+                sample: position(at),
+            },
+            SeparationError::BrokenRun(BrokenRun::KaraokeNotFinite { at }) => SeparationFault {
+                kind: SeparationFaultKind::KaraokeNotFinite,
+                measured_db: None,
+                sample: position(at),
+            },
+            SeparationError::BrokenRun(BrokenRun::VocalsPeak { db }) => SeparationFault {
+                kind: SeparationFaultKind::VocalsPeak,
+                measured_db: Some(db),
+                sample: None,
+            },
+            SeparationError::BrokenRun(BrokenRun::KaraokePeak { db }) => SeparationFault {
+                kind: SeparationFaultKind::KaraokePeak,
+                measured_db: Some(db),
+                sample: None,
+            },
+            _ => REFUSED,
+        }
+    }
 }
 
-/// The vocals and the karaoke track of a song, with what the sum check
-/// measured. Both tracks are planar stereo: the left channel, then the
+/// The vocals and the karaoke track of a song, with the peaks the broken-run
+/// check measured. Both tracks are planar stereo: the left channel, then the
 /// right, `2 * samples` values.
 #[wasm_bindgen]
 #[derive(Debug, Clone, PartialEq)]
@@ -1256,8 +1276,6 @@ pub struct SeparatedTracks {
     pub vocals: Vec<f32>,
     #[wasm_bindgen(getter_with_clone)]
     pub karaoke: Vec<f32>,
-    #[wasm_bindgen(js_name = energyDb)]
-    pub energy_db: f64,
     #[wasm_bindgen(js_name = vocalsPeakDb)]
     pub vocals_peak_db: f64,
     #[wasm_bindgen(js_name = karaokePeakDb)]
@@ -1265,12 +1283,12 @@ pub struct SeparatedTracks {
 }
 
 /// The separation of a whole song. The client gives the audio, then runs the
-/// model on each window's inputs and gives back its outputs, and finally
+/// model on each segment's input and gives back its output, and finally
 /// takes the tracks.
 #[wasm_bindgen]
 pub struct Separation {
     /// Gone once `finish` has taken it.
-    separation: Option<separation::Separation>,
+    separation: Option<mel_roformer::Separation>,
 }
 
 #[wasm_bindgen]
@@ -1280,51 +1298,39 @@ impl Separation {
     #[wasm_bindgen(constructor)]
     pub fn new(left: &[f32], right: &[f32]) -> Result<Separation, SeparationFault> {
         Ok(Separation {
-            separation: Some(separation::Separation::new(left, right)?),
+            separation: Some(mel_roformer::Separation::new(left, right)?),
         })
     }
 
-    /// The number of windows.
-    #[wasm_bindgen(getter, js_name = windowCount)]
-    pub fn window_count(&self) -> u32 {
+    /// The number of segments, or 0 once finished.
+    #[wasm_bindgen(getter, js_name = segmentCount)]
+    pub fn segment_count(&self) -> u32 {
         self.separation
             .as_ref()
-            // A window takes over 250,000 samples, so the count fits.
-            .map_or(0, |s| u32::try_from(s.window_count()).unwrap_or(u32::MAX))
+            // A segment takes over 350,000 samples, so the count fits.
+            .map_or(0, |s| u32::try_from(s.segment_count()).unwrap_or(u32::MAX))
     }
 
-    /// The model's inputs for the window `index`.
-    pub fn input(&mut self, index: u32) -> Result<SeparationInput, SeparationFault> {
-        let input = self.active()?.input(index as usize)?;
-        Ok(SeparationInput {
-            x: input.x,
-            xt: input.xt,
-        })
+    /// The model's input for the segment `index`: the spectrogram of
+    /// `SPEC_LEN` values.
+    pub fn input(&mut self, index: u32) -> Result<Vec<f32>, SeparationFault> {
+        Ok(self.active()?.input(index as usize)?)
     }
 
-    /// Takes the model's outputs for the window `index`, after its inputs
-    /// were made.
-    pub fn output(
-        &mut self,
-        index: u32,
-        x_out: &[f32],
-        xt_out: &[f32],
-    ) -> Result<(), SeparationFault> {
-        Ok(self.active()?.output(index as usize, x_out, xt_out)?)
+    /// Takes the model's output for the segment `index`: the vocals'
+    /// spectrogram of `SPEC_LEN` values.
+    pub fn output(&mut self, index: u32, spec_out: &[f32]) -> Result<(), SeparationFault> {
+        Ok(self.active()?.output(index as usize, spec_out)?)
     }
 
-    /// Joins the windows and checks the sum. This ends the separation, also
-    /// when the check fails.
+    /// Joins the segments and applies the broken-run check. This ends the
+    /// separation, also when the check fails.
     pub fn finish(&mut self) -> Result<SeparatedTracks, SeparationFault> {
-        let separation = self.separation.take().ok_or(SeparationFault {
-            kind: SeparationFaultKind::Refused,
-            measured_db: None,
-        })?;
+        let separation = self.separation.take().ok_or(REFUSED)?;
         let tracks = separation.finish()?;
         Ok(SeparatedTracks {
             vocals: tracks.vocals,
             karaoke: tracks.karaoke,
-            energy_db: tracks.check.energy_db,
             vocals_peak_db: tracks.check.vocals_peak_db,
             karaoke_peak_db: tracks.check.karaoke_peak_db,
         })
@@ -1332,11 +1338,8 @@ impl Separation {
 }
 
 impl Separation {
-    fn active(&mut self) -> Result<&mut separation::Separation, SeparationFault> {
-        self.separation.as_mut().ok_or(SeparationFault {
-            kind: SeparationFaultKind::Refused,
-            measured_db: None,
-        })
+    fn active(&mut self) -> Result<&mut mel_roformer::Separation, SeparationFault> {
+        self.separation.as_mut().ok_or(REFUSED)
     }
 }
 
@@ -1436,7 +1439,7 @@ mod tests {
     #[test]
     fn lists_every_pinned_file() {
         let files = pinned_files();
-        assert_eq!(files.len(), 16);
+        assert_eq!(files.len(), 17);
         assert!(files.contains(&PinnedModelFile {
             id: "test-two-block".to_owned(),
             url: "test-models/two-block.bin".to_owned(),
@@ -1450,24 +1453,37 @@ mod tests {
     }
 
     #[test]
-    fn a_sum_check_failure_names_its_rule_and_value() {
-        for (failure, kind) in [
+    fn a_broken_run_names_its_rule_and_value() {
+        for (failure, kind, measured_db, sample) in [
             (
-                SumCheckFailure::Energy { db: 9.9 },
-                SeparationFaultKind::Energy,
+                BrokenRun::VocalsNotFinite { at: 7 },
+                SeparationFaultKind::VocalsNotFinite,
+                None,
+                Some(7),
             ),
             (
-                SumCheckFailure::VocalsPeak { db: 9.9 },
+                BrokenRun::KaraokeNotFinite { at: 9 },
+                SeparationFaultKind::KaraokeNotFinite,
+                None,
+                Some(9),
+            ),
+            (
+                BrokenRun::VocalsPeak { db: 9.9 },
                 SeparationFaultKind::VocalsPeak,
+                Some(9.9),
+                None,
             ),
             (
-                SumCheckFailure::KaraokePeak { db: 9.9 },
+                BrokenRun::KaraokePeak { db: 9.9 },
                 SeparationFaultKind::KaraokePeak,
+                Some(9.9),
+                None,
             ),
         ] {
-            let fault = SeparationFault::from(SeparationError::SumCheck(failure));
+            let fault = SeparationFault::from(SeparationError::BrokenRun(failure));
             assert_eq!(fault.kind(), kind);
-            assert_eq!(fault.measured_db(), Some(9.9));
+            assert_eq!(fault.measured_db(), measured_db);
+            assert_eq!(fault.sample(), sample);
         }
     }
 
@@ -1476,6 +1492,7 @@ mod tests {
         let fault = SeparationFault::from(SeparationError::NoAudio);
         assert_eq!(fault.kind(), SeparationFaultKind::Refused);
         assert_eq!(fault.measured_db(), None);
+        assert_eq!(fault.sample(), None);
         assert_eq!(
             Separation::new(&[0.0; 2], &[0.0; 3])
                 .err()
@@ -1487,9 +1504,9 @@ mod tests {
     #[test]
     fn a_finished_separation_refuses_more_steps() {
         let mut separation = Separation::new(&[0.0; 4], &[0.0; 4]).expect("audio");
-        assert_eq!(separation.window_count(), 1);
+        assert_eq!(separation.segment_count(), 1);
         assert!(separation.finish().is_err());
-        assert_eq!(separation.window_count(), 0);
+        assert_eq!(separation.segment_count(), 0);
         assert_eq!(
             separation.input(0).err().map(|f| f.kind()),
             Some(SeparationFaultKind::Refused)
@@ -1498,6 +1515,13 @@ mod tests {
             separation.finish().err().map(|f| f.kind()),
             Some(SeparationFaultKind::Refused)
         );
+    }
+
+    #[test]
+    fn a_separation_gives_the_spectrogram_of_a_segment() {
+        let mut separation = Separation::new(&[0.5; 4], &[0.5; 4]).expect("audio");
+        let spec = separation.input(0).expect("segment 0 exists");
+        assert_eq!(spec.len(), mel_roformer::SPEC_LEN);
     }
 
     #[test]

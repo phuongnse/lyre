@@ -50,7 +50,6 @@ function steps(
         vocals: Float32Array.of(backend === 'webgpu' ? 1 : 2),
         tracks: tracksOf(backend),
         separateMs: 10,
-        sumCheckDb: 30,
         memory: separateMemory,
       }
     },
@@ -64,16 +63,15 @@ function steps(
   return { separatedOn, measured, steps: result }
 }
 
-// The fault of a separation of a sine whose model outputs nothing, which
-// fails the sum check's energy rule.
-function failedSumCheck(): unknown {
+// The fault of a separation of a sine whose model outputs NaN, which fails the
+// broken-run check's not-finite rule for the vocals.
+function failedBrokenRun(): unknown {
   const sine = Float32Array.from({ length: 50_000 }, (_, n) => 0.5 * Math.sin((2 * Math.PI * 440 * n) / 44_100))
   const separation = new Separation(sine, sine)
-  const xOut = new Float32Array(4 * 4 * 2048 * 336)
-  const xtOut = new Float32Array(4 * 2 * 343_980)
-  for (let index = 0; index < separation.windowCount; index++) {
-    separation.input(index).free()
-    separation.output(index, xOut, xtOut)
+  const spec = new Float32Array(4 * 1025 * 801).fill(NaN)
+  for (let index = 0; index < separation.segmentCount; index++) {
+    separation.input(index)
+    separation.output(index, spec)
   }
   try {
     separation.finish().free()
@@ -82,7 +80,7 @@ function failedSumCheck(): unknown {
   } finally {
     separation.free()
   }
-  throw new Error('the sum check passed')
+  throw new Error('the broken-run check passed')
 }
 
 async function run(backends: readonly Backend[], measurementSteps: MeasurementSteps): Promise<MeasurementReply[]> {
@@ -109,8 +107,8 @@ describe('a measurement on each backend', () => {
     // Each backend's candidates run on its own vocals.
     expect(measured.map(({ vocals }) => vocals[0])).toEqual([1, 1, 2, 2])
     expect(replies.filter((reply) => reply.type === 'separated')).toEqual([
-      { type: 'separated', backend: 'webgpu', separateMs: 10, sumCheckDb: 30, memory: separateMemory },
-      { type: 'separated', backend: 'wasm', separateMs: 10, sumCheckDb: 30, memory: separateMemory },
+      { type: 'separated', backend: 'webgpu', separateMs: 10, memory: separateMemory },
+      { type: 'separated', backend: 'wasm', separateMs: 10, memory: separateMemory },
     ])
     expect(replies.filter((reply) => reply.type === 'stage')).toEqual([
       { type: 'stage', stage: 'separate', backend: 'webgpu' },
@@ -159,8 +157,8 @@ describe('a measurement on each backend', () => {
     expect(measured.every(({ backend }) => backend === 'wasm')).toBe(true)
   })
 
-  test('marks every candidate on WebGPU as not run with the sum check rule and value when the separation there fails it, and measures WebAssembly', async () => {
-    const fault = failedSumCheck()
+  test('marks every candidate on WebGPU as not run with the broken-run rule and value when the separation there fails it, and measures WebAssembly', async () => {
+    const fault = failedBrokenRun()
     expect(fault).toBeInstanceOf(SeparationFault)
     const { steps: fake } = steps({ separate: (backend) => (backend === 'webgpu' ? fault : undefined) })
     const replies = ends(await run(['webgpu', 'wasm'], fake))
@@ -170,7 +168,7 @@ describe('a measurement on each backend', () => {
         candidate,
         backend: 'webgpu',
         ran: false,
-        problem: { kind: 'sum-check', rule: 'energy', measuredDb: expect.closeTo(0, 3) },
+        problem: { kind: 'broken-run', rule: 'vocals-not-finite', value: 0 },
       })),
     )
     expect(replies.slice(2).map((reply) => [reply.type, reply.backend])).toEqual([

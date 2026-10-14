@@ -22,10 +22,8 @@ addEventListener('message', (event: MessageEvent<SeparationRequest>) => {
 async function run(request: SeparationRequest): Promise<SeparationReply> {
   // The build copies the core's module to lyre-wasm/, next to the page.
   await init({ module_or_path: new URL('lyre-wasm/lyre_wasm_bg.wasm', request.baseUri) })
-  const [graph, weights] = await Promise.all(
-    [request.graph, request.weights].map(async (blob) => new Uint8Array(await blob.arrayBuffer())),
-  )
-  const { backend, session } = await openSeparator(graph, weights, {
+  const graph = new Uint8Array(await request.separator.arrayBuffer())
+  const { backend, session } = await openSeparator(graph, {
     baseUri: request.baseUri,
     forced: request.forced,
   }).catch(() => {
@@ -56,7 +54,7 @@ async function run(request: SeparationRequest): Promise<SeparationReply> {
 // The reply for a failed run. The error's own text is never sent.
 function replyForError(error: unknown): SeparationReply {
   if (error instanceof SeparationFault) {
-    const reply = replyForFault({ kind: error.kind, measuredDb: error.measuredDb })
+    const reply = replyForFault({ kind: error.kind, measuredDb: error.measuredDb, sample: error.sample })
     error.free()
     return reply
   }
