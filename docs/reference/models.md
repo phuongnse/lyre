@@ -65,8 +65,9 @@ as the fp16 ONNX export by audiojs, which the owner publishes unchanged.
 ## lyric-alignment
 
 The aligner of D29, as Lyre's own ONNX export, made by the
-[model tool](model-tool.md#make_alignerpy). Each of the two model files, int8
-and fp32, is a candidate on the measurement page.
+[model tool](model-tool.md#make_alignerpy). Lyre uses the fp32 file
+([D30](../decisions.md#d30-the-aligner-file-is-fp32--agreed)). Both files, int8 and
+fp32, stay candidates on the measurement page.
 
 | Repository | Revision | Path | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -159,7 +160,8 @@ this section together.
 The model measurement page runs the separator and each aligner file on the
 owner's devices. This section says what it measures and how the results,
 together with the owner's viewing in the Player, inform the choice between the
-aligner's files. The results name the devices they were taken on.
+aligner's files. The results name the devices they were taken on. The
+[measurement results](#measurement-results) are below.
 
 For now, the measurement section of the
 [model check page](../ui-conventions.md#check-pages) runs it. Each run
@@ -240,12 +242,164 @@ on each [target device](../decisions.md#d25-requirements-for-making-songs--propo
 - **Runs on a device:** a candidate runs on a device when it finishes every
   measured song there on WebGPU, without an error and without running out of
   memory.
-- **The rule:** among the candidates that run on every
-  [target device](../decisions.md#d25-requirements-for-making-songs--proposed),
-  int8 is used unless its timing looks worse than fp32's in the Player. If only
-  one file runs on every target device, that file is used. The owner plays each result through **Play with this timing** on the model check
-  page ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed),
-  [D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
+- **The rule:** [D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed)
+  chose int8 unless its timing looks worse than fp32's in the Player. The
+  owner plays each result through **Play with this timing** on the model check
+  page ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
+  After the first measurement, [D30](../decisions.md#d30-the-aligner-file-is-fp32--agreed)
+  replaced the rule: Lyre uses fp32
+  ([results](#measurement-results)).
 - **One-thread WebAssembly** figures come only with `?backend=wasm`, for the
   CI journeys. They do not decide the choice. Making a song never runs its
   models on WebAssembly ([D27](../decisions.md#d27-the-android-app-plays-and-receives-songs--agreed)).
+
+## Measurement results
+
+One device and two Vietnamese songs, each about 4 min 10 s. The results were
+measured on WebGPU only. They follow the [method](#measurement-method) above.
+
+### Device
+
+| Device | OS | Browser | GPU | Memory | Target device |
+| --- | --- | --- | --- | --- | --- |
+| Desktop | Windows | Microsoft Edge 155.0.4283.45 | nvidia, lovelace, description not reported | 32 GB. The OS showed about 10 GB in use before the measurement and about 15 GB while it ran. The browser reports neither figure. | Yes, far above the 8 GB minimum of [D25](../decisions.md#d25-requirements-for-making-songs--proposed) |
+
+The browser reported the operating system as "Windows 19.0.0". The table gives
+the name the owner knows it by.
+
+### Separator
+
+Mel-Band RoFormer (Kim) met the separator target of
+[D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
+[D22](../decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)
+and [D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)
+on this device.
+
+| Song | Separate time on WebGPU | Song length | Separate WebAssembly memory |
+| --- | --- | --- | --- |
+| 1 | 54.05 s | about 250 s | 2683240448 bytes |
+| 2 | 50.29 s | about 250 s | 2674851840 bytes |
+
+- **Time:** both separations took less than the song lasts.
+- **Memory:** neither song ran out of memory.
+- **Broken run:** both runs finished, so the finite and vocals' peak rules
+  passed.
+- **Leftover vocals:** the owner heard no leftover lead vocals in the karaoke
+  track on either song. The karaoke track is clean.
+
+The separator target is met on this device.
+
+### Aligners
+
+Both `lyric-alignment` files ran on this device. The figures are as copied.
+
+| File | Song | Runs on every target device | Align time on WebGPU | Model load | Align WebAssembly memory |
+| --- | --- | --- | --- | --- | --- |
+| fp32 (`model.onnx`) | 1 | Yes | 3.60 s | 1.79 s | 2993881088 bytes |
+| fp32 (`model.onnx`) | 2 | Yes | 2.97 s | 2.01 s | 2985492480 bytes |
+| int8 (`model.int8.onnx`) | 1 | Yes | 141.60 s | 0.75 s | 2993881088 bytes |
+| int8 (`model.int8.onnx`) | 2 | Yes | 139.21 s | 0.89 s | 2985492480 bytes |
+
+The one-time download time is not measured yet.
+
+### The chosen file
+
+Lyre uses `lyric-alignment`'s fp32 file, `model.onnx`
+([D30](../decisions.md#d30-the-aligner-file-is-fp32--agreed)).
+
+- **Timing:** in the Player, fp32's timing and int8's look the same.
+- **Speed:** on WebGPU, int8 aligns about 40 times slower: 141.60 s and
+  139.21 s, against 3.60 s and 2.97 s.
+- **Download:** fp32 is about 1.28 GB once, against about 360 MB for int8. The
+  owner accepts this for the faster alignment.
+
+This departs from the rule of
+[D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed), which D30
+replaces. [D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)
+still has the owner choose by watching the timing in the Player.
+
+### The copied results
+
+<details><summary>Copied results: song 1</summary>
+
+```text
+Device
+Browser: Microsoft Edge 155.0.4283.45
+Operating system: Windows 19.0.0
+GPU vendor: nvidia
+GPU architecture: lovelace
+GPU description: not reported
+WebGPU: Available
+
+lyric-alignment fp32 on WebGPU
+Backend: WebGPU
+Extract audio: 0.54 s
+Separate: 54.05 s
+Align: 3.60 s
+Model load: 1.79 s
+Separator: Mel-Band RoFormer (Kim)
+Extract audio WebAssembly memory: 1572864 bytes
+Extract audio JavaScript heap: not reported
+Separate WebAssembly memory: 2683240448 bytes
+Separate JavaScript heap: not reported
+Align WebAssembly memory: 2993881088 bytes
+Align JavaScript heap: not reported
+
+lyric-alignment int8 on WebGPU
+Backend: WebGPU
+Extract audio: 0.54 s
+Separate: 54.05 s
+Align: 141.60 s
+Model load: 0.75 s
+Separator: Mel-Band RoFormer (Kim)
+Extract audio WebAssembly memory: 1572864 bytes
+Extract audio JavaScript heap: not reported
+Separate WebAssembly memory: 2683240448 bytes
+Separate JavaScript heap: not reported
+Align WebAssembly memory: 2993881088 bytes
+Align JavaScript heap: not reported
+```
+
+</details>
+
+<details><summary>Copied results: song 2</summary>
+
+```text
+Device
+Browser: Microsoft Edge 155.0.4283.45
+Operating system: Windows 19.0.0
+GPU vendor: nvidia
+GPU architecture: lovelace
+GPU description: not reported
+WebGPU: Available
+
+lyric-alignment fp32 on WebGPU
+Backend: WebGPU
+Extract audio: 0.61 s
+Separate: 50.29 s
+Align: 2.97 s
+Model load: 2.01 s
+Separator: Mel-Band RoFormer (Kim)
+Extract audio WebAssembly memory: 1572864 bytes
+Extract audio JavaScript heap: not reported
+Separate WebAssembly memory: 2674851840 bytes
+Separate JavaScript heap: not reported
+Align WebAssembly memory: 2985492480 bytes
+Align JavaScript heap: not reported
+
+lyric-alignment int8 on WebGPU
+Backend: WebGPU
+Extract audio: 0.61 s
+Separate: 50.29 s
+Align: 139.21 s
+Model load: 0.89 s
+Separator: Mel-Band RoFormer (Kim)
+Extract audio WebAssembly memory: 1572864 bytes
+Extract audio JavaScript heap: not reported
+Separate WebAssembly memory: 2674851840 bytes
+Separate JavaScript heap: not reported
+Align WebAssembly memory: 2985492480 bytes
+Align JavaScript heap: not reported
+```
+
+</details>

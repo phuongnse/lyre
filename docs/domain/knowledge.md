@@ -89,7 +89,8 @@ What was learned:
 
 - **Alignment and role classification are the heaviest stages,** then
   separation. In a browser, on a desktop or a phone, they set what Lyre can do, so the
-  M2 measurements choose the aligner's file and confirm the separator (D26, D28, D29).
+  M2 measurements chose `lyric-alignment`'s fp32 file and confirmed the separator
+  (D26, D28, D30, [results](../reference/models.md#measurement-results)).
 - **Check separation for broken runs.** The karaoke track is the source minus
   the vocals, so the two always add back up to the source. A sum check cannot
   find a broken run, and a run fails on two rules instead. The finite rule:
@@ -236,7 +237,7 @@ pinned their files, which the [models reference](../reference/models.md) lists:
 | Alignment | Meta Omnilingual ASR CTC-300M (sherpa-onnx int8 ONNX export) | no longer a candidate (D29) | Apache-2.0 for code and models |
 | Separation | UVR MDX-Net Inst HQ 4 | fallback | not yet confirmed in writing |
 | Alignment on weak devices | Whisper base multilingual with forced decoding | fallback | MIT |
-| Alignment | `nguyenvulebinh/lyric-alignment` (wav2vec2 for Vietnamese lyrics, as Lyre's fp32 and int8 ONNX export) | chosen (D29), int8 or fp32 by measurement | CC-BY-NC-4.0 |
+| Alignment | `nguyenvulebinh/lyric-alignment` (wav2vec2 for Vietnamese lyrics, as Lyre's fp32 and int8 ONNX export) | chosen (D29), fp32 file (D30) | CC-BY-NC-4.0 |
 | Alignment | other Vietnamese wav2vec2 fine-tunes and MMS | not a candidate | CC-BY-NC-4.0 |
 | Separation | other RoFormer separators | not a candidate | unclear for some |
 
@@ -249,7 +250,8 @@ pinned their files, which the [models reference](../reference/models.md) lists:
   applied to the Demucs weights, where the repository states no separate
   grant. Lyre no longer uses htdemucs (D28).
 - Every model needs an ONNX export that runs in ONNX Runtime Web on WebGPU.
-  M2 measures whether the separator and the aligner's int8 and fp32 files run fast enough there.
+  M2 measured the separator and the aligner's int8 and fp32 files on WebGPU
+  ([results](../reference/models.md#measurement-results)).
 - **The aligner's vocabulary is Vietnamese.** Lyrics in other languages may be
   timed worse or refused (D29).
 - The models for vocal roles and for the leftover check are chosen when M8 is
