@@ -171,6 +171,16 @@ or no reason in a browser that accepts the type. A last one makes Chromium
 report that it cannot encode Opus, and checks that making the audio tracks
 shows only the cannot-encode-audio message.
 
+The song file journeys make a song file on the source check page from a
+source, `karaoke.webm`, a one-line lyrics file and a timing file, and open it
+in the Player. `song.webm` gives a song file with video and a thumbnail,
+which plays, and whose Karaoke and Original switch keeps the position while
+paused. `song.mp3` gives one with no video and no thumbnail. Playwright's
+Chromium refuses its original track's type, so its journey expects the
+Player's cannot-play message there, and playback in a browser that accepts
+the type. A timing that ends at 5 s, after the 2 s song, gets the page's
+refusal and no download.
+
 The thumbnail journeys check the thumbnail the web client makes. `song.webm`
 gives its middle frame as a JPEG of 64×36. `cover.mp3` gives its PNG cover
 art re-encoded as a JPEG and scaled down to 360×360. `song.mp3` has no cover
