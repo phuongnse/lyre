@@ -10,6 +10,10 @@ use crate::display_lines::DisplayLine;
 use crate::lyrics::Lyrics;
 use crate::song_file::SyllableTime;
 
+/// How long before its first syllable a group shows: 2 s of countdown dots
+/// and 2 s to read.
+pub const LEAD_MS: u32 = 4_000;
+
 /// The display lines the two rows show. Each is a position in the list of
 /// display lines, or `None` for an empty row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -23,8 +27,7 @@ pub struct Rows {
 /// `display_lines` is the core's layout of `lyrics`. `syllables` are the
 /// times of every syllable, in order, and `countdowns` the lyric lines with
 /// countdown dots. A display line that has no times never starts or ends. A
-/// time that is not a number, or is negative, gives the first group's
-/// opening rows.
+/// time that is not a number, or is negative, is read as 0.
 pub fn rows(
     lyrics: &Lyrics,
     syllables: &[SyllableTime],
@@ -32,6 +35,7 @@ pub fn rows(
     display_lines: &[DisplayLine],
     ms: f64,
 ) -> Rows {
+    let ms = if ms.is_nan() || ms < 0.0 { 0.0 } else { ms };
     if display_lines.is_empty() {
         return Rows::default();
     }
@@ -74,17 +78,32 @@ pub fn rows(
     }
     group_starts.push(display_lines.len());
 
-    // The active group is the last one whose start has come: the first group
-    // from the beginning, a later one once the group before it ends.
-    let mut group = 0;
-    for next in 1..group_starts.len() - 1 {
-        let previous = &display_lines[group_starts[next - 1]..group_starts[next]];
-        let previous_end = previous.last().map_or(u32::MAX, ends);
-        if ms >= f64::from(previous_end) {
-            group = next;
-        }
+    // A group shows at the later of LEAD_MS before its first syllable and the
+    // end of the group before it. The first group has none before it, so it
+    // shows at LEAD_MS before its first syllable, or at 0 if that is earlier.
+    // Until a group shows, both rows are empty. A group stays up until its
+    // last line ends, and the last group stays up for good.
+    let groups = group_starts.len() - 1;
+    let group_lines = |group: usize| &display_lines[group_starts[group]..group_starts[group + 1]];
+    let shows_at = |group: usize| {
+        let first_start = group_lines(group).first().map_or(u32::MAX, starts);
+        let previous_end = match group.checked_sub(1) {
+            Some(previous) => group_lines(previous).last().map_or(u32::MAX, ends),
+            None => 0,
+        };
+        first_start.saturating_sub(LEAD_MS).max(previous_end)
+    };
+    let Some(group) = (0..groups)
+        .rev()
+        .find(|&group| ms >= f64::from(shows_at(group)))
+    else {
+        return Rows::default();
+    };
+    let lines = group_lines(group);
+    let last_end = lines.last().map_or(u32::MAX, ends);
+    if group + 1 < groups && ms >= f64::from(last_end) {
+        return Rows::default();
     }
-    let lines = &display_lines[group_starts[group]..group_starts[group + 1]];
     let offset = group_starts[group];
 
     // A row moves two lines on when the line in the other row starts.
@@ -163,7 +182,14 @@ mod tests {
                 "at {ms} ms"
             );
         }
-        for ms in [4900.0, 5000.0, 11500.0] {
+        for ms in [4900.0, 5000.0, 5899.0] {
+            assert_eq!(
+                rows_at(&lyrics, &syllables, &display_lines, ms),
+                [None, None],
+                "at {ms} ms"
+            );
+        }
+        for ms in [5900.0, 6000.0, 11500.0] {
             assert_eq!(
                 rows_at(&lyrics, &syllables, &display_lines, ms),
                 [Some(2), None],
@@ -173,6 +199,67 @@ mod tests {
         assert_eq!(
             rows_at(&lyrics, &syllables, &display_lines, 4899.0),
             [Some(0), Some(1)]
+        );
+    }
+
+    #[test]
+    fn a_group_shows_at_most_the_lead_before_its_first_syllable() {
+        let lyrics = Lyrics::parse(b"a").expect("valid lyrics");
+        let syllables = times(&[(30000, 30500)]);
+        let display_lines = whole_lines(&lyrics);
+        assert_eq!(
+            rows_at(&lyrics, &syllables, &display_lines, 25900.0),
+            [None, None]
+        );
+        assert_eq!(
+            rows_at(&lyrics, &syllables, &display_lines, 26000.0),
+            [Some(0), None]
+        );
+    }
+
+    #[test]
+    fn after_a_long_break_a_group_shows_the_lead_before_its_first_syllable() {
+        let lyrics = Lyrics::parse(b"a\nb").expect("valid lyrics");
+        let syllables = times(&[(0, 1000), (21000, 21500)]);
+        let display_lines = whole_lines(&lyrics);
+        assert_eq!(
+            rows_at(&lyrics, &syllables, &display_lines, 2000.0),
+            [None, None]
+        );
+        assert_eq!(
+            rows_at(&lyrics, &syllables, &display_lines, 16999.0),
+            [None, None]
+        );
+        assert_eq!(
+            rows_at(&lyrics, &syllables, &display_lines, 17000.0),
+            [Some(1), None]
+        );
+    }
+
+    #[test]
+    fn a_group_that_follows_closely_shows_when_the_group_before_ends() {
+        let lyrics = Lyrics::parse(b"a\nb").expect("valid lyrics");
+        let syllables = times(&[(0, 1000), (3000, 3500)]);
+        let display_lines = whole_lines(&lyrics);
+        let countdowns = [Countdown {
+            lyric_line: 1,
+            from_ms: 1000,
+            to_ms: 3000,
+        }];
+        for (ms, expected) in [(999.0, [Some(0), None]), (1000.0, [Some(1), None])] {
+            let result = rows(&lyrics, &syllables, &countdowns, &display_lines, ms);
+            assert_eq!([result.top, result.bottom], expected, "at {ms} ms");
+        }
+    }
+
+    #[test]
+    fn a_first_syllable_within_the_lead_shows_the_first_group_from_zero() {
+        let lyrics = Lyrics::parse(b"a").expect("valid lyrics");
+        let syllables = times(&[(3000, 3500)]);
+        let display_lines = whole_lines(&lyrics);
+        assert_eq!(
+            rows_at(&lyrics, &syllables, &display_lines, 0.0),
+            [Some(0), None]
         );
     }
 
@@ -233,6 +320,19 @@ mod tests {
             assert_eq!(
                 rows_at(&lyrics, &syllables, &display_lines, ms),
                 [Some(0), Some(1)]
+            );
+        }
+    }
+
+    #[test]
+    fn a_time_that_is_not_a_number_or_negative_is_read_as_zero() {
+        let lyrics = Lyrics::parse(b"a\nb").expect("valid lyrics");
+        let syllables = times(&[(30000, 30500), (31000, 31500)]);
+        let display_lines = whole_lines(&lyrics);
+        for ms in [f64::NAN, -1.0] {
+            assert_eq!(
+                rows_at(&lyrics, &syllables, &display_lines, ms),
+                [None, None]
             );
         }
     }

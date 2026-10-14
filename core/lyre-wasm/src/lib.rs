@@ -1684,7 +1684,7 @@ mod tests {
             }
         );
         assert_eq!(
-            reader.lyrics_rows(5_000.0),
+            reader.lyrics_rows(6_000.0),
             LyricsRows {
                 top: Some(2),
                 bottom: None

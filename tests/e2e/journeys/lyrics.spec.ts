@@ -87,7 +87,7 @@ test('each row holds its display line byte for byte', async ({ page }) => {
   const lines = lyrics.split(/\r\n|\n|\r/).filter((line) => /\S/.test(line))
   await seek(video, 1)
   await expectRows(region, [lines[0], lines[1]])
-  await seek(video, 5)
+  await seek(video, 6)
   await expectRows(region, [lines[2], ''])
 })
 
@@ -117,9 +117,9 @@ test('at 1.0 s the bottom row ends at the right margin of the Lyrics area', asyn
   near(last.x + last.width, box.x + box.width - gap)
 })
 
-test('at 5.0 s only "Trăng lên" shows, in the top row, with its Countdown inside the Lyrics area', async ({ page }) => {
+test('at 6.0 s only "Trăng lên" shows, in the top row, with its Countdown inside the Lyrics area', async ({ page }) => {
   const { region, video } = await openFixture(page)
-  await seek(video, 5)
+  await seek(video, 6)
   await expectRows(region, ['Trăng lên', ''])
   const box = (await region.boundingBox())!
   const countdown = (await countdownsIn(region).boundingBox())!
@@ -129,12 +129,24 @@ test('at 5.0 s only "Trăng lên" shows, in the top row, with its Countdown insi
   expect(countdown.y + countdown.height).toBeLessThanOrEqual(box.y + box.height + 1)
 })
 
-test('after a seek from 5.0 s back to 1.0 s, the first two lines show in their rows again', async ({ page }) => {
+test('after a seek from 6.0 s back to 1.0 s, the first two lines show in their rows again', async ({ page }) => {
   const { region, video } = await openFixture(page)
-  await seek(video, 5)
+  await seek(video, 6)
   await expectRows(region, ['Trăng lên', ''])
   await seek(video, 1)
   await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
+})
+
+// The fixture's "Trăng" starts at 9.9 s, so its group shows from 5.9 s.
+test('a group shows at most 4 s before its first syllable', async ({ page }) => {
+  const { region, video } = await openFixture(page)
+  await seek(video, 0)
+  await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
+  await seek(video, 5.5)
+  await expectRows(region, ['', ''])
+  await expect(countdownsIn(region)).toHaveCount(0)
+  await seek(video, 6)
+  await expectRows(region, ['Trăng lên', ''])
 })
 
 test('sung syllables have the vocal role fill and a white outline, unsung ones white with a black outline', async ({
@@ -207,7 +219,7 @@ test('the line after the 5 s break has a countdown, and the line after the 300 m
   await expectRows(region, ['Mưa rơi nhẹ', 'Em về bên sông'])
   await expect(countdownsInParagraph(region, 0)).toHaveCount(1)
   await expect(countdownsInParagraph(region, 1)).toHaveCount(0)
-  await seek(video, 5)
+  await seek(video, 6)
   await expectRows(region, ['Trăng lên', ''])
   await expect(countdownsInParagraph(region, 0)).toHaveCount(1)
 })
