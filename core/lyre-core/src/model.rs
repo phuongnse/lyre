@@ -23,9 +23,8 @@ pub struct PinnedFile {
 /// storage, so it uses only lowercase letters, digits and `-`.
 // The real files are the rows of docs/reference/models.md, and a test keeps
 // them identical. Each `test-` entry is a file of tests/fixtures/models/. The
-// first two are SHA-256 test vectors of FIPS 180-2. The htdemucs test
-// separator's two are made by tools/model-tool/make_test_htdemucs.py, the Kim-shaped
-// test separator by tools/model-tool/make_test_separator.py, and the
+// first two are SHA-256 test vectors of FIPS 180-2. The Kim-shaped test
+// separator is made by tools/model-tool/make_test_separator.py, and the
 // test aligners' four by tools/model-tool/make_test_aligners.py. Their URLs are relative
 // `test-models/` paths that only the e2e server serves, so no release site has
 // them.
@@ -41,18 +40,6 @@ pub const PINNED_FILES: &[PinnedFile] = &[
         url: "https://huggingface.co/csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/6fc542a3b0661c8278cca1230c34deb989f31202/tokens.txt",
         size: 86_423,
         sha256: "a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31",
-    },
-    PinnedFile {
-        id: "htdemucs-graph",
-        url: "https://huggingface.co/webnn/stem-separator/resolve/b56f9e66ceffca2401f83d2469dadaddd06e4994/onnx/htdemucs_fwd.onnx",
-        size: 2_385_507,
-        sha256: "555f511fb653348a1c9495ab6b6091767d1920798f3fba68629a1fe5b135a45f",
-    },
-    PinnedFile {
-        id: "htdemucs-weights",
-        url: "https://huggingface.co/webnn/stem-separator/resolve/b56f9e66ceffca2401f83d2469dadaddd06e4994/onnx/htdemucs_fwd.onnx.data",
-        size: 168_361_984,
-        sha256: "23a7c68669c041363caaef94641e961dc8c4e16b9891cb87f58f0e199a5e8820",
     },
     PinnedFile {
         id: "mel-roformer-fp16",
@@ -89,18 +76,6 @@ pub const PINNED_FILES: &[PinnedFile] = &[
         url: "test-models/two-block.bin",
         size: 56,
         sha256: "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
-    },
-    PinnedFile {
-        id: "test-htdemucs-graph",
-        url: "test-models/htdemucs_fwd.onnx",
-        size: 498,
-        sha256: "c1b1bda56c35161a92ee2c94cacaebe2e3f3aeb5841ffe7ad0d9d6342447f3bf",
-    },
-    PinnedFile {
-        id: "test-htdemucs-weights",
-        url: "test-models/htdemucs_fwd.onnx.data",
-        size: 4,
-        sha256: "31b67dba7cfd6e2d7540f9c96d90a45b8f2d44956620723024d4e1beeacd4602",
     },
     PinnedFile {
         id: "test-mel-roformer",
@@ -262,20 +237,6 @@ mod tests {
     }
 
     #[test]
-    fn the_test_separator_entries_pass_with_the_committed_files() {
-        let graph = include_bytes!("../../../tests/fixtures/models/htdemucs_fwd.onnx");
-        let weights = include_bytes!("../../../tests/fixtures/models/htdemucs_fwd.onnx.data");
-        assert_eq!(
-            check("test-htdemucs-graph", &[graph]),
-            passed("test-htdemucs-graph")
-        );
-        assert_eq!(
-            check("test-htdemucs-weights", &[weights]),
-            passed("test-htdemucs-weights")
-        );
-    }
-
-    #[test]
     fn the_test_mel_roformer_entry_passes_with_the_committed_file() {
         let model = include_bytes!("../../../tests/fixtures/models/mel-roformer.onnx");
         assert_eq!(
@@ -411,7 +372,7 @@ mod tests {
             .iter()
             .filter(|file| file.id.starts_with("test-"))
             .collect();
-        assert_eq!(tests.len(), 9);
+        assert_eq!(tests.len(), 7);
         for file in tests {
             assert!(file.url.starts_with("test-models/"), "{}", file.url);
             for part in [":", "..", "//"] {
@@ -485,7 +446,7 @@ mod tests {
     #[test]
     fn the_real_files_are_the_rows_of_the_models_reference() {
         let documented = documented_files();
-        assert_eq!(documented.len(), 8);
+        assert_eq!(documented.len(), 6);
         let documented: std::collections::BTreeSet<_> = documented.into_iter().collect();
         let pinned: std::collections::BTreeSet<_> = real_files()
             .map(|file| (file.url.to_owned(), file.size, file.sha256.to_owned()))
