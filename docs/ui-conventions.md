@@ -116,10 +116,11 @@ M4.
 
 ## Making a song
 
-The main page of the web client has a Make a song section *(planned for
-M2)*. The Android app has none
+The main page of the web client has a Make a song section. It picks the
+files, the song details and the vocal role. Running its task is *(planned for
+M2)*. The Android app has no such section
 ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed)).
-It runs a
+The section runs a
 [task](domain/concepts.md#processing) from a source and its lyrics to a song
 file. The stage names and messages below are examples. The issues that build
 the section may refine them, and update this section when they do.
@@ -127,7 +128,8 @@ the section may refine them, and update this section when they do.
 - **Choose a source** and **Choose the lyrics** buttons pick the two files.
   Reading the source is stage 1. It runs on the main thread as soon as the
   source is picked. A source the page refuses gets the source check page's
-  messages (see [check pages](#check-pages)). The lyrics are read through the
+  messages (see [check pages](#check-pages)). A refused source counts as no
+  source and leaves the details fields as they were. The lyrics are read through the
   core as soon as they are picked, and invalid lyrics get "The lyrics file is
   not valid lyrics." So problems the owner can fix show before any download
   or model run. The lyrics are stored exactly as supplied
@@ -135,12 +137,14 @@ the section may refine them, and update this section when they do.
 - The song details are editable Title, Artist and Composer fields. They start
   from the source's title, artist and composer tags, exactly as stored.
   Without a title tag, the title is the source's file name without its
-  extension, as on the source check page. Whatever the fields hold when the
+  extension, as on the source check page. Picking another accepted source
+  fills the fields again from its tags. Whatever the fields hold when the
   task starts is stored unchanged.
 - A **Vocal role** choice of Female or Male has no default. Duets come with
   M8.
 - **Make the song** is off until a source, valid lyrics, a non-empty title
   and a vocal role are all set.
+  The section shows the names of the picked files, never the lyric text.
 - Before the first stage, the page downloads any missing model files:
   the separator's file and the `lyric-alignment` fp32 file
   ([D30](decisions.md#d30-the-aligner-file-is-fp32--agreed),

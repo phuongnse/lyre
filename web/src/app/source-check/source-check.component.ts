@@ -3,10 +3,12 @@ import { MatButton } from '@angular/material/button'
 import { MatButtonToggle, MatButtonToggleGroup } from '@angular/material/button-toggle'
 import { loadCore } from '../../core'
 import { canEncodeKaraoke } from '../../karaoke-track'
-import { SegmentTimes, SongDetailsInput, SongRefusal, VideoRefusal, VocalRole } from '../../original-track-messages'
-import { CannotPlay, SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
+import { SegmentTimes, SongRefusal, VideoRefusal, VocalRole } from '../../original-track-messages'
+import { SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
 import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
 import { messages } from '../messages'
+import { songDetailsFor, songFileName } from '../song-details'
+import { cannotPlayMessage, sourceProblemMessage } from '../source-messages'
 import {
   Packaging,
   makeAudioInWorker,
@@ -107,26 +109,6 @@ function isVideoRefusal(reason: VideoRefusal | SongRefusal | undefined): reason 
   return reason === 'keyframe gap' || reason === 'group too large'
 }
 
-// The last extension of a file name, such as ".webm".
-const EXTENSION = /\.[^.]*$/
-
-// The song's details from the source's tags, exactly as stored. Without a
-// title tag, the title is the source's file name without its extension. A
-// missing artist or composer is empty, which means not known.
-export function songDetailsFor(details: SourceDetails, fileName: string, vocalRole: VocalRole): SongDetailsInput {
-  return {
-    title: details.title ?? fileName.replace(EXTENSION, ''),
-    artist: details.artist ?? '',
-    composer: details.composer ?? '',
-    vocalRole,
-  }
-}
-
-// The name a song file made from the source `fileName` downloads as.
-export function songFileName(fileName: string): string {
-  return `${fileName.replace(EXTENSION, '')}.lyre`
-}
-
 // The source check page (docs/ui-conventions.md#check-pages). It reads a
 // picked source's details, stage 1 of processing, and can decode its audio at
 // a stage's rate, stage 2, or package it into the original track in a Web
@@ -164,7 +146,7 @@ export function songFileName(fileName: string): string {
       }
       @case ('failed') {
         <p role="alert">
-          {{ current.problem === 'no-audio' ? messages.sourceNoAudio : messages.sourceUnreadable }}
+          {{ sourceProblemMessage(current.problem) }}
         </p>
       }
     }
@@ -189,7 +171,7 @@ export function songFileName(fileName: string): string {
         current.status === 'making' ||
         current.status === 'making-song';
       @if (details.cannotPlay !== undefined) {
-        <p role="alert">{{ cannotPlayReason(details.cannotPlay) }}</p>
+        <p role="alert">{{ cannotPlayMessage(details.cannotPlay) }}</p>
       }
       <!-- Each tag is alone in its row, so the row's text is exactly the tag. -->
       <dl [attr.aria-label]="messages.sourceDetails">
@@ -368,6 +350,8 @@ export class SourceCheck {
   protected readonly messages = messages
   protected readonly makeFailedMessage = makeFailedMessage
   protected readonly makeSongFailedMessage = makeSongFailedMessage
+  protected readonly cannotPlayMessage = cannotPlayMessage
+  protected readonly sourceProblemMessage = sourceProblemMessage
   protected readonly state = signal<State>({ status: 'empty' })
   // The file that stands in for the karaoke track until separation exists.
   protected readonly karaokeFile = signal<File | undefined>(undefined)
@@ -408,11 +392,6 @@ export class SourceCheck {
       const problem = error instanceof SourceError ? error.problem : 'unreadable'
       this.state.set({ status: 'failed', problem })
     }
-  }
-
-  protected cannotPlayReason({ track, codec }: CannotPlay): string {
-    const name = codec === null ? messages.unknownCodec : messages.codecNames[codec]
-    return messages.sourceCannotPlay[track](name)
   }
 
   protected async decode(file: File, details: SourceDetails, format: AudioFormat): Promise<void> {
