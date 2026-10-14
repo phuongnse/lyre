@@ -130,7 +130,7 @@ Done when all ten were merged and the owner accepted the Player.
   Player
   ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
   After a measurement, **Play with this timing** on the model check page's
-  Player plays the source with that candidate's timing *(planned for M2)*.
+  Player plays the source with that candidate's timing.
   The choice and its reason are recorded in the docs before the later M2 work
   relies on it.
 

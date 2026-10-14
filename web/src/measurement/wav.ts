@@ -34,3 +34,18 @@ export function wavFile(planar: Float32Array, rate: number): Uint8Array<ArrayBuf
   }
   return bytes
 }
+
+// Reads a WAV file that wavFile wrote back into its two planes, the left
+// channel then the right, at the file's rate. Each sample is 16-bit, so it
+// comes back within 1/32767 of what was written, unless it was clipped.
+export function wavPlanes(wav: Uint8Array): Float32Array[] {
+  const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength)
+  const frames = view.getUint32(40, true) / 4
+  const planes = [new Float32Array(frames), new Float32Array(frames)]
+  for (let frame = 0; frame < frames; frame++) {
+    for (let channel = 0; channel < 2; channel++) {
+      planes[channel]![frame] = view.getInt16(44 + frame * 4 + channel * 2, true) / 32767
+    }
+  }
+  return planes
+}

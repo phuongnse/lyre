@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, FileChooser, Locator, Page, test } from "@playwright/test";
+import { fixture, openSongFile } from "./song-file";
 
 // Separating and running two test aligners on one WebAssembly thread takes a while.
 const RUN_TIMEOUT = 180_000;
@@ -73,14 +74,15 @@ async function choose(
   await (await chooser).setFiles(files);
 }
 
-// Picks the source, the lyrics and `timingFile`, if given, then starts the
+// Picks the source, `lyricsFile` and `timingFile`, if given, then starts the
 // measurement.
 async function measure(
   page: Page,
   timingFile?: Parameters<FileChooser["setFiles"]>[0],
+  lyricsFile: Parameters<FileChooser["setFiles"]>[0] = lyrics,
 ): Promise<void> {
   await choose(page, "Choose a source", source);
-  await choose(page, "Choose the lyrics", lyrics);
+  await choose(page, "Choose the lyrics", lyricsFile);
   if (timingFile !== undefined)
     await choose(page, "Choose a timing file", timingFile);
   await page.getByRole("button", { name: "Measure the aligners" }).click();
@@ -396,4 +398,126 @@ test("the main page has no link to the model check page, and the page's code loa
   ).toBeVisible();
   const opened = await Promise.all(scripts.slice(loaded));
   expect(opened.some((body) => body.includes("lyre-model-check"))).toBe(true);
+});
+
+// The fixture's syllables, which the test aligners time on the source.
+const SYLLABLES = [
+  "Mưa",
+  "rơi",
+  "nhẹ",
+  "Em",
+  "về",
+  "bên",
+  "sông",
+  "Trăng",
+  "lên",
+];
+
+const songSeconds = (page: Page) =>
+  page.evaluate(
+    () => (document.querySelector("video") as HTMLVideoElement).currentTime,
+  );
+
+// Counts the seeks of the Player's video, so a journey can show that none happened.
+async function countSeeks(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const video = document.querySelector("video") as HTMLVideoElement;
+    const counted = window as unknown as { lyreSeeks: number };
+    counted.lyreSeeks = 0;
+    video.addEventListener("seeking", () => counted.lyreSeeks++);
+  });
+}
+const seeks = (page: Page) =>
+  page.evaluate(() => (window as unknown as { lyreSeeks: number }).lyreSeeks);
+
+// Whether any of the fixture's syllables is the current one.
+async function syllableCurrent(page: Page): Promise<boolean> {
+  const region = page.getByRole("region", { name: "Lyrics" });
+  for (const text of SYLLABLES) {
+    const syllables = region.getByText(text, { exact: true });
+    for (const syllable of await syllables.all()) {
+      if ((await syllable.getAttribute("aria-current")) === "true") return true;
+    }
+  }
+  return false;
+}
+
+test("after a WebAssembly measurement, each test aligner's timing plays the source in the Player with its lyrics highlighted, the Karaoke / Original switch keeps the position, and the library gets no new song", async ({
+  page,
+}) => {
+  await openSongFile(page, fixture);
+  const library = page.getByRole("list", { name: "Library" });
+  await expect(library.getByRole("listitem")).toHaveCount(1);
+  await page.goto(WASM_PAGE);
+
+  await measure(page);
+
+  await expect(page.getByText("The measurement is done.")).toBeVisible({
+    timeout: RUN_TIMEOUT,
+  });
+  const poll = { intervals: [50], timeout: 10_000 };
+  for (const name of CANDIDATES) {
+    const result = `${name} on WebAssembly`;
+    await page
+      .getByRole("button", { name: `Play with this timing: ${result}` })
+      .click();
+    // The heading names the result only once its song is made.
+    await expect(
+      page.getByRole("heading", {
+        name: `Playing with the timing of ${result}`,
+      }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByLabel("Song video")).toBeVisible();
+    // The Player has no open button and no library list.
+    await expect(
+      page.getByRole("button", { name: "Open a song file" }),
+    ).toHaveCount(0);
+    await expect(library).toHaveCount(0);
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect.poll(() => syllableCurrent(page), poll).toBe(true);
+  }
+
+  // The last song is still playing. It pauses after 0.3 s, then switches.
+  await countSeeks(page);
+  await expect.poll(() => songSeconds(page), poll).toBeGreaterThan(0.3);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Play", exact: true }),
+  ).toBeVisible();
+  const paused = await songSeconds(page);
+  const seeksBefore = await seeks(page);
+  await page.getByRole("radio", { name: "Original" }).click();
+  await expect(page.getByRole("radio", { name: "Original" })).toBeChecked();
+  expect(await songSeconds(page)).toBe(paused);
+  expect(await seeks(page)).toBe(seeksBefore);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+
+  // The measured songs were never kept.
+  await page.goto("/");
+  await expect(library.getByRole("listitem")).toHaveCount(1);
+});
+
+test("after a measurement with invalid lyrics, each result says the alignment was refused and has no Play with this timing button", async ({
+  page,
+}) => {
+  await page.goto(WASM_PAGE);
+
+  await measure(page, undefined, {
+    name: "lyrics.txt",
+    mimeType: "text/plain",
+    // Not UTF-8, so the core refuses the lyrics.
+    buffer: Buffer.from([0xff, 0xfe]),
+  });
+
+  await expect(page.getByText("The measurement is done.")).toBeVisible({
+    timeout: RUN_TIMEOUT,
+  });
+  for (const name of CANDIDATES) {
+    await expect(labelled(page, `${name} on WebAssembly`)).toContainText(
+      "The alignment was refused.",
+    );
+  }
+  await expect(
+    page.getByRole("button", { name: /^Play with this timing/ }),
+  ).toHaveCount(0);
 });

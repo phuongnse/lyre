@@ -23,7 +23,9 @@ import { runAlignerCheck } from '../aligner-check'
 import { MeasurementRun, runMeasurement } from '../measurement-run'
 import { messages } from '../messages'
 import { Models } from '../models'
+import { Player } from '../player.component'
 import { runSeparatorCheck } from '../separator-check'
+import { makeMeasuredSongInWorker, Packaging } from '../source-check/original-track-worker'
 import { resultsText, Row } from './results-text'
 
 // The test entry the page downloads: the 56-byte two-block test vector.
@@ -163,10 +165,16 @@ function reasonFor(problem: RunProblem): string {
 // owner can listen for leftover lead vocals. A later separation replaces the
 // earlier one's, and a new measurement or leaving the page frees them. The Copy
 // results button puts the Device section and every result on the clipboard as
-// plain text, and a line beside it says whether the browser allowed it.
+// plain text, and a line beside it says whether the browser allowed it. Each
+// measured result's Play with this timing button makes a song in another Web
+// Worker from the source, the lyrics, the karaoke track of the result's
+// backend and the result's timing, and a Player plays it (D26). The song stays
+// in memory: it is not kept in the library, downloaded or sent anywhere.
+// Another result's song replaces it, and a new measurement or leaving the page
+// frees it.
 @Component({
   selector: 'lyre-model-check',
-  imports: [MatButton, MatCheckbox, MatProgressBar, MatRadioButton, MatRadioGroup],
+  imports: [MatButton, MatCheckbox, MatProgressBar, MatRadioButton, MatRadioGroup, Player],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
@@ -180,7 +188,8 @@ function reasonFor(problem: RunProblem): string {
       aligning.status === 'running' ||
       measuring.status === 'reading' ||
       measuring.status === 'downloading' ||
-      measuring.status === 'running';
+      measuring.status === 'running' ||
+      songState() === 'making';
     <h2>{{ messages.modelCheckTitle }}</h2>
     <p>{{ messages.modelCheckAbout }}</p>
     <button matButton="filled" type="button" [disabled]="busy" (click)="load()">
@@ -340,7 +349,34 @@ function reasonFor(problem: RunProblem): string {
               <dd [attr.aria-labelledby]="row.id">{{ row.value }}</dd>
             }
           </dl>
+          <button
+            matButton="tonal"
+            type="button"
+            [disabled]="busy"
+            [attr.aria-label]="messages.playWithTimingOf(result.name)"
+            (click)="play(result)"
+          >
+            {{ messages.playWithTiming }}
+          </button>
         }
+      </section>
+    }
+    <!-- Not role="status", so the download's status line stays the page's only one. -->
+    <p aria-live="polite">
+      @switch (songState()) {
+        @case ('making') {
+          {{ messages.measuredSongMaking }}
+        }
+        @case ('failed') {
+          {{ messages.measuredSongFailed }}
+        }
+      }
+    </p>
+    @if (measuredSong(); as measuredSong) {
+      <section aria-labelledby="measured-song-name">
+        <h3 id="measured-song-name">{{ messages.measuredSongTitle(measuredSong.name) }}</h3>
+        <p>{{ messages.measuredSongAbout }}</p>
+        <lyre-player [song]="measuredSong.song" />
       </section>
     }
     <button matButton="filled" type="button" [disabled]="busy || !deviceRows()" (click)="copy()">
@@ -387,6 +423,13 @@ export class ModelCheckPage {
   protected readonly separations = signal<Partial<Record<Backend, Separation>>>({})
   // The object URLs of the latest separation's tracks, played from memory.
   protected readonly tracks = signal<{ backend: Backend; vocalsUrl: string; karaokeUrl: string } | undefined>(undefined)
+  // The 16-bit WAV file of each backend's karaoke track, which a measured song
+  // is made from, until the next measurement.
+  private readonly karaokeWavs = signal<Partial<Record<Backend, Blob>>>({})
+  // The song made with a result's timing, named after the result, and whether
+  // a song is being made or could not be made.
+  protected readonly measuredSong = signal<{ name: string; song: Blob } | undefined>(undefined)
+  protected readonly songState = signal<'idle' | 'making' | 'failed'>('idle')
   // Each candidate that has finished on a backend, in the order it ran.
   protected readonly outcomes = signal<{ candidate: Candidate; backend: Backend; outcome: Outcome }[]>([])
   protected readonly deviceRows = computed(() => {
@@ -399,6 +442,8 @@ export class ModelCheckPage {
   protected readonly results = computed(() =>
     this.outcomes().map(({ candidate, backend, outcome }) => ({
       id: `${backend}-${candidate}`,
+      backend,
+      timesMs: outcome.status === 'measured' ? outcome.timesMs : undefined,
       name: messages.candidateOnBackend(messages.candidateNames[candidate], messages.backendNames[backend]),
       rows: rowsFor(candidate, backend, outcome, this.extract(), this.separations()[backend]),
       failure: outcome.status === 'failed' ? { ran: outcome.ran, reason: reasonFor(outcome.problem) } : undefined,
@@ -408,6 +453,13 @@ export class ModelCheckPage {
   private attempts = 0
   // The measurement running, if any.
   private run: MeasurementRun | undefined
+  // The source and the lyrics of the latest measurement, which a measured song
+  // is made from, even when other files are picked afterwards.
+  private measured: { source: File; lyrics: Blob } | undefined
+  // Counts the songs asked for, so only the latest one shows.
+  private songAttempts = 0
+  // The measured song being made, if any.
+  private making: Packaging | undefined
   // The bytes downloaded so far, which stay shown after the download ends.
   protected readonly bytes = computed(() => {
     const progress = this.models.progress()
@@ -426,6 +478,7 @@ export class ModelCheckPage {
       this.attempts++
       this.run?.stop()
       this.revokeTracks()
+      this.clearMeasuredSong()
     })
   }
 
@@ -502,6 +555,8 @@ export class ModelCheckPage {
     this.outcomes.set([])
     this.copyState.set('idle')
     this.revokeTracks()
+    this.clearMeasuredSong()
+    this.measured = { source, lyrics: lyricsFile }
     let handStartsMs: Uint32Array | undefined
     if (timingFile) {
       // The timing file is read before anything is downloaded, so a bad one fails at once.
@@ -536,6 +591,36 @@ export class ModelCheckPage {
     })
     await this.run.done
     if (current()) this.run = undefined
+  }
+
+  // Makes a song from the measurement's source and lyrics, the karaoke track
+  // of the result's backend and the result's timing, then plays it in place of
+  // the song before.
+  protected async play(result: { name: string; backend: Backend; timesMs?: Uint32Array }): Promise<void> {
+    const karaokeWav = this.karaokeWavs()[result.backend]
+    if (!this.measured || !result.timesMs || !karaokeWav) return
+    this.making?.stop()
+    const attempt = ++this.songAttempts
+    this.songState.set('making')
+    const making = makeMeasuredSongInWorker({
+      baseUri: document.baseURI,
+      file: this.measured.source,
+      lyrics: this.measured.lyrics,
+      timesMs: result.timesMs,
+      karaokeWav,
+      songId: crypto.getRandomValues(new Uint8Array(16)),
+    })
+    this.making = making
+    const reply = await making.reply
+    // A song stopped or asked for again shows nowhere.
+    if (attempt !== this.songAttempts) return
+    this.making = undefined
+    if (reply.type === 'song-done') {
+      this.measuredSong.set({ name: result.name, song: new Blob([reply.bytes as Uint8Array<ArrayBuffer>]) })
+      this.songState.set('idle')
+    } else {
+      this.songState.set('failed')
+    }
   }
 
   protected async copy(): Promise<void> {
@@ -630,13 +715,20 @@ export class ModelCheckPage {
       }
       case 'tracks': {
         this.revokeTracks()
-        const url = (wav: Uint8Array<ArrayBuffer>) => URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }))
-        this.tracks.set({ backend: reply.backend, vocalsUrl: url(reply.vocals), karaokeUrl: url(reply.karaoke) })
+        const wav = (bytes: Uint8Array<ArrayBuffer>) => new Blob([bytes], { type: 'audio/wav' })
+        // The same karaoke file plays here and makes the backend's measured songs.
+        const karaoke = wav(reply.karaoke)
+        this.karaokeWavs.update((wavs) => ({ ...wavs, [reply.backend]: karaoke }))
+        this.tracks.set({
+          backend: reply.backend,
+          vocalsUrl: URL.createObjectURL(wav(reply.vocals)),
+          karaokeUrl: URL.createObjectURL(karaoke),
+        })
         break
       }
       case 'measured': {
-        const { candidate, backend, loadMs, alignMs, onset, memory } = reply
-        const outcome: Outcome = { status: 'measured', loadMs, alignMs, onset, memory }
+        const { candidate, backend, loadMs, alignMs, onset, memory, timesMs } = reply
+        const outcome: Outcome = { status: 'measured', loadMs, alignMs, onset, memory, timesMs }
         this.outcomes.update((outcomes) => [...outcomes, { candidate, backend, outcome }])
         break
       }
@@ -653,6 +745,18 @@ export class ModelCheckPage {
         this.measurement.set({ status: 'done' })
         break
     }
+  }
+
+  // Stops any song being made, and frees the measured song, the karaoke
+  // tracks it is made from and the files of the measurement.
+  private clearMeasuredSong(): void {
+    this.songAttempts++
+    this.making?.stop()
+    this.making = undefined
+    this.measuredSong.set(undefined)
+    this.songState.set('idle')
+    this.karaokeWavs.set({})
+    this.measured = undefined
   }
 
   // Frees the tracks shown, if any.
