@@ -8,8 +8,9 @@ the lyrics against the singing, and highlights the words as they are sung.
 The singer can switch between the karaoke track and the original song at any
 moment.
 
-Everything happens on the user's own device, in the browser or in the Android
-app (see [decisions](decisions.md) D2 and D3). Each song is saved as one
+Everything happens on the user's own device. Songs are made in the browser
+on that device, and play there or in the Android app (see
+[decisions](decisions.md) D3 and D27). Each song is saved as one
 encrypted `.lyre` file. It opens only on the devices its owner shared it with
 (D6), wherever the file itself ends up.
 
@@ -33,10 +34,12 @@ songs at the same time.
 3. **Private by default.** Media and lyrics never leave the device for
    processing. A song file is useless to anyone whose device was not given
    access (D6).
-4. **Fast on the device it runs on.** Lyre uses the device's GPU or NPU when
-   it has one, and says plainly when a device is too weak for a step (D3).
-5. **Same product on web and Android.** A song made on one client plays on
-   the other, and both offer the same features (D2).
+4. **Fast on the device it runs on.** Making a song uses the device's GPU
+   through WebGPU. Lyre says before starting when a device cannot make songs
+   (D25).
+5. **One song file for every device.** The web client makes, plays and
+   shares songs on a desktop or a phone. The Android app plays and receives
+   them (D27).
 6. **Honest about its protection.** Lyre's docs and screens say what the
    encryption protects and what it does not. See
    [knowledge](domain/knowledge.md#what-the-protection-does-not-do).
@@ -51,6 +54,7 @@ songs at the same time.
 - Revoking a share once it is given (D9).
 - Any Lyre server or account (D9).
 - iOS and desktop apps. The web client covers desktops.
+- Making or sharing songs in the Android app (D27).
 
 ## The first journey
 
@@ -69,14 +73,15 @@ songs at the same time.
 
 ## Scenarios Lyre must pass
 
-- A song made on the web plays on Android, and the other way round.
+- A song made in the web client plays in the Android app and in the web
+  client of another device.
 - The lyrics on screen match the supplied text byte for byte, including
   Vietnamese diacritics.
 - A device that was not given access cannot play the song, even with the song
   file, the access file meant for another device and that device's code.
 - A changed or truncated song file is rejected, never played in part.
 - The owner restores every song on a new device with the recovery key.
-- Processing that is cancelled, or stops because the app closed, leaves no
+- Processing that is cancelled, or stops because the page closed, leaves no
   half-made song and can start again.
-- A device without a usable GPU still processes a song, more slowly, or says
-  it cannot.
+- A device below the requirements for making songs says so before starting,
+  and starts nothing.

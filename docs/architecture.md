@@ -16,13 +16,11 @@ flowchart LR
     end
     subgraph Android["Android app"]
         Compose[Compose UI] --> NativeCore[Lyre core, native library]
-        Compose --> OrtAndroid[ONNX Runtime for Android]
         NativeCore --> Keystore[Android Keystore]
     end
     WasmCore <-->|".lyre files and access files"| Files[(Local files, Google Drive)]
     NativeCore <--> Files
     Models[(Pinned model files)] -->|download once, check SHA-256| OrtWeb
-    Models --> OrtAndroid
 ```
 
 - **Lyre core** is one Rust library (D10). It owns everything both clients
@@ -39,9 +37,10 @@ flowchart LR
   core compiled to WebAssembly. It reads and decodes sources with
   Mediabunny, which is under MPL-2.0. Mediabunny is used unmodified from npm,
   and its licence notice ships in the build's `3rdpartylicenses.txt`.
-- **The Android app** is native Kotlin. Its UI, media playback and model runs
-  use the Android stack. It calls the core as a native library through
-  UniFFI.
+- **The Android app** is native Kotlin. Its UI and media playback use the
+  Android stack. It plays and receives songs and runs no models
+  ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed)).
+  It calls the core as a native library through UniFFI.
 - **There is no Lyre server** (D9). Song files and access files move between
   devices however people choose: a shared Drive folder, a chat, a USB stick.
 - **Models** are checked by the core against their pinned size and SHA-256
@@ -52,8 +51,8 @@ flowchart LR
   streaming it to the check and to a `models/` folder in the browser's origin
   private file system (OPFS). It keeps a file only when it passes, and checks
   it again each time it is loaded, because nothing authenticates that storage.
-  A file that fails is deleted and never used. The Android app's downloads
-  are *(planned for M2)*. The [models reference](reference/models.md) lists
+  A file that fails is deleted and never used. The Android app downloads
+  no models (D27). The [models reference](reference/models.md) lists
   the pinned files.
 
 ## Repository layout
@@ -158,14 +157,14 @@ reference doc and reviewed before M3 implements them.
 ## Processing *(planned for M2)*
 
 - A task runs the stages in [knowledge](domain/knowledge.md#processing) one
-  after another, on one song at a time.
+  after another, on one song at a time. Tasks run only in the web client
+  (D27).
 - Each stage writes its output to the task's own working area. A task that
   fails, is cancelled or stops with the app removes that area and leaves no
   song behind. It can start again from the beginning.
 - The web client runs a task's stages in a Web Worker, so the page stays
   responsive. Cancel ends the worker at once, because a model run cannot stop
-  partway through when asked. The Android app runs them in a foreground
-  service the user can see *(planned for M4)*.
+  partway through when asked.
 - On the web, a task's working area is a `tasks/<task ID>` folder in the
   browser's origin private file system (OPFS). The web client removes any
   working area left behind each time it starts.
@@ -234,9 +233,12 @@ reference doc and reviewed before M3 implements them.
   for short songs. Writing a long video in pieces is left for
   [the Make a song section](ui-conventions.md#making-a-song).
 - The web client runs a model with ONNX Runtime Web (MIT), at a pinned
-  version, in a Web Worker. It uses WebGPU when the browser gives it a GPU
-  adapter and the session opens on it, and otherwise WebAssembly on one
-  thread. The model check page's measurement never falls back: it opens each
+  version, in a Web Worker. The check pages use WebGPU when the browser gives
+  them a GPU adapter and the session opens on it, and otherwise WebAssembly
+  on one thread. A task runs only on WebGPU, and the Make a song section does
+  not start one below the requirements of
+  [D25](decisions.md#d25-requirements-for-making-songs--proposed)
+  *(planned for M2)*. The model check page's measurement never falls back: it opens each
   session on the backend it measures, or reports why it could not. The
   worker gets only model bytes that already passed their check.
   ONNX Runtime's WebAssembly file is served from the site itself, at `ort/`,

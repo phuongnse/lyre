@@ -13,6 +13,8 @@ recording a newer one that replaces it.
 ## D2. Two clients: web and native Android — Agreed
 
 Narrowed by [D24](#d24-sources-are-repackaged-and-only-the-karaoke-track-is-encoded--agreed).
+Partly replaced by [D27](#d27-the-android-app-plays-and-receives-songs--agreed): the Android app plays and receives songs, and
+only the web client makes them.
 
 - **Web:** Lyre runs in a desktop or mobile browser, with nothing to install.
 - **Android:** a native Android app, built for the best performance the
@@ -123,6 +125,9 @@ are the only way a web page can use a key held by the OS and its hardware.
 keys or media could leak.
 
 ## D10. Technology stack — Agreed
+
+Partly replaced by [D27](#d27-the-android-app-plays-and-receives-songs--agreed): the Android app runs no models, and making a
+song never falls back to WebAssembly.
 
 - **Shared core in Rust.** The song file format, encryption, key wrapping,
   lyric layout and timing logic are written once in Rust. The web client uses
@@ -397,7 +402,7 @@ separator file's format and size.
   [model tool](reference/model-tool.md#make_alignerpy), in fp32 and int8. The
   owner publishes it in `phuongnse/lyric-alignment-onnx`, with its
   attribution and CC-BY-NC-4.0.
-- **Separator target:** on each [target device](#d25-target-devices-for-making-songs--proposed), a 4-minute song separates on
+- **Separator target:** on each [target device](#d25-requirements-for-making-songs--proposed), a 4-minute song separates on
   WebGPU in no more time than the song lasts, without running out of memory.
   The karaoke track passes the
   [sum check](reference/models.md#separator-target), and the owner hears no
@@ -477,39 +482,40 @@ containers, the stored types and the limits.
 *Why:* re-encoding video on a phone or in a browser is the slowest step by
 far, and it loses quality. Repackaging takes seconds.
 
-## D25. Target devices for making songs — Proposed
+## D25. Requirements for making songs — Proposed
 
-Lists the target devices that
-[D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
-and [D21](#d21-pinned-model-files-and-the-separator-target--agreed) refer to.
-Lyre is built and tested so that making a song runs well on them.
+Changed by [D27](#d27-the-android-app-plays-and-receives-songs--agreed), which removed the Android app rows.
 
-- **Desktop:** current Chrome or Edge with WebGPU, on
-  Windows, macOS and ChromeOS.
-- **Best effort:** Firefox and Safari with WebGPU. Their results are reported,
-  but they do not decide the aligner choice or the separator target.
-- **Android web:** current Chrome on Android 12 or later, with a recent
-  Adreno or Mali GPU.
-- **Android app (M4):** runs from Android 8.0 (`minSdk` 26). Android 12 or
-  later is recommended for processing.
-- **Memory:** 8 GB recommended, about 6 GB minimum.
-- **Below these:** processing falls back to one-thread WebAssembly. It is
-  slow, and Lyre says so plainly
-  ([D3](#d3-processing-runs-on-the-device-that-asks-for-it--agreed)).
+Sets what a device needs to make a song. A device that meets these
+requirements is a *target device*, as
+[D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed),
+[D21](#d21-pinned-model-files-and-the-separator-target--agreed) and
+[D26](#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)
+use the term. Lyre is built and tested so that making a song runs well on
+every target device.
+
+- **Browser:** a current browser with WebGPU, on any OS, on a desktop or a
+  phone.
+- **Memory:** a minimum amount, about 6 GB until it is measured.
 - **Settled by measurement:** the
   [model measurement page](roadmap.md#early-checks-on-real-devices) measures
-  these devices. Its results confirm or change this list, and the owner then
-  marks it Agreed.
+  devices near the minimum. Its results set the values, including how the
+  web client reads memory where the browser does not report it. The owner
+  then marks this decision Agreed.
+- **Below the requirements:** the web client says before starting that this
+  device cannot make songs, and does not start
+  ([D3](#d3-processing-runs-on-the-device-that-asks-for-it--agreed), D27).
 
-*Why:* D20 and D21 judge the models on the target devices, but no doc listed
-them. A named list says which devices the measurements must cover.
+*Why:* D20 and D21 judge the models on the target devices, so the docs must
+say which devices those are. A requirement covers every device that meets
+it, while a list of device types leaves out devices that would work.
 
 ## D26. The owner chooses the aligner by watching its timing in the Player — Agreed
 
 Replaces the choice rule of [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
 
 - **Candidates:** the aligner files that run on every
-  [target device](#d25-target-devices-for-making-songs--proposed).
+  [target device](#d25-requirements-for-making-songs--proposed).
 - **The choice:** the owner watches each candidate's timing on the measured
   songs in the Player and chooses the one that looks better. The reason is
   recorded with the results in the docs.
@@ -520,3 +526,28 @@ Replaces the choice rule of [D20](#d20-non-commercial-models-are-allowed-and-m2-
 *Why:* Writing a timing file by hand for every syllable of several songs
 costs too much for a choice between two aligners. Sync the owner can see is
 what a singer will see.
+
+## D27. The Android app plays and receives songs — Agreed
+
+Replaces the "same product" point of
+[D2](#d2-two-clients-web-and-native-android--agreed), the Android rows of
+[D25](#d25-requirements-for-making-songs--proposed), and the Android model
+runtime and WebAssembly fallback of
+[D10](#d10-technology-stack--agreed).
+
+- **Web client:** makes, plays and shares songs, and holds the recovery key.
+  It is the same on a desktop or a phone.
+- **Android app:** the Player, the library, the queue, search, Google Drive,
+  and a device code to receive shared songs.
+- **Not on Android:** making songs, correcting lyrics, cutting clips, sharing
+  songs and the recovery key. The Android app ships no models and no ONNX
+  Runtime.
+- **Making a song needs WebGPU:** below the requirements of D25, the web
+  client says this device cannot make songs and does not start. It never
+  falls back to one-thread WebAssembly.
+- **D3 is unchanged:** processing still runs on the device that asks for it.
+
+*Why:* processing in a phone app is not a fit for Lyre. The models are large,
+long runs heat the phone, and every task would need a second implementation.
+The web client on a capable phone can still make songs. A requirement says
+more than a list of device types.
