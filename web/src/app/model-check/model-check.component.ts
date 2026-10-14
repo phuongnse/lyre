@@ -24,6 +24,7 @@ import { MeasurementRun, runMeasurement } from '../measurement-run'
 import { messages } from '../messages'
 import { Models } from '../models'
 import { runSeparatorCheck } from '../separator-check'
+import { resultsText, Row } from './results-text'
 
 // The test entry the page downloads: the 56-byte two-block test vector.
 const TEST_MODEL = 'test-two-block'
@@ -67,13 +68,6 @@ type Separation = Omit<Extract<MeasurementReply, { type: 'separated' }>, 'type' 
 type Outcome =
   | ({ status: 'measured' } & Omit<Extract<MeasurementReply, { type: 'measured' }>, 'type' | 'candidate' | 'backend'>)
   | { status: 'failed'; ran: boolean; problem: RunProblem }
-
-// One labelled figure of a candidate's result.
-interface Row {
-  id: string
-  label: string
-  value: string
-}
 
 const seconds = (ms: number) => messages.seconds((ms / 1000).toFixed(2))
 const milliseconds = (ms: number) => messages.milliseconds(ms.toFixed(0))
@@ -158,7 +152,9 @@ function reasonFor(problem: RunProblem): string {
 // or "not reported" for a figure the browser does not give. After each
 // separation, players play its vocals and karaoke track from memory, so the
 // owner can listen for leftover lead vocals. A later separation replaces the
-// earlier one's, and a new measurement or leaving the page frees them.
+// earlier one's, and a new measurement or leaving the page frees them. The Copy
+// results button puts the Device section and every result on the clipboard as
+// plain text, and a line beside it says whether the browser allowed it.
 @Component({
   selector: 'lyre-model-check',
   imports: [MatButton, MatCheckbox, MatProgressBar, MatRadioButton, MatRadioGroup],
@@ -343,6 +339,20 @@ function reasonFor(problem: RunProblem): string {
         }
       </section>
     }
+    <button matButton="filled" type="button" [disabled]="busy || !deviceRows()" (click)="copy()">
+      {{ messages.copyResults }}
+    </button>
+    <!-- Not role="status", so the download's status line stays the page's only one. -->
+    <p aria-live="polite">
+      @switch (copyState()) {
+        @case ('copied') {
+          {{ messages.resultsCopied }}
+        }
+        @case ('refused') {
+          {{ messages.resultsNotCopied }}
+        }
+      }
+    </p>
     @if (models.mayBeCleared()) {
       <p>{{ messages.modelsMayBeCleared }}</p>
     }
@@ -379,6 +389,8 @@ export class ModelCheckPage {
     const device = this.device()
     return device && deviceRows(device)
   })
+  // Whether the last copy of the results worked.
+  protected readonly copyState = signal<'idle' | 'copied' | 'refused'>('idle')
   protected readonly measurementLine = computed(() => this.lineFor(this.measurement()))
   protected readonly results = computed(() =>
     this.outcomes().map(({ candidate, backend, outcome }) => ({
@@ -484,6 +496,7 @@ export class ModelCheckPage {
     this.extract.set(undefined)
     this.separations.set({})
     this.outcomes.set([])
+    this.copyState.set('idle')
     this.revokeTracks()
     // The timing file is read before anything is downloaded, so a bad one fails at once.
     const handStartsMs = await this.handStarts(lyricsFile, timingFile).catch((): MeasurementState => ({
@@ -515,6 +528,20 @@ export class ModelCheckPage {
     })
     await this.run.done
     if (current()) this.run = undefined
+  }
+
+  protected async copy(): Promise<void> {
+    // Outside a secure context the browser has no clipboard API, which counts as a refusal.
+    if (!navigator.clipboard?.writeText) {
+      this.copyState.set('refused')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(resultsText(this.deviceRows(), this.results()))
+      this.copyState.set('copied')
+    } catch {
+      this.copyState.set('refused')
+    }
   }
 
   // The starts of the hand-written timing, read by the core against the

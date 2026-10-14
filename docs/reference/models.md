@@ -209,7 +209,8 @@ choose the aligner. The results name the devices they were taken on.
 For now, the measurement section of the
 [model check page](../ui-conventions.md#check-pages) runs it. Each run
 measures WebGPU, then one-thread WebAssembly, and does not yet report the
-download time.
+download time. The page's Copy results button copies the results as plain
+text, for recording in these docs.
 
 ### Inputs
 

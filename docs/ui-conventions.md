@@ -375,7 +375,17 @@ Compose uses the same three values *(planned for M4)*.
   run. A later separation replaces the earlier one's tracks. The tracks play
   as 16-bit WAV files from the device's memory, and are never sent anywhere
   or kept. A new measurement, or leaving the page, removes the players and
-  frees the tracks. Only a source without audio or an unreadable source stops the run, with the
+  frees the tracks. A **Copy results** button below the results copies the
+  Device section and every result as plain text, so the owner can record
+  them in the docs. It works as soon as the Device section shows, and is off
+  while a check or a measurement runs. The text has the Device section's
+  title and its rows, then one block per result with the result's name and
+  one "label: value" line for each row, with the values and rounding the page
+  shows. Blocks are separated by a blank line. A failed run's block holds its
+  reason, with "Not run." first when it never started. A line beside the
+  button says "The results are copied." or "The browser refused to copy the
+  results." A browser without a clipboard API counts as a refusal. A new
+  measurement clears the line. Only a source without audio or an unreadable source stops the run, with the
   separation check page's messages. `?model=test` measures the two test
   aligners after the test separator, and `?backend=wasm` measures only
   WebAssembly. The source, the lyrics and the timing file are never sent
@@ -387,7 +397,8 @@ Compose uses the same three values *(planned for M4)*.
   last as long as the 2 s source. They also check the Device section with no WebGPU object
   and with a stubbed adapter, an overlap in the timing file, that the main
   page does not load the page's code, and that every request goes to the
-  site's own origin.
+  site's own origin. They also check the copied text of a measurement, and
+  the message for a clipboard that refuses the write.
 - The separation check page separates a picked source's audio into vocals and
   a karaoke track in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
