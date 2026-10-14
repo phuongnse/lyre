@@ -3,11 +3,12 @@ import { expect, test } from 'vitest'
 import { SeparationFaultKind } from '../lyre-wasm/lyre_wasm.js'
 import { replyForFault } from './separation-messages'
 
-test.each([
-  [SeparationFaultKind.VocalsPeak, 'vocals-peak', 1.1],
-  [SeparationFaultKind.KaraokePeak, 'karaoke-peak', 2.5],
-])('a clipping fault of kind %i names the rule %s and carries its peak in dB', (kind, rule, measuredDb) => {
-  expect(replyForFault({ kind, measuredDb })).toEqual({ type: 'broken-run', rule, value: measuredDb })
+test('a peak fault names the rule vocals-peak and carries its peak in dB', () => {
+  expect(replyForFault({ kind: SeparationFaultKind.VocalsPeak, measuredDb: 6.5 })).toEqual({
+    type: 'broken-run',
+    rule: 'vocals-peak',
+    value: 6.5,
+  })
 })
 
 test.each([

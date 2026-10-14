@@ -594,7 +594,7 @@ separator stays" point of
 - **Download:** about 464 MB instead of about 171 MB, once, then kept.
 - **Broken runs:** source minus vocals always adds back up to the source, so
   the sum check no longer guards a run. A run fails only when a sample is not
-  finite or the clipping rule fails
+  finite or the vocals' peak rule fails
   ([separator target](reference/models.md#separator-target)).
 - **If it misses the time target** on the owner's computer, Lyre makes its own
   export of the same weights, as it did for lyric-alignment.

@@ -12,7 +12,7 @@ export type SeparationRequest = {
 }
 
 // The broken-run rule a run failed (docs/architecture.md#processing-planned-for-m2).
-export type BrokenRunRule = 'vocals-not-finite' | 'karaoke-not-finite' | 'vocals-peak' | 'karaoke-peak'
+export type BrokenRunRule = 'vocals-not-finite' | 'karaoke-not-finite' | 'vocals-peak'
 
 // What the worker answers: progress, then the lengths of the tracks or why the
 // run failed. A broken run carries the value its rule measured: the position
@@ -34,7 +34,6 @@ const RULES: Partial<Record<SeparationFaultKind, BrokenRunRule>> = {
   [SeparationFaultKind.VocalsNotFinite]: 'vocals-not-finite',
   [SeparationFaultKind.KaraokeNotFinite]: 'karaoke-not-finite',
   [SeparationFaultKind.VocalsPeak]: 'vocals-peak',
-  [SeparationFaultKind.KaraokePeak]: 'karaoke-peak',
 }
 
 // The reply for a fault the core threw. A refused step names no rule, so it

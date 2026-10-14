@@ -41,8 +41,9 @@ pub const FRAMES: usize = 801;
 pub const SEGMENT_LEN: usize = CHANNELS * SEGMENT_SAMPLES;
 /// The values in a spectrogram: four channels of `BINS` by `FRAMES`.
 pub const SPEC_LEN: usize = 4 * BINS * FRAMES;
-/// The most a track's peak may be above the source's own peak, in dB.
-pub const MAX_PEAK_DB: f64 = 1.0;
+/// The most the vocals' peak may be above the source's own peak, in dB. Six dB
+/// is a chosen safety margin, not an industry standard.
+pub const MAX_VOCALS_PEAK_DB: f64 = 6.0;
 
 /// The smallest window envelope that torch's inverse STFT accepts.
 const MIN_ENVELOPE: f64 = 1e-11;
@@ -104,11 +105,9 @@ pub enum BrokenRun {
     VocalsNotFinite { at: usize },
     /// The karaoke track's sample `at` is NaN or infinite.
     KaraokeNotFinite { at: usize },
-    /// The vocals peaked `db` above the source's peak, over [`MAX_PEAK_DB`].
+    /// The vocals peaked `db` above the source's peak, over
+    /// [`MAX_VOCALS_PEAK_DB`].
     VocalsPeak { db: f64 },
-    /// The karaoke track peaked `db` above the source's peak, over
-    /// [`MAX_PEAK_DB`].
-    KaraokePeak { db: f64 },
 }
 
 impl fmt::Display for BrokenRun {
@@ -124,11 +123,7 @@ impl fmt::Display for BrokenRun {
             ),
             BrokenRun::VocalsPeak { db } => write!(
                 f,
-                "the broken-run check failed the clipping rule: the vocals peak {db:.1} dB above the source"
-            ),
-            BrokenRun::KaraokePeak { db } => write!(
-                f,
-                "the broken-run check failed the clipping rule: the karaoke track peaks {db:.1} dB above the source"
+                "the broken-run check failed the peak rule: the vocals peak {db:.1} dB above the source"
             ),
         }
     }
@@ -146,9 +141,11 @@ pub struct RunCheck {
 }
 
 /// Checks three planar tracks of the same length. The rules are checked in
-/// order: vocals not finite, karaoke track not finite, vocals peak, karaoke
-/// peak. The first one that fails is reported. A peak over 1.0 alone does not
-/// fail, because decoded loud masters already exceed it.
+/// order: vocals not finite, karaoke track not finite, vocals peak. The first
+/// one that fails is reported. A peak over 1.0 alone does not fail, because
+/// decoded loud masters already exceed it. The karaoke track has no peak rule,
+/// because where vocals and music partly cancel in the mix, the music alone can
+/// go above the mix's peak.
 pub fn broken_run_check(
     source: &[f32],
     vocals: &[f32],
@@ -173,13 +170,9 @@ pub fn broken_run_check(
         vocals_peak_db: peak_db(vocals),
         karaoke_peak_db: peak_db(karaoke),
     };
-    if check.vocals_peak_db > MAX_PEAK_DB {
+    if check.vocals_peak_db > MAX_VOCALS_PEAK_DB {
         Err(BrokenRun::VocalsPeak {
             db: check.vocals_peak_db,
-        })
-    } else if check.karaoke_peak_db > MAX_PEAK_DB {
-        Err(BrokenRun::KaraokePeak {
-            db: check.karaoke_peak_db,
         })
     } else {
         Ok(check)
@@ -836,43 +829,44 @@ mod tests {
             );
             let failure = broken_run_check(&x, &karaoke, &vocals).unwrap_err();
             assert_eq!(failure, BrokenRun::KaraokeNotFinite { at: 12 });
+            assert_eq!(
+                failure.to_string(),
+                "the broken-run check failed the not-finite rule: karaoke track sample 12 is not finite"
+            );
         }
     }
 
     /// Vocals `p` dB above the source's peak, and a karaoke track that makes
-    /// up the rest. With `swap`, the roles are the other way round.
-    fn clipping_case(p: f64, swap: bool) -> Result<RunCheck, BrokenRun> {
+    /// up the rest.
+    fn peak_case(p: f64) -> Result<RunCheck, BrokenRun> {
         // The source already exceeds 1.0.
         let x = sine(1.2);
         let loud = scaled(&x, 10f64.powf(p / 20.0));
         let rest: Vec<f32> = x.iter().zip(&loud).map(|(&a, &b)| a - b).collect();
-        if swap {
-            broken_run_check(&x, &rest, &loud)
-        } else {
-            broken_run_check(&x, &loud, &rest)
-        }
+        broken_run_check(&x, &loud, &rest)
     }
 
     #[test]
-    fn the_clipping_rule_fails_1_1_db_above_the_source_and_passes_at_0_9_db() {
-        match clipping_case(1.1, false) {
-            Err(BrokenRun::VocalsPeak { db }) => assert!((db - 1.1).abs() < 1e-3, "{db}"),
+    fn the_vocals_peak_rule_fails_6_1_db_above_the_source_and_passes_at_5_9_db() {
+        match peak_case(6.1) {
+            Err(BrokenRun::VocalsPeak { db }) => assert!((db - 6.1).abs() < 1e-3, "{db}"),
             other => panic!("{other:?}"),
         }
-        let check = clipping_case(0.9, false).expect("passes");
-        assert!((check.vocals_peak_db - 0.9).abs() < 1e-3);
-        match clipping_case(1.1, true) {
-            Err(BrokenRun::KaraokePeak { db }) => {
-                assert!((db - 1.1).abs() < 1e-3, "{db}");
-                assert_eq!(
-                    BrokenRun::KaraokePeak { db: 1.1 }.to_string(),
-                    "the broken-run check failed the clipping rule: the karaoke track peaks 1.1 dB above the source"
-                );
-            }
-            other => panic!("{other:?}"),
-        }
-        let check = clipping_case(0.9, true).expect("passes");
-        assert!((check.karaoke_peak_db - 0.9).abs() < 1e-3);
+        let check = peak_case(5.9).expect("passes");
+        assert!((check.vocals_peak_db - 5.9).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_karaoke_track_10_db_above_the_source_passes() {
+        let x = sine(1.0);
+        let vocals = scaled(&x, 0.5);
+        let karaoke = scaled(&x, 10f64.powf(10.0 / 20.0));
+        let check = broken_run_check(&x, &vocals, &karaoke).expect("passes");
+        assert!(
+            (check.karaoke_peak_db - 10.0).abs() < 1e-3,
+            "{}",
+            check.karaoke_peak_db
+        );
     }
 
     #[test]

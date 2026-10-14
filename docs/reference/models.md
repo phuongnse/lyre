@@ -219,9 +219,15 @@ on each [target device](../decisions.md#d25-requirements-for-making-songs--propo
   source minus the vocals, so it always adds back up to the source. The sum
   check no longer guards a run
   ([D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)).
-- **Clipping:** the core fails a run only when the vocals or the karaoke track
-  peaks more than 1 dB above the source's own peak. A sample over 1.0 alone
-  does not fail, because decoded loud masters already exceed it.
+- **Vocals' peak:** the core fails a run when the vocals peak more than 6 dB
+  above the source's own peak. 6 dB is a chosen safety margin against broken
+  but finite output, not an industry standard. A sample over 1.0 alone does
+  not fail, because decoded loud masters already exceed it.
+- **No peak rule for the karaoke track:** a master is limited as a whole mix,
+  not per part. Where the vocals and the music partly cancel, the music alone
+  can go above the mix's peak, so the core does not fail a run for it. Its
+  level is at most the source's peak plus the vocals' peak. Encoding does not
+  change its gain or limit it ([D24](../decisions.md#d24-sources-are-repackaged-and-only-the-karaoke-track-is-encoded--agreed)).
 - **Leftover vocals:** the owner listens to the karaoke track on the model
   check page's **Karaoke track** player, which appears after each separation
   in a measurement, and records whether clear leftover lead vocals remain. Backing vocals may remain and

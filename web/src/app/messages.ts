@@ -310,9 +310,7 @@ export const messages = {
     'karaoke-not-finite': (sample: string) =>
       `The separation failed the broken-run check's karaoke track not-finite rule: sample ${sample} is not finite.`,
     'vocals-peak': (db: string) =>
-      `The separation failed the broken-run check's vocals clipping rule: ${db} dB, more than 1 dB above the source.`,
-    'karaoke-peak': (db: string) =>
-      `The separation failed the broken-run check's karaoke track clipping rule: ${db} dB, more than 1 dB above the source.`,
+      `The separation failed the broken-run check's vocals peak rule: ${db} dB, more than 6 dB above the source.`,
   },
   // Keyed by the separator's pinned file ID.
   separatorNames: { 'mel-roformer-fp16': 'Mel-Band RoFormer (Kim)', 'test-mel-roformer': 'Test separator' },
