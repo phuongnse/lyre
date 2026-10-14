@@ -196,10 +196,10 @@ test('the lyric text and the Countdown are bold', async ({ page }) => {
   expect(await fontWeightOf(countdown)).toBe('700')
 })
 
-test('at 5.0 s the Countdown lies inside the video', async ({ page }) => {
+test('at 6.0 s the Countdown lies inside the video', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 })
   const { region, video } = await openFixture(page)
-  await seek(video, 5)
+  await seek(video, 6)
   await expectRows(region, ['Trăng lên', ''])
   const stage = await boxOf(video)
   const countdown = await boxOf(region.getByRole('progressbar', { name: 'Countdown' }))

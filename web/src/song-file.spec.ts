@@ -141,7 +141,7 @@ test('the rows of the fixture song follow the latest layout', async () => {
   expect(song.lyricsRows(1000)).toEqual({ top: undefined, bottom: undefined })
   expect(song.layOut(Array(9).fill(10), 2, 1000)).toHaveLength(3)
   expect(song.lyricsRows(1000)).toEqual({ top: 0, bottom: 1 })
-  expect(song.lyricsRows(5000)).toEqual({ top: 2, bottom: undefined })
+  expect(song.lyricsRows(6000)).toEqual({ top: 2, bottom: undefined })
   song.close()
   expect(song.lyricsRows(1000)).toEqual({ top: undefined, bottom: undefined })
 })

@@ -266,8 +266,12 @@ Compose uses the same three values *(planned for M4)*.
   line.
 - In a group, display lines take turns between the rows, starting in the top
   row.
-- The first group shows from media time 0. A later group shows once the last
-  syllable of the group before it ends. Its first two display lines show
+- A group shows at the later of two times: 4 s before its first syllable
+  starts, and the end of the last syllable of the group before it. The first
+  group shows 4 s before its first syllable, or from media time 0 if that is
+  earlier. A group hides when its last syllable ends, unless it is the last
+  group, which stays up. Until a group shows, and in the gap after the group
+  before it ends, both rows are empty. Its first two display lines show
   together.
 - When the display line in the other row starts, at its first syllable's
   start, a row shows the group's next display line not shown yet. So the line
