@@ -136,11 +136,11 @@ function reasonFor(problem: RunProblem): string {
 // aligner. Its measurement section measures each candidate aligner
 // (docs/reference/models.md#measurement-method), in a Web Worker. It needs a
 // source and the lyrics. It decodes a picked source
-// once. Then, on WebGPU and then on one-thread WebAssembly, it separates the
-// source and times the picked lyrics on the vocals with each candidate, never
-// switching backend. Each candidate on each backend gets its own result: its
-// figures, or why it failed. With ?model=test it measures the test aligner
-// after the test separator, and ?backend=wasm measures only WebAssembly. A Device section names the browser,
+// once. Then, on WebGPU, it separates the source and times the picked lyrics
+// on the vocals with each candidate, never switching backend. Each candidate
+// gets its own result: its figures, or why it failed. With ?model=test it
+// measures the test aligner after the test separator, and ?backend=wasm
+// measures only WebAssembly instead. A Device section names the browser,
 // the OS and the GPU, and says whether WebGPU is available. Each result also
 // shows the highest WebAssembly memory and JavaScript heap seen in each stage,
 // or "not reported" for a figure the browser does not give. After each

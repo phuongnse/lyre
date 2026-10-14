@@ -163,9 +163,10 @@ aligner's files. The results name the devices they were taken on.
 
 For now, the measurement section of the
 [model check page](../ui-conventions.md#check-pages) runs it. Each run
-measures WebGPU, then one-thread WebAssembly, and does not yet report the
-download time. The page's Copy results button copies the results as plain
-text, for recording in these docs.
+measures WebGPU only. `?backend=wasm` measures only one-thread WebAssembly
+instead, for the Playwright journeys on CI runners without a GPU. It does
+not yet report the download time. The page's Copy results button copies the
+results as plain text, for recording in these docs.
 
 ### Inputs
 
@@ -177,8 +178,7 @@ text, for recording in these docs.
 
 ### Time
 
-For each model file and each backend, WebGPU and one-thread WebAssembly, the
-page reports:
+For each model file on WebGPU, the page reports:
 
 - the time of each stage: extract audio, separate, align;
 - the model's load time, apart from the stages;
@@ -240,5 +240,6 @@ on each [target device](../decisions.md#d25-requirements-for-making-songs--propo
   one file runs on every target device, that file is used. The owner plays each result through **Play with this timing** on the model check
   page ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed),
   [D29](../decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
-- **One-thread WebAssembly** results are reported for information. They do
-  not decide the choice.
+- **One-thread WebAssembly** figures come only with `?backend=wasm`, for the
+  CI journeys. They do not decide the choice. Making a song never runs its
+  models on WebAssembly ([D27](../decisions.md#d27-the-android-app-plays-and-receives-songs--agreed)).

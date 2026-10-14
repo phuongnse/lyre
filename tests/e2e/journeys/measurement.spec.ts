@@ -30,7 +30,7 @@ const lyrics = fileURLToPath(
   new URL("../../fixtures/song/lyrics.txt", import.meta.url),
 );
 
-// The test separator and the test aligner, on WebGPU and then on WebAssembly.
+// The test separator and the test aligner, on WebGPU only.
 const PAGE = "/#/model-check?model=test";
 // The same, on WebAssembly only.
 const WASM_PAGE = "/#/model-check?model=test&backend=wasm";
@@ -86,7 +86,7 @@ async function measure(
 const labelled = (scope: Page | Locator, name: string) =>
   scope.getByLabel(name, { exact: true });
 
-test("measuring the test aligner says WebGPU is not available, shows its stage times, the separator and none of the removed accuracy rows on WebAssembly, and sends nothing to another origin", async ({
+test("measuring the test aligner without ?backend=wasm gives only WebGPU results, each saying WebGPU is not available, and sends nothing to another origin", async ({
   page,
 }) => {
   const problems = await watch(page);
@@ -102,30 +102,22 @@ test("measuring the test aligner says WebGPU is not available, shows its stage t
     timeout: RUN_TIMEOUT,
   });
   for (const name of CANDIDATES) {
-    // The WebGPU run never switched to WebAssembly.
     const onWebGpu = labelled(page, `${name} on WebGPU`);
     await expect(onWebGpu).toBeVisible();
     await expect(onWebGpu).toContainText("WebGPU is not available.");
     await expect(labelled(onWebGpu, "Backend")).toHaveCount(0);
-
-    const result = labelled(page, `${name} on WebAssembly`);
-    await expect(result).toBeVisible();
-    await expect(labelled(result, "Backend")).toHaveText("WebAssembly");
-    for (const row of ["Extract audio", "Separate", "Align", "Model load"]) {
-      await expect(labelled(result, row)).toHaveText(/^\d+\.\d{2} s$/);
-    }
-    await expect(labelled(result, "Separator")).toHaveText("Test separator");
-    await expect(labelled(result, "Sum check")).toHaveCount(0);
-    await expect(result.getByLabel(REMOVED_ROWS)).toHaveCount(0);
   }
-  // Exactly one result per backend, and only the WebAssembly one has a button
-  // to play its timing.
-  await expect(
-    page.getByLabel(/^Test .+ on (WebGPU|WebAssembly)$/),
-  ).toHaveCount(2);
+  // Nothing ran on WebAssembly, so there are no WebAssembly results, tracks
+  // or Play button, and the copy button is already on.
+  await expect(page.getByLabel(/ on WebAssembly$/)).toHaveCount(0);
+  await expect(page.getByLabel(/^Tracks separated on /)).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: /^Play with this timing/ }),
-  ).toHaveCount(1);
+  ).toHaveCount(0);
+  await expect(page.getByLabel(/^Test .+ on WebGPU$/)).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Copy results" }),
+  ).toBeEnabled();
   // The test models came from the site's own origin too.
   expect(origins.length).toBeGreaterThan(0);
   for (const requestOrigin of origins) expect(requestOrigin).toBe(origin);

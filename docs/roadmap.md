@@ -115,12 +115,12 @@ Done when all ten were merged and the owner accepted the Player.
 - The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
   It runs the separator (D28) and both files of the `lyric-alignment` aligner
   (D29).
-  It runs on WebGPU and on one-thread WebAssembly for information
+  It runs on WebGPU, as making a song does
   (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
   reports time and memory as the browser reports it. The
   [models reference](reference/models.md#measurement-method) sets the method.
   Its first part is the measurement section of the model check page, at
-  `#/model-check`. Each run measures WebGPU, then one-thread WebAssembly,
+  `#/model-check`. Each run measures WebGPU only,
   without the download time yet.
 - The owner chooses between int8 and fp32 by watching each one's timing in the
   Player

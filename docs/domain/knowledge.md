@@ -209,7 +209,8 @@ What was learned:
   why making a song needs WebGPU
   ([D25](../decisions.md#d25-requirements-for-making-songs--proposed)). The
   [model measurement page](../roadmap.md#early-checks-on-real-devices)
-  still measures that case for information *(planned for M2)*.
+  measures WebGPU only. Its `?backend=wasm` measures one-thread WebAssembly
+  instead, for the CI journeys.
 - **Phones get hot.** Long processing in a phone's browser slows down as the
   device heats up. The page shows progress and Cancel while it runs.
 - **The browser may clear storage.** Songs, models and tasks kept by a web
