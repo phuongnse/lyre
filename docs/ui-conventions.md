@@ -114,6 +114,71 @@ M4.
 - Playback never depends on the library. If a song cannot be kept, it still
   plays, and no error is shown.
 
+## Making a song
+
+The main page has a Make a song section *(planned for M2)*. It runs a
+[task](domain/concepts.md#processing) from a source and its lyrics to a song
+file. The stage names and messages below are examples. The issues that build
+the section may refine them, and update this section when they do.
+
+- **Choose a source** and **Choose the lyrics** buttons pick the two files.
+  Reading the source is stage 1. It runs on the main thread as soon as the
+  source is picked. A source the page refuses gets the source check page's
+  messages (see [check pages](#check-pages)). The lyrics are read through the
+  core as soon as they are picked, and invalid lyrics get "The lyrics file is
+  not valid lyrics." So problems the owner can fix show before any download
+  or model run. The lyrics are stored exactly as supplied
+  ([D5](decisions.md#d5-supplied-lyrics-are-authoritative--agreed)).
+- The song details are editable Title, Artist and Composer fields. They start
+  from the source's title, artist and composer tags, exactly as stored.
+  Without a title tag, the title is the source's file name without its
+  extension, as on the source check page. Whatever the fields hold when the
+  task starts is stored unchanged.
+- A **Vocal role** choice of Female or Male has no default. Duets come with
+  M8.
+- **Make the song** is off until a source, valid lyrics, a non-empty title
+  and a vocal role are all set.
+- Before the first stage, the page downloads any missing model files:
+  htdemucs and the aligner the measurements chose
+  ([the choice](reference/models.md#the-choice),
+  [D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
+  It checks them with the same progress bar and byte line as the model check
+  page. A file that fails its check stops the task, and the message names
+  the file. Kept files download nothing on later runs.
+- The section waits for the measured choice. It has no temporary default
+  aligner.
+- The task runs in a Web Worker
+  ([processing](architecture.md#processing-planned-for-m2)). The page shows
+  the current stage's name, such as "Separating the vocals", and a progress
+  bar. It shows a time left only once the stage has run 1 s and reported some
+  progress. The stages are those in
+  [knowledge](domain/knowledge.md#processing).
+- The page says which backend runs the models. When there is no GPU and the
+  models would run on WebAssembly, it says before starting that making a song
+  will be slow on this device
+  ([D3](decisions.md#d3-processing-runs-on-the-device-that-asks-for-it--agreed)).
+- A **Cancel** button ends the worker at once and removes the task's working
+  area. No song is left behind. Closing or reloading the page also ends the
+  task, and the next start removes its area.
+- When another tab holds the `lyre-task` lock, the page says "Another tab is
+  making a song." and does not start.
+- A failure shows one plain message that names the stage, such as "The song
+  could not be made: alignment failed." No song is kept or offered. A
+  syllable the aligner cannot time is named by its lyric line and position
+  ([knowledge](domain/knowledge.md#processing)). The page never shows lyric
+  text or the core's own text.
+- After a cancel or a failure, the picked files, the song details and the
+  vocal role stay, so the owner can start again at once. A task always starts
+  again from the beginning.
+- A finished song opens in the Player and is kept in the
+  [library](#library), under the library's rules. These include the
+  persistent storage request and the check that this device can play it.
+- A **Download the song file** link is offered as well, named after the
+  source file with `.lyre` in place of its extension. It stays while songs
+  are unencrypted version-0 files.
+- The section's code loads only when the owner first uses it, so it stays out
+  of the main page's initial load, as the check pages' code does.
+
 ## Lyrics in the Player
 
 How the Player draws [lyrics](domain/concepts.md#songs). These rules apply
