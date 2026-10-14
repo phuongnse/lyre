@@ -1,4 +1,5 @@
 import { Backend } from '../separation/backend'
+import { StageMemory } from './memory'
 import { MeasurementReply, MeasurementRequest, runProblem } from './measurement-messages'
 
 type Candidate = MeasurementRequest['candidates'][number]
@@ -7,12 +8,21 @@ type Candidate = MeasurementRequest['candidates'][number]
 // timing the lyrics on the vocals with one candidate. Each step runs on the
 // backend it is given, or throws.
 export interface MeasurementSteps {
-  separate(backend: Backend): Promise<{ vocals: Float32Array; separateMs: number; sumCheckDb: number }>
+  separate(
+    backend: Backend,
+  ): Promise<{ vocals: Float32Array; separateMs: number; sumCheckDb: number; memory: StageMemory }>
   measure(
     candidate: Candidate,
     backend: Backend,
     vocals: Float32Array,
-  ): Promise<{ loadMs: number; alignMs: number; medianMs: number; p90Ms: number; within100Ms: number }>
+  ): Promise<{
+    loadMs: number
+    alignMs: number
+    medianMs: number
+    p90Ms: number
+    within100Ms: number
+    memory: StageMemory
+  }>
 }
 
 // Measures every candidate on each backend in turn
@@ -32,7 +42,13 @@ export async function measureBackends(
     try {
       const separated = await steps.separate(backend)
       vocals = separated.vocals
-      reply({ type: 'separated', backend, separateMs: separated.separateMs, sumCheckDb: separated.sumCheckDb })
+      reply({
+        type: 'separated',
+        backend,
+        separateMs: separated.separateMs,
+        sumCheckDb: separated.sumCheckDb,
+        memory: separated.memory,
+      })
     } catch (error) {
       // Read once, since reading frees a core fault.
       const problem = runProblem(error)

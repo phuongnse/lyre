@@ -5,6 +5,7 @@ import { replyForFault, SumCheckRule } from '../separation/separation-messages'
 import { isOutOfMemory, SessionFault } from '../session-backend'
 import { SourceProblem } from '../source-error'
 import { Candidate, CandidateKind } from './candidates'
+import { StageMemory } from './memory'
 
 // What the page sends the measurement worker: the source, the lyrics file,
 // the starts of the hand-written timing, the checked files of the separator
@@ -35,12 +36,12 @@ export type RunProblem =
 // What the worker answers: the stage it starts, the extract time, each
 // backend's separation figures, each candidate's figures or failure on each
 // backend, and the end of the run. Only a source that cannot be read ends the
-// run early. Times are in milliseconds. Never the lyric text, the tracks or an
-// error's text.
+// run early. Times are in milliseconds and memory is in bytes: the highest
+// seen in the stage. Never the lyric text, the tracks or an error's text.
 export type MeasurementReply =
   | { type: 'stage'; stage: MeasurementStage; backend?: Backend; candidate?: Candidate }
-  | { type: 'extracted'; extractMs: number }
-  | { type: 'separated'; backend: Backend; separateMs: number; sumCheckDb: number }
+  | { type: 'extracted'; extractMs: number; memory: StageMemory }
+  | { type: 'separated'; backend: Backend; separateMs: number; sumCheckDb: number; memory: StageMemory }
   | {
       type: 'measured'
       candidate: Candidate
@@ -50,6 +51,7 @@ export type MeasurementReply =
       medianMs: number
       p90Ms: number
       within100Ms: number
+      memory: StageMemory
     }
   // `ran` is false when the separation on the backend failed, so the candidate did not run.
   | { type: 'candidate-failed'; candidate: Candidate; backend: Backend; ran: boolean; problem: RunProblem }

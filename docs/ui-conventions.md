@@ -349,10 +349,19 @@ Compose uses the same three values *(planned for M4)*.
   WebAssembly…". Each candidate gets a result per backend, named after both,
   such as "Omnilingual int8 on WebGPU". It shows the backend, the extract,
   separate and align times, the model load time, the sum check in dB, and the
-  onset error median, 90th percentile and share within 100 ms. The extract
-  time is the same in every result, because the source is decoded once. The
-  separate time and the sum check are the same in every result on one
-  backend, because the source is separated once per backend. A run that fails
+  onset error median, 90th percentile and share within 100 ms. It also shows
+  the highest WebAssembly memory and the highest JavaScript heap seen in each
+  of the three stages, in bytes. A figure the browser does not give, such as
+  the heap in Firefox, shows "not reported". The extract time and memory are
+  the same in every result, because the source is decoded once. The
+  separate time, memory and the sum check are the same in every result on one
+  backend, because the source is separated once per backend. The WebAssembly
+  memory never shrinks, so a stage's figure includes what earlier stages grew
+  (see the [memory method](reference/models.md#memory)). A Device section
+  above the results shows the browser and its version, the OS, the GPU
+  adapter's vendor, architecture and description, and whether WebGPU is
+  available. WebGPU counts as available only when the browser gives an
+  adapter. With none, the three GPU rows show "not reported". A run that fails
   shows one reason in its result: WebGPU is not available, the model could
   not be loaded on this backend, the run ran out of memory, the separation
   failed the sum check (with the separation check page's message naming the
@@ -367,9 +376,11 @@ Compose uses the same three values *(planned for M4)*.
   anywhere. The Playwright journeys use it to check a whole measurement of
   the test aligners in Chromium with its GPU turned off, so WebGPU gives no
   adapter. Each WebGPU result then says WebGPU is not available, and each
-  WebAssembly result has its figures. They also check an overlap in the timing file, that the main page
-  does not load the page's code, and that every request goes to the site's
-  own origin.
+  WebAssembly result has its figures, with a WebAssembly memory above 0 bytes
+  in each stage. They also check the Device section with no WebGPU object
+  and with a stubbed adapter, an overlap in the timing file, that the main
+  page does not load the page's code, and that every request goes to the
+  site's own origin.
 - The separation check page separates a picked source's audio into vocals and
   a karaoke track in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
