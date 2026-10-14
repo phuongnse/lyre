@@ -93,10 +93,13 @@ What was learned:
 - **Check separation for broken runs.** The karaoke track is the source minus
   the vocals, so the two always add back up to the source. A sum check cannot
   find a broken run, and a run fails on two rules instead. The finite rule:
-  every sample of the vocals and the karaoke track must be finite. The
-  clipping rule: vocals or the karaoke track may not peak more than 1 dB
-  above the original's own peak. A sample over 1.0 alone does not fail, because
-  decoded loud masters already exceed it.
+  every sample of the vocals and the karaoke track must be finite. The vocals'
+  peak rule: the vocals may not peak more than 6 dB above the original's own
+  peak. 6 dB is a chosen safety margin, not an industry standard. It catches
+  broken output that is still finite. The karaoke track has no peak rule. A
+  master is limited as a whole mix, so where the vocals and the music partly
+  cancel, the music alone can go above the mix's peak. A sample over 1.0 alone
+  does not fail, because decoded loud masters already exceed it.
 - **Scan the whole vocal track for leftovers,** not only where lyrics are
   sung. Laughs, calls, harmonies and ad-libs have no lyric text but still leak
   into the karaoke track.

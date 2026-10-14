@@ -1174,12 +1174,8 @@ pub enum SeparationFaultKind {
     /// The broken-run check failed its not-finite rule: a karaoke track
     /// sample is NaN or infinite.
     KaraokeNotFinite = 2,
-    /// The broken-run check failed its clipping rule: the vocals peak too
-    /// high.
+    /// The broken-run check failed its peak rule: the vocals peak too high.
     VocalsPeak = 3,
-    /// The broken-run check failed its clipping rule: the karaoke track peaks
-    /// too high.
-    KaraokePeak = 4,
 }
 
 /// Why a separation step failed. It holds no core message, because those are
@@ -1199,8 +1195,8 @@ impl SeparationFault {
         self.kind
     }
 
-    /// The peak the failed clipping rule measured, in dB above the source.
-    /// Set only for the clipping kinds.
+    /// The peak the failed peak rule measured, in dB above the source.
+    /// Set only for the peak kind.
     #[wasm_bindgen(getter, js_name = measuredDb)]
     pub fn measured_db(&self) -> Option<f64> {
         self.measured_db
@@ -1237,11 +1233,6 @@ impl From<SeparationError> for SeparationFault {
             },
             SeparationError::BrokenRun(BrokenRun::VocalsPeak { db }) => SeparationFault {
                 kind: SeparationFaultKind::VocalsPeak,
-                measured_db: Some(db),
-                sample: None,
-            },
-            SeparationError::BrokenRun(BrokenRun::KaraokePeak { db }) => SeparationFault {
-                kind: SeparationFaultKind::KaraokePeak,
                 measured_db: Some(db),
                 sample: None,
             },
@@ -1454,12 +1445,6 @@ mod tests {
             (
                 BrokenRun::VocalsPeak { db: 9.9 },
                 SeparationFaultKind::VocalsPeak,
-                Some(9.9),
-                None,
-            ),
-            (
-                BrokenRun::KaraokePeak { db: 9.9 },
-                SeparationFaultKind::KaraokePeak,
                 Some(9.9),
                 None,
             ),
