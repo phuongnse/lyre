@@ -116,9 +116,10 @@ python3 "$KIT/bin/nexkit" status
 ```
 
 Split an issue that reports `too_large`. Create each part with
-`gh issue create --title "<part's behaviour>" --milestone "<parent's milestone>"`,
-then add the parts to the parent in order. Title each part by the behaviour it
-delivers, as for any issue. Never reuse the parent's title, whole or as a
+`gh issue create --title "<part's behaviour>" --label "<labels>" --milestone "<parent's milestone>"`,
+then add the parts to the parent in order. Give each part its own labels,
+comma-separated, chosen as in the checklist below. They need not be the
+parent's. Title each part by the behaviour it delivers, as for any issue. Never reuse the parent's title, whole or as a
 prefix: write `Connector call steps pass compile checks`, not
 `Call connector step: compile checks and model`. The sub-issue link already
 shows the parent.
@@ -140,6 +141,11 @@ returns 404, upgrade `gh` and try again.
 - The text names the concepts the issue touches, in the terms of
   [concepts.md](../../../docs/domain/concepts.md), even when it links to the
   docs. Triage reads only the issue and its discussion, not the links.
+- Set every existing repository label that fits the issue's content, at least
+  one, when the issue is created. Judge fit by each label's description, which
+  `gh label list` prints. The labels are listed at
+  <https://github.com/phuongnse/lyre/labels>. No new labels are created. See
+  [the life of an issue](../../../docs/delivery.md#the-life-of-an-issue).
 
 ## Checklist: reviewing a plan
 
