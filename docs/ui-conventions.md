@@ -394,16 +394,10 @@ Compose uses the same three values *(planned for M4)*.
   WebAssembly, under the page's policy.
   Its measurement section measures each candidate aligner, as the
   [measurement method](reference/models.md#measurement-method) says.
-  **Choose a source**, **Choose the lyrics** and **Choose a timing file**
-  buttons pick the files, and a **Measure the aligners** button starts once
-  a source and the lyrics are picked. The hand-written timing file is
-  optional. Only with one does the page first read it against the lyrics
-  through the core, before it downloads or runs anything, and report onset
-  error. A refused timing file gets a sentence that names the line and the
-  rule it broke, such as "Line 4 of the timing file overlaps the line before
-  it.", and invalid lyrics get "The lyrics file is not valid lyrics." Without
-  a timing file, the page goes straight to the download, and invalid lyrics
-  show as a refused alignment in each result. The page then downloads the
+  **Choose a source** and **Choose the lyrics** buttons pick the files, and
+  a **Measure the aligners** button starts once a source and the lyrics are
+  picked. The page goes straight to the download, and invalid lyrics show as
+  a refused alignment in each result. The page downloads the
   missing model files with the same progress bar, and a file that fails
   stops the run with the message naming it. In one Web Worker, it decodes the
   source once. Then it runs each backend in turn, first WebGPU and then
@@ -415,10 +409,8 @@ Compose uses the same three values *(planned for M4)*.
   stage running and its backend, such as "Aligning with Omnilingual int8 on
   WebAssembly…". Each candidate gets a result per backend, named after both,
   such as "Omnilingual int8 on WebGPU". It shows the backend, the extract,
-  separate and align times, the model load time, the sum check in dB, and the
-  onset error median, 90th percentile and share within 100 ms. Without a
-  timing file, those three onset error rows say "not measured". It also shows
-  the highest WebAssembly memory and the highest JavaScript heap seen in each
+  separate and align times, the model load time and the sum check in dB. It
+  also shows the highest WebAssembly memory and the highest JavaScript heap seen in each
   of the three stages, in bytes. A figure the browser does not give, such as
   the heap in Firefox, shows "not reported". The extract time and memory are
   the same in every result, because the source is decoded once. The
@@ -475,20 +467,21 @@ Compose uses the same three values *(planned for M4)*.
   measurement clears the line. Only a source without audio or an unreadable source stops the run, with the
   separation check page's messages. `?model=test` measures the two test
   aligners after the test separator, and `?backend=wasm` measures only
-  WebAssembly. The source, the lyrics and the timing file, when picked, are
-  never sent anywhere. The Playwright journeys use it to check a whole measurement of
+  WebAssembly. The source and the lyrics are never sent
+  anywhere. The Playwright journeys use it to check a whole measurement of
   the test aligners in Chromium with its GPU turned off, so WebGPU gives no
   adapter. Each WebGPU result then says WebGPU is not available, and each
   WebAssembly result has its figures, with a WebAssembly memory above 0 bytes
   in each stage. They check that the Vocals and Karaoke track players each
   last as long as the 2 s source. They also check the Device section with no WebGPU object
-  and with a stubbed adapter, an overlap in the timing file, that the main
+  and with a stubbed adapter, that the main
   page does not load the page's code, and that every request goes to the
   site's own origin. They also check the copied text of a measurement, and
-  the message for a clipboard that refuses the write. They check a
-  measurement with no timing file, whose results and copied text say "not
-  measured" for onset error, and that **Measure the aligners** stays off
-  until a source and the lyrics are picked. They play each test aligner's
+  the message for a clipboard that refuses the write. They check that
+  the results and the copied text have no accuracy rows from a hand-written
+  timing, that the measurement section has no timing file button, and that
+  **Measure the aligners** stays off until a source and the lyrics are
+  picked. They play each test aligner's
   timing after a measurement on WebAssembly, and check that a syllable is
   highlighted, that the Karaoke / Original switch keeps the position, and
   that the library gets no new song. They also check that a measurement with

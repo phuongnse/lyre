@@ -1,5 +1,5 @@
 import { InferenceSession } from 'onnxruntime-web/webgpu'
-import init, { AlignerKind, measureOnsetError } from '../lyre-wasm/lyre_wasm.js'
+import init, { AlignerKind } from '../lyre-wasm/lyre_wasm.js'
 import { alignSong } from '../alignment/align-song'
 import { alignerRunner } from '../alignment/aligner-session'
 import { openSession } from '../onnx-session'
@@ -11,7 +11,7 @@ import { SourceError } from '../source-error'
 import { CandidateKind } from './candidates'
 import { measureBackends, MeasurementSteps } from './measure-backends'
 import { readMemory, StageMemory, watchStage, watchWasmMemories } from './memory'
-import { MeasurementReply, MeasurementRequest, OnsetError } from './measurement-messages'
+import { MeasurementReply, MeasurementRequest } from './measurement-messages'
 import { vocalsForAlignment } from './vocals'
 import { wavFile } from './wav'
 
@@ -113,9 +113,8 @@ async function separateOn(
   }
 }
 
-// Times the lyrics on the vocals with one candidate on `backend`, gives the
-// timing, and measures the timing against the hand-written one when there is one. The
-// memory covers loading the model as well as aligning.
+// Times the lyrics on the vocals with one candidate on `backend`, and gives
+// the timing. The memory covers loading the model as well as aligning.
 async function measureOn(
   request: MeasurementRequest,
   { kind, graph, vocabulary }: MeasurementRequest['candidates'][number],
@@ -126,7 +125,6 @@ async function measureOn(
 ): Promise<{
   loadMs: number
   alignMs: number
-  onset?: OnsetError
   memory: StageMemory
   timesMs: Uint32Array<ArrayBuffer>
 }> {
@@ -145,14 +143,7 @@ async function measureOn(
       const alignMs = performance.now() - alignStart
       // Each syllable's start then end, for the page to play the source with this timing.
       const timesMs = Uint32Array.from(timing.flatMap(({ startMs, endMs }) => [startMs, endMs]))
-      if (!request.handStartsMs) return { loadMs, alignMs, onset: undefined, timesMs }
-      const errors = measureOnsetError(
-        request.handStartsMs,
-        Uint32Array.from(timing, (syllable) => syllable.startMs),
-      )
-      const { medianMs, p90Ms, within100Ms } = errors
-      errors.free()
-      return { loadMs, alignMs, onset: { medianMs, p90Ms, within100Ms }, timesMs }
+      return { loadMs, alignMs, timesMs }
     } finally {
       await session?.release().catch(() => undefined)
     }

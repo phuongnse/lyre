@@ -5,8 +5,6 @@ import { MatProgressBar } from '@angular/material/progress-bar'
 import { MatRadioButton, MatRadioGroup } from '@angular/material/radio'
 import { ActivatedRoute } from '@angular/router'
 import { TestAligner } from '../../alignment/aligner-session'
-import { loadCore } from '../../core'
-import { parseTimingFile, TimingFileErrorKind, TimingFileFault } from '../../lyre-wasm/lyre_wasm.js'
 import { Device, readDevice } from '../../measurement/device'
 import { backendsFor, Candidate, candidateFiles, candidatesFor, separatorFiles } from '../../measurement/candidates'
 import { StageMemory } from '../../measurement/memory'
@@ -53,9 +51,6 @@ type AlignerState =
 
 type MeasurementState =
   | { status: 'idle' }
-  | { status: 'reading' }
-  | { status: 'files-unreadable' }
-  | { status: 'timing-refused'; kind: TimingFileErrorKind; line: number }
   | { status: 'downloading' }
   | { status: 'download-failed'; id: string; checkFailed: boolean }
   | { status: 'running'; stage: MeasurementStage; backend?: Backend; candidate?: Candidate }
@@ -72,14 +67,12 @@ type Outcome =
   | { status: 'failed'; ran: boolean; problem: RunProblem }
 
 const seconds = (ms: number) => messages.seconds((ms / 1000).toFixed(2))
-const milliseconds = (ms: number) => messages.milliseconds(ms.toFixed(0))
 const bytesOr = (bytes?: number) => (bytes === undefined ? messages.notReported : messages.bytes(bytes))
 
 // A measured candidate's figures on one backend. The extract figures repeat in
 // every result, and the backend's separation figures in each of its
-// candidates' results. Without a timing file, the onset error rows say "not
-// measured". Each ID starts with the backend and the candidate, so it is
-// unique.
+// candidates' results. Each ID starts with the backend and the candidate, so
+// it is unique.
 function rowsFor(
   candidate: Candidate,
   backend: Backend,
@@ -93,8 +86,6 @@ function rowsFor(
     label,
     value,
   })
-  // Measured only against a timing file.
-  const { onset } = outcome
   return [
     row('backend', messages.measurementBackend, messages.backendNames[backend]),
     row('extract', messages.measurementExtract, seconds(extract.ms)),
@@ -102,13 +93,6 @@ function rowsFor(
     row('align', messages.measurementAlign, seconds(outcome.alignMs)),
     row('load', messages.measurementModelLoad, seconds(outcome.loadMs)),
     row('sum-check', messages.measurementSumCheck, messages.decibels(separation.sumCheckDb.toFixed(1))),
-    row('median', messages.measurementOnsetMedian, onset ? milliseconds(onset.medianMs) : messages.notMeasured),
-    row('p90', messages.measurementOnsetP90, onset ? milliseconds(onset.p90Ms) : messages.notMeasured),
-    row(
-      'within-100',
-      messages.measurementWithin100Ms,
-      onset ? messages.percent((onset.within100Ms * 100).toFixed(0)) : messages.notMeasured,
-    ),
     row('extract-wasm', messages.measurementExtractWasmMemory, bytesOr(extract.memory.wasmBytes)),
     row('extract-heap', messages.measurementExtractHeap, bytesOr(extract.memory.heapBytes)),
     row('separate-wasm', messages.measurementSeparateWasmMemory, bytesOr(separation.memory.wasmBytes)),
@@ -150,9 +134,7 @@ function reasonFor(problem: RunProblem): string {
 // when the browser has a GPU, and Force WebAssembly starts ticked for the
 // aligner. Its measurement section measures each candidate aligner
 // (docs/reference/models.md#measurement-method), in a Web Worker. It needs a
-// source and the lyrics. A hand-written timing file is optional: with one, the
-// page reads it against the lyrics first and reports onset error, and without
-// one the onset error rows say "not measured". It decodes a picked source
+// source and the lyrics. It decodes a picked source
 // once. Then, on WebGPU and then on one-thread WebAssembly, it separates the
 // source and times the picked lyrics on the vocals with each candidate, never
 // switching backend. Each candidate on each backend gets its own result: its
@@ -186,7 +168,6 @@ function reasonFor(problem: RunProblem): string {
       separator.status === 'running' ||
       aligning.status === 'preparing' ||
       aligning.status === 'running' ||
-      measuring.status === 'reading' ||
       measuring.status === 'downloading' ||
       measuring.status === 'running' ||
       songState() === 'making';
@@ -306,10 +287,6 @@ function reasonFor(problem: RunProblem): string {
       hidden
       (change)="pick(measuredLyricsInput, lyrics)"
     />
-    <button matButton="filled" type="button" [disabled]="busy" (click)="timingInput.click()">
-      {{ messages.chooseTiming }}
-    </button>
-    <input #timingInput type="file" accept="text/plain,.txt" hidden (change)="pick(timingInput, timing)" />
     <button matButton="filled" type="button" [disabled]="busy || !source() || !lyrics()" (click)="measure()">
       {{ messages.measureAligners }}
     </button>
@@ -414,7 +391,6 @@ export class ModelCheckPage {
   // The files picked for a measurement.
   protected readonly source = signal<File | undefined>(undefined)
   protected readonly lyrics = signal<File | undefined>(undefined)
-  protected readonly timing = signal<File | undefined>(undefined)
   protected readonly measurement = signal<MeasurementState>({ status: 'idle' })
   // The device the page runs on, once the browser has told it.
   protected readonly device = signal<Device | undefined>(undefined)
@@ -543,13 +519,12 @@ export class ModelCheckPage {
   protected async measure(): Promise<void> {
     const source = this.source()
     const lyricsFile = this.lyrics()
-    const timingFile = this.timing()
     if (!source || !lyricsFile) return
     this.run?.stop()
     this.run = undefined
     const attempt = ++this.attempts
     const current = () => attempt === this.attempts
-    this.measurement.set(timingFile ? { status: 'reading' } : { status: 'downloading' })
+    this.measurement.set({ status: 'downloading' })
     this.extract.set(undefined)
     this.separations.set({})
     this.outcomes.set([])
@@ -557,20 +532,6 @@ export class ModelCheckPage {
     this.revokeTracks()
     this.clearMeasuredSong()
     this.measured = { source, lyrics: lyricsFile }
-    let handStartsMs: Uint32Array | undefined
-    if (timingFile) {
-      // The timing file is read before anything is downloaded, so a bad one fails at once.
-      const read = await this.handStarts(lyricsFile, timingFile).catch((): MeasurementState => ({
-        status: 'files-unreadable',
-      }))
-      if (!current()) return
-      if (!(read instanceof Uint32Array)) {
-        this.measurement.set(read)
-        return
-      }
-      handStartsMs = read
-      this.measurement.set({ status: 'downloading' })
-    }
     const loaded = await this.loadFiles()
     if (!current()) return
     if ('status' in loaded) {
@@ -581,7 +542,6 @@ export class ModelCheckPage {
       type: 'run',
       source,
       lyrics: lyricsFile,
-      handStartsMs,
       ...loaded,
       baseUri: document.baseURI,
       backends: backendsFor(this.forced),
@@ -634,27 +594,6 @@ export class ModelCheckPage {
       this.copyState.set('copied')
     } catch {
       this.copyState.set('refused')
-    }
-  }
-
-  // The starts of the hand-written timing, read by the core against the
-  // lyrics, or the state for a refused timing file.
-  private async handStarts(lyricsFile: Blob, timingFile: Blob): Promise<Uint32Array | MeasurementState> {
-    // The lyric bytes go to the core as they are (D5).
-    const [lyrics, timing] = await Promise.all(
-      [lyricsFile, timingFile].map(async (file) => new Uint8Array(await file.arrayBuffer())),
-    )
-    await loadCore()
-    try {
-      const syllables = parseTimingFile(timing, lyrics)
-      const starts = Uint32Array.from(syllables, (syllable) => syllable.startMs)
-      for (const syllable of syllables) syllable.free()
-      return starts
-    } catch (error) {
-      if (!(error instanceof TimingFileFault)) throw error
-      const { kind, line } = error
-      error.free()
-      return { status: 'timing-refused', kind, line: line ?? 0 }
     }
   }
 
@@ -727,8 +666,8 @@ export class ModelCheckPage {
         break
       }
       case 'measured': {
-        const { candidate, backend, loadMs, alignMs, onset, memory, timesMs } = reply
-        const outcome: Outcome = { status: 'measured', loadMs, alignMs, onset, memory, timesMs }
+        const { candidate, backend, loadMs, alignMs, memory, timesMs } = reply
+        const outcome: Outcome = { status: 'measured', loadMs, alignMs, memory, timesMs }
         this.outcomes.update((outcomes) => [...outcomes, { candidate, backend, outcome }])
         break
       }
@@ -772,16 +711,6 @@ export class ModelCheckPage {
     switch (state.status) {
       case 'idle':
         return ''
-      case 'reading':
-        return messages.measurementReading
-      case 'files-unreadable':
-        return messages.measurementFilesUnreadable
-      case 'timing-refused':
-        return state.kind === TimingFileErrorKind.Lyrics
-          ? messages.songLyricsInvalid
-          : messages.measurementTimingFile[
-              TimingFileErrorKind[state.kind] as keyof typeof messages.measurementTimingFile
-            ](state.line)
       case 'downloading':
         return messages.measurementDownloading
       case 'download-failed':

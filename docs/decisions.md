@@ -516,9 +516,6 @@ Replaces the choice rule of [D20](#d20-non-commercial-models-are-allowed-and-m2-
 - **Watching:** after a measurement, the owner plays the source with each
   candidate's timing through **Play with this timing** on the model check
   page's Player.
-- **Onset error is optional:** it is measured only when the owner gives a
-  timing file written by hand. It is reported for information and does not
-  decide the choice.
 
 *Why:* Writing a timing file by hand for every syllable of several songs
 costs too much for a choice between two aligners. Sync the owner can see is
