@@ -24,8 +24,8 @@
   - exact lyrics, byte for byte (D5);
   - bounded parsing of every file Lyre reads;
   - denied-access tests from M3;
-  - both clients from M4: a feature is done when it works on the web and on
-    Android.
+  - every client from M4: a feature is done when it works in every client
+    that has it (D27).
 
 ## Milestones
 
@@ -35,7 +35,7 @@
 | **M1** | Karaoke playback | Done | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
 | **M2** | Making songs on the device | Next | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page compares the two aligners of D20 on real devices and confirms the separator. |
 | **M3** | Devices, encryption and sharing | Planned | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
-| **M4** | Android | Planned | The Android app plays, makes and shares songs like the web client, with its device key in Android Keystore. Songs move between web and Android both ways. |
+| **M4** | Android | Planned | The Android app plays songs and shows a device code to receive shared songs, with its device key in Android Keystore. Songs made in the web client play in the Android app. |
 | **M5** | Library and queue | Planned | Library, queue in order or shuffled, search by title, artist, composer and lyrics that ignores Vietnamese diacritics, thumbnails, lyric corrections. |
 | **M6** | Clip editor | Planned | The owner cuts several sections from one source, each with its own details and lyrics, and each becomes a song. |
 | **M7** | Google Drive | Planned | The user picks Drive files or folders; songs play from Drive before they finish downloading and stay playable offline once cached. |
@@ -114,7 +114,7 @@ Done when all ten were merged and the owner accepted the Player.
   does not link to it.
 - The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
   It runs the D15 separator and both candidate aligners, Omnilingual and
-  `lyric-alignment`, on WebGPU and on the one-thread WebAssembly fallback
+  `lyric-alignment`, on WebGPU and on one-thread WebAssembly for information
   (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
   reports time and memory as the browser reports it. The
   [models reference](reference/models.md#measurement-method) sets the method.
@@ -136,18 +136,18 @@ must settle:
 
 - **M2:** the measurement page comes first. It compares Omnilingual and
   `lyric-alignment`. Among the aligners that run on the
-  [target devices](decisions.md#d25-target-devices-for-making-songs--proposed), the owner chooses the one whose timing looks better in the Player
+  [target devices](decisions.md#d25-requirements-for-making-songs--proposed), the owner chooses the one whose timing looks better in the Player
   ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)). A newer decision replaces D15 if the separator
   misses its target
   ([D21](decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
   as [D22](decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed) splits it).
-  The measurement results confirm or change the target devices of
-  [D25](decisions.md#d25-target-devices-for-making-songs--proposed), and the owner then marks it Agreed.
+  The measurement results settle the values of the requirements of
+  [D25](decisions.md#d25-requirements-for-making-songs--proposed), and the owner then marks it Agreed.
 - **M3:** the passkey check results (D8); the reference doc for the encrypted
   format, access files and recovery, reviewed before implementation.
-- **M4:** split in two when broken down: Android playback and device keys
-  first, then making songs on Android; the lowest Android version, and
-  emulator tests in CI.
+- **M4:** Android playback and device keys
+  ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed));
+  the lowest Android version, and emulator tests in CI.
 - **M8:** settle [D23](decisions.md#d23-backing-vocals-as-their-own-track--proposed), backing vocals as their own track,
   and choose a lead and backing separator with a clear licence.
 - **M9:** licences for every model that is downloaded for other people, and

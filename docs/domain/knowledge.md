@@ -88,7 +88,7 @@ The stages, in order:
 What was learned:
 
 - **Alignment and role classification are the heaviest stages,** then
-  separation. On a phone or in a browser they set what Lyre can do, so the
+  separation. In a browser, on a desktop or a phone, they set what Lyre can do, so the
   M2 measurements choose the aligner and confirm the separator (D15, D20, D26).
 - **Check separation by sum.** Vocals plus karaoke track should add back up to
   the original, without clipping and at plausible levels. A large difference
@@ -204,12 +204,14 @@ What was learned:
   which worker URLs it may start: each comes from the `lyre#worker` Trusted
   Types policy, which allows only the site's own origin.
 - **The page is not cross-origin isolated.** Without the COOP and COEP
-  headers, the page has no `SharedArrayBuffer`. The WebAssembly fallback of
-  ONNX Runtime Web then runs on one thread, much slower than WebGPU. The
+  headers, the page has no `SharedArrayBuffer`. The WebAssembly backend of
+  ONNX Runtime Web then runs on one thread, much slower than WebGPU. That is
+  why making a song needs WebGPU
+  ([D25](../decisions.md#d25-requirements-for-making-songs--proposed)). The
   [model measurement page](../roadmap.md#early-checks-on-real-devices)
-  measures that case *(planned for M2)*.
-- **Phones get hot.** Long processing on Android slows down as the device
-  heats up. Processing runs as a foreground task the user can see and cancel.
+  still measures that case for information *(planned for M2)*.
+- **Phones get hot.** Long processing in a phone's browser slows down as the
+  device heats up. The page shows progress and Cancel while it runs.
 - **The browser may clear storage.** Songs, models and tasks kept by a web
   page can be removed by the browser unless persistent storage is granted.
   Lyre asks for it and says what happens without it.
@@ -239,8 +241,8 @@ pinned their files, which the [models reference](../reference/models.md) lists:
   licence that grants nothing for the weights is not permission either. This
   applies to the Demucs weights, where the repository states no separate
   grant.
-- Every model needs an ONNX export that runs in ONNX Runtime Web and ONNX
-  Runtime for Android. M2 measures whether the separator and both candidate aligners run fast enough there.
+- Every model needs an ONNX export that runs in ONNX Runtime Web on WebGPU.
+  M2 measures whether the separator and both candidate aligners run fast enough there.
 - The models for vocal roles and for the leftover check are chosen when M8 is
   broken down. So is the lead and backing separator for
   [D23](../decisions.md#d23-backing-vocals-as-their-own-track--proposed).

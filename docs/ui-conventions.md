@@ -116,7 +116,10 @@ M4.
 
 ## Making a song
 
-The main page has a Make a song section *(planned for M2)*. It runs a
+The main page of the web client has a Make a song section *(planned for
+M2)*. The Android app has none
+([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed)).
+It runs a
 [task](domain/concepts.md#processing) from a source and its lyrics to a song
 file. The stage names and messages below are examples. The issues that build
 the section may refine them, and update this section when they do.
@@ -153,10 +156,13 @@ the section may refine them, and update this section when they do.
   bar. It shows a time left only once the stage has run 1 s and reported some
   progress. The stages are those in
   [knowledge](domain/knowledge.md#processing).
-- The page says which backend runs the models. When there is no GPU and the
-  models would run on WebAssembly, it says before starting that making a song
-  will be slow on this device
-  ([D3](decisions.md#d3-processing-runs-on-the-device-that-asks-for-it--agreed)).
+- Before starting, the page checks the requirements of
+  [D25](decisions.md#d25-requirements-for-making-songs--proposed). Below
+  them, it says "This device cannot make songs." with the requirement it
+  does not meet, such as no WebGPU or too little memory, and **Make the
+  song** does not start. A task never runs its models on WebAssembly
+  ([D3](decisions.md#d3-processing-runs-on-the-device-that-asks-for-it--agreed),
+  D27).
 - A **Cancel** button ends the worker at once and removes the task's working
   area. No song is left behind. Closing or reloading the page also ends the
   task, and the next start removes its area.

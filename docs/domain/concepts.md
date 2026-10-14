@@ -27,10 +27,10 @@ See [the life of a milestone](../delivery.md#the-life-of-a-milestone).
 
 | Concept | Meaning | From |
 | --- | --- | --- |
-| **Model** | A machine-learning model Lyre runs on the device, for example to separate vocals or to time lyrics. Pinned by version and SHA-256 hash, downloaded on first use. | M2 |
+| **Model** | A machine-learning model Lyre runs on the device in the web client (D27), for example to separate vocals or to time lyrics. Pinned by version and SHA-256 hash, downloaded on first use. | M2 |
 | **Separation** | Splitting the source's audio into vocals and the karaoke track. | M2 |
 | **Alignment** | Timing the supplied syllables against the vocals. It never recognises words (D5). | M2 |
-| **Task** | One run of processing for one song, with progress and the stage it is in. It can be cancelled, and leaves nothing behind when it fails. | M2 |
+| **Task** | One run of processing for one song in the web client (D27), with progress and the stage it is in. It can be cancelled, and leaves nothing behind when it fails. | M2 |
 
 ## Playing
 
@@ -51,6 +51,6 @@ See [the life of a milestone](../delivery.md#the-life-of-a-milestone).
 | **Fingerprint** | A short code derived from a device code, read aloud or compared by eye to make sure a device code was not swapped on the way. | M3 |
 | **Content key** | The random key that encrypts one song file. | M3 |
 | **Access file** | A small file that holds a song's content key wrapped for one device. Without one for the device, the song does not open there. | M3 |
-| **Owner** | The person who made a song. Their devices can share it. | M3 |
+| **Owner** | The person who made a song. Their web client can share it (D27). | M3 |
 | **Recipient** | A person whose device was given an access file for a song. | M3 |
 | **Recovery key** | The owner's offline key. Every song the owner makes is also wrapped for it, so a new device can be given access to all of them (D7). | M3 |

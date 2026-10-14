@@ -222,8 +222,8 @@ text, for recording in these docs.
 
 ### Time
 
-For each model file and each backend, WebGPU and the one-thread WebAssembly
-fallback, the page reports:
+For each model file and each backend, WebGPU and one-thread WebAssembly, the
+page reports:
 
 - the time of each stage: extract audio, separate, align;
 - the model's load time, apart from the stages;
@@ -253,7 +253,7 @@ system's figure by hand when it is needed.
 The page checks the separator target of
 [D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed)
 and the listening split of [D22](../decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)
-on each [target device](../decisions.md#d25-target-devices-for-making-songs--proposed), with a song of about 4 minutes:
+on each [target device](../decisions.md#d25-requirements-for-making-songs--proposed), with a song of about 4 minutes:
 
 - **Time:** the separate stage on WebGPU takes no longer than the song lasts.
   The download and the load time do not count.
@@ -279,7 +279,7 @@ on each [target device](../decisions.md#d25-target-devices-for-making-songs--pro
   measured song there on WebGPU, without an error and without running out of
   memory.
 - **The rule:** among the candidates that run on every
-  [target device](../decisions.md#d25-target-devices-for-making-songs--proposed), the owner
+  [target device](../decisions.md#d25-requirements-for-making-songs--proposed), the owner
   chooses the one whose timing looks better in the Player, which plays each
   result through **Play with this timing** on the model check page
   ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).

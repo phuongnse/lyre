@@ -5,9 +5,10 @@ and plays it. It separates the vocals from the music, times every syllable
 against the singing and highlights the lyrics as they are sung, with a switch
 between the karaoke track and the original.
 
-Everything runs on the user's own device: in the browser, or in the native
-Android app. Each song is one encrypted `.lyre` file that opens only on the
-devices its owner shared it with.
+Everything runs on the user's own device. Songs are made in the browser, on
+a desktop or a phone, and play there or in the native Android app. Each song
+is one encrypted `.lyre` file that opens only on the devices its owner shared
+it with.
 
 ## Status
 
@@ -43,7 +44,7 @@ See [D10](docs/decisions.md#d10-technology-stack--agreed) and
 - Shared core: Rust, compiled to WebAssembly and to a native Android library.
 - Web: TypeScript, Angular, Angular Material, ONNX Runtime Web on WebGPU,
   and Mediabunny to read and decode sources.
-- Android: Kotlin, Jetpack Compose, Media3, ONNX Runtime for Android.
+- Android: Kotlin, Jetpack Compose, Media3.
 
 ## Licence
 
