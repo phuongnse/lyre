@@ -23,6 +23,8 @@
 use std::f64::consts::PI;
 use std::fmt;
 
+use crate::fft::Fft;
+
 /// The samples per channel in one segment.
 pub const SEGMENT_SAMPLES: usize = 343_980;
 /// The channels of a segment: stereo.
@@ -522,7 +524,7 @@ fn denormalised(value: f32, norm: &Normalisation) -> f32 {
 /// The spectrogram of a segment, not normalised: (4, `BINS`, `FRAMES`).
 pub fn spectrogram(segment: &[f32]) -> Result<Vec<f32>, SeparationError> {
     check_length("segment", XT_LEN, segment.len())?;
-    let fft = Fft::new();
+    let fft = Fft::new(N_FFT);
     let window = hann();
     let mut out = vec![0.0f32; X_LEN];
     let mut re = vec![0.0f64; N_FFT];
@@ -554,7 +556,7 @@ pub fn spectrogram(segment: &[f32]) -> Result<Vec<f32>, SeparationError> {
 /// them.
 pub fn waveform(spec: &[f32]) -> Result<Vec<f32>, SeparationError> {
     check_length("spectrogram", X_LEN, spec.len())?;
-    let fft = Fft::new();
+    let fft = Fft::new(N_FFT);
     let window = hann();
     let length = (STFT_FRAMES - 1) * HOP + N_FFT;
     // The window's squares, summed over all frames, including the zero ones.
@@ -621,66 +623,6 @@ fn reflect_pad(signal: &[f64], left: usize, right: usize) -> Vec<f64> {
     out.extend_from_slice(signal);
     out.extend((0..right).map(|i| signal[len - 2 - i]));
     out
-}
-
-/// An iterative radix-2 complex FFT of length `N_FFT`.
-struct Fft {
-    cos: Vec<f64>,
-    sin: Vec<f64>,
-    reversed: Vec<usize>,
-}
-
-impl Fft {
-    fn new() -> Fft {
-        let bits = N_FFT.trailing_zeros();
-        Fft {
-            cos: (0..N_FFT / 2)
-                .map(|k| (2.0 * PI * k as f64 / N_FFT as f64).cos())
-                .collect(),
-            sin: (0..N_FFT / 2)
-                .map(|k| (2.0 * PI * k as f64 / N_FFT as f64).sin())
-                .collect(),
-            reversed: (0..N_FFT)
-                .map(|i| i.reverse_bits() >> (usize::BITS - bits))
-                .collect(),
-        }
-    }
-
-    /// Transforms `re` and `im` in place. The inverse conjugates the
-    /// twiddles and scales by `1 / N_FFT`, as `torch.fft.irfft` does.
-    fn transform(&self, re: &mut [f64], im: &mut [f64], inverse: bool) {
-        for i in 0..N_FFT {
-            let j = self.reversed[i];
-            if i < j {
-                re.swap(i, j);
-                im.swap(i, j);
-            }
-        }
-        let sign = if inverse { 1.0 } else { -1.0 };
-        let mut half = 1;
-        while half < N_FFT {
-            let step = N_FFT / (2 * half);
-            for start in (0..N_FFT).step_by(2 * half) {
-                for k in 0..half {
-                    let wr = self.cos[k * step];
-                    let wi = sign * self.sin[k * step];
-                    let (a, b) = (start + k, start + k + half);
-                    let tr = re[b] * wr - im[b] * wi;
-                    let ti = re[b] * wi + im[b] * wr;
-                    re[b] = re[a] - tr;
-                    im[b] = im[a] - ti;
-                    re[a] += tr;
-                    im[a] += ti;
-                }
-            }
-            half *= 2;
-        }
-        if inverse {
-            let scale = 1.0 / N_FFT as f64;
-            re.iter_mut().for_each(|v| *v *= scale);
-            im.iter_mut().for_each(|v| *v *= scale);
-        }
-    }
 }
 
 #[cfg(test)]
