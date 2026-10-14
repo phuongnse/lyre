@@ -1,5 +1,6 @@
 import { env, InferenceSession } from 'onnxruntime-web/webgpu'
 import { Backend, chooseBackend } from './separation/backend'
+import { openOnBackend } from './session-backend'
 
 // The WebAssembly file the WebGPU build of ONNX Runtime Web loads. The build
 // copies it to ort/, so it comes from the site's own origin.
@@ -30,22 +31,20 @@ function open(graph: Uint8Array, backend: Backend, externalData?: ExternalData):
 // checked bytes of any files the graph names as its external data. It opens
 // on WebGPU when the browser gives a GPU adapter and otherwise on WebAssembly
 // with one thread. A session that fails to open on WebGPU is opened on
-// WebAssembly instead. `backend` is always the one the session runs on.
+// WebAssembly instead. `backend` is always the one the session runs on. In
+// measurement mode, `forced` is required and the session opens on it or not
+// at all: a session that cannot open throws a SessionFault naming why.
 export async function openSession(
   graph: Uint8Array,
-  options: { baseUri: string; forced?: Backend; externalData?: ExternalData },
+  options: { baseUri: string; forced?: Backend; measuring?: boolean; externalData?: ExternalData },
 ): Promise<{ backend: Backend; session: InferenceSession }> {
   env.wasm.numThreads = 1
   env.wasm.proxy = false
   // Only the .wasm file is fetched. Its loader is part of this bundle.
   env.wasm.wasmPaths = { wasm: new URL(ORT_WASM, options.baseUri).href }
-  const backend = chooseBackend(options.forced, options.forced === undefined && (await adapterFound()))
-  if (backend === 'webgpu') {
-    try {
-      return { backend, session: await open(graph, backend, options.externalData) }
-    } catch {
-      // The GPU cannot run this model, so the slower CPU runs it.
-    }
-  }
-  return { backend: 'wasm', session: await open(graph, 'wasm', options.externalData) }
+  const { forced, measuring = false } = options
+  if (measuring && forced === undefined) throw new Error('A measurement names its backend.')
+  // A measurement has its backend forced, so it never looks for an adapter here.
+  const backend = forced ?? chooseBackend(undefined, await adapterFound())
+  return openOnBackend(backend, measuring, adapterFound, (on) => open(graph, on, options.externalData))
 }

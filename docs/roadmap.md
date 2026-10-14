@@ -120,8 +120,8 @@ Done when all ten were merged and the owner accepted the Player.
   against a few hand-timed Vietnamese songs. The
   [models reference](reference/models.md#measurement-method) sets the method.
   Its first part is the measurement section of the model check page, at
-  `#/model-check`. It measures one backend per run, without memory or the
-  download time yet.
+  `#/model-check`. Each run measures WebGPU, then one-thread WebAssembly,
+  without memory or the download time yet.
 - The core computes the [onset error](domain/concepts.md#processing) of each
   syllable against a timing file written by hand. It also gives the median,
   the 90th percentile and the share of syllables within 100 ms, 100 ms

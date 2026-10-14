@@ -1,5 +1,6 @@
 import type { MediaCodec } from 'mediabunny'
 import type { TimingFileErrorKind } from '../lyre-wasm/lyre_wasm.js'
+import type { RunProblem } from '../measurement/measurement-messages'
 
 // Every user-visible string lives here (docs/ui-conventions.md#strings).
 // The text is still English. The Vietnamese text comes in a later issue.
@@ -208,14 +209,14 @@ export const messages = {
   timingRefused: 'The song file timing check refused the timing.',
   alignerFailed: 'The test aligner could not run.',
   measurementAbout:
-    "Measures each candidate aligner against a hand-written timing. It separates a source's audio once, then times the lyrics on the vocals with each aligner, in a Web Worker. The source, the lyrics and the timing file are not sent anywhere.",
+    "Measures each candidate aligner against a hand-written timing, on WebGPU and then on WebAssembly. On each backend it separates a source's audio once, then times the lyrics on the vocals with each aligner, in a Web Worker. The source, the lyrics and the timing file are not sent anywhere.",
   measureAligners: 'Measure the aligners',
   measurementReading: 'Reading the timing file…',
   measurementFilesUnreadable: 'The lyrics file or the timing file could not be read.',
   measurementDownloading: 'Downloading the models…',
   measurementExtracting: 'Extracting the audio…',
-  measurementSeparating: 'Separating the vocals…',
-  measurementAligning: (candidate: string) => `Aligning with ${candidate}…`,
+  measurementSeparating: (backend: string) => `Separating the vocals on ${backend}…`,
+  measurementAligning: (candidate: string, backend: string) => `Aligning with ${candidate} on ${backend}…`,
   measurementDone: 'The measurement is done.',
   // Keyed by Candidate.
   candidateNames: {
@@ -225,6 +226,8 @@ export const messages = {
     'test-omnilingual': 'Test Omnilingual',
     'test-lyric-alignment': 'Test lyric-alignment',
   },
+  // The name of one result: a candidate on one backend.
+  candidateOnBackend: (candidate: string, backend: string) => `${candidate} on ${backend}`,
   measurementBackend: 'Backend',
   measurementExtract: 'Extract audio',
   measurementSeparate: 'Separate',
@@ -248,11 +251,17 @@ export const messages = {
       `Line ${line} of the timing file ends before it starts, or starts before the line before it.`,
     Overlap: (line: number) => `Line ${line} of the timing file overlaps the line before it.`,
   } satisfies Record<Exclude<keyof typeof TimingFileErrorKind, 'Lyrics'>, (line: number) => string>,
-  // Keyed by the candidate's failure.
-  candidateFailed: {
+  // A candidate that did not run, because the separation on its backend failed.
+  notRun: 'Not run.',
+  // Keyed by RunProblem's kind. A failed sum check gets sumCheckFailed.
+  runProblems: {
+    'webgpu-unavailable': 'WebGPU is not available.',
+    model: 'The model could not be loaded on this backend.',
+    'out-of-memory': 'The run ran out of memory.',
+    'alignment-refused': 'The alignment was refused.',
     timing: "The song file timing check refused this aligner's timing.",
-    other: 'This aligner could not run.',
-  },
+    other: 'The run could not finish.',
+  } satisfies Record<Exclude<RunProblem['kind'], 'sum-check'>, string>,
   separationCheckTitle: 'Separation check',
   separationCheckAbout:
     "Separates a source's audio into vocals and a karaoke track in a Web Worker. The source is not changed or sent anywhere.",

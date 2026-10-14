@@ -10,11 +10,11 @@ export const X_SHAPE = [1, 4, 2048, 336]
 export const XT_SHAPE = [1, 2, 343_980]
 
 // Opens a separator session from its checked graph and weights bytes, as
-// openSession does.
+// openSession does, in measurement mode too.
 export function openSeparator(
   graph: Uint8Array,
   weights: Uint8Array,
-  options: { baseUri: string; forced?: Backend },
+  options: { baseUri: string; forced?: Backend; measuring?: boolean },
 ): Promise<{ backend: Backend; session: InferenceSession }> {
   return openSession(graph, { ...options, externalData: [{ path: WEIGHTS_NAME, data: weights }] })
 }

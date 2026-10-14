@@ -207,8 +207,9 @@ owner's devices. This section says what it measures and how the results
 choose the aligner. The results name the devices they were taken on.
 
 For now, the measurement section of the
-[model check page](../ui-conventions.md#check-pages) runs it. It measures one
-backend per run, and does not yet report memory or the download time.
+[model check page](../ui-conventions.md#check-pages) runs it. Each run
+measures WebGPU, then one-thread WebAssembly, and does not yet report memory
+or the download time.
 
 ### Inputs
 
