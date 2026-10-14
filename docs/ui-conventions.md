@@ -280,9 +280,26 @@ Compose uses the same three values *(planned for M4)*.
   from it." A source with one group of video frames over 64 MiB shows "This
   source has a group of video frames over 64 MiB, so a song cannot be made
   from it." Any other failure, such as an unreadable karaoke file, shows one
-  message: "The tracks could not be made for a song." The Playwright
-  journeys use it to check reading a source, decoding its audio, packaging
-  it and making the tracks.
+  message: "The tracks could not be made for a song." **Choose the lyrics**
+  and **Choose a timing file** buttons pick a lyrics file and a hand-written
+  [timing file](reference/lyre-cli.md#timing-file). A **Vocal role** choice
+  of Female or Male has no default. Once the karaoke track, the lyrics, the
+  timing file and the role are all picked, a **Make the song file** button
+  reads the timing file against the lyrics, makes every track and the
+  thumbnail, and writes a version-0 song file through the core, in a Web
+  Worker. The song's title, artist and composer are the source's tags,
+  exactly as stored. Without a title tag, the title is the source's file name
+  without its extension. The lyrics are stored exactly as supplied (D5). The
+  page then shows a **Download the song file** link, named after the source
+  file with `.lyre` in place of its extension, which the Player opens. Each
+  refusal a user can fix has its own message, and none offers a download:
+  "The lyrics file is not valid lyrics.", "The timing file does not match the
+  lyrics." and "The timing ends after the song, so the song file was not
+  made." The video refusals and the cannot-encode message are the same as for
+  making the tracks. Any other failure shows "The song file could not be
+  made." The page never shows the core's own text. The Playwright journeys
+  use it to check reading a source, decoding its audio, packaging it, making
+  the tracks and making a song file that the Player plays.
 - The model check page downloads, checks and keeps the 56-byte test model
   file `test-two-block`. A progress bar and a line below it show the bytes
   downloaded, and the line stays after the download ends. The status line

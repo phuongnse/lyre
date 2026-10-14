@@ -57,3 +57,9 @@ export function makeAudioInWorker(file: File, karaokeFile: File, storedType: str
     ...(videoType === undefined ? {} : { videoType }),
   })
 }
+
+// Makes every track and the thumbnail from `file`, then writes them with the
+// lyrics and the timing into a song file through the core, in a Web Worker.
+export function makeSongInWorker(request: Omit<Extract<PackageRequest, { type: 'make-song' }>, 'type'>): Packaging {
+  return runInWorker({ type: 'make-song', ...request })
+}

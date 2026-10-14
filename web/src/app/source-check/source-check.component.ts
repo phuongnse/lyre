@@ -1,12 +1,19 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { MatButton } from '@angular/material/button'
+import { MatButtonToggle, MatButtonToggleGroup } from '@angular/material/button-toggle'
 import { loadCore } from '../../core'
 import { canEncodeKaraoke } from '../../karaoke-track'
-import { SegmentTimes, VideoRefusal } from '../../original-track-messages'
+import { SegmentTimes, SongDetailsInput, SongRefusal, VideoRefusal, VocalRole } from '../../original-track-messages'
 import { CannotPlay, SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
 import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
 import { messages } from '../messages'
-import { Packaging, makeAudioInWorker, packageInWorker, thumbnailInWorker } from './original-track-worker'
+import {
+  Packaging,
+  makeAudioInWorker,
+  makeSongInWorker,
+  packageInWorker,
+  thumbnailInWorker,
+} from './original-track-worker'
 
 // What came out of decoding, measured without keeping the samples. The tone
 // and the first sound are absent when the audio is silent.
@@ -42,6 +49,12 @@ interface AudioTracks {
   songDurationMs: number
 }
 
+// The song file made: its blob: URL and the name it downloads as.
+interface SongDownload {
+  url: string
+  name: string
+}
+
 type State =
   | { status: 'empty' }
   | { status: 'reading' }
@@ -53,6 +66,7 @@ type State =
       packaged?: PackagedSummary
       tracks?: AudioTracks
       thumbnail?: ThumbnailImage | 'none'
+      song?: SongDownload
     }
   | { status: 'decoding'; file: File; details: SourceDetails }
   | { status: 'packaging'; file: File; details: SourceDetails }
@@ -62,6 +76,8 @@ type State =
   | { status: 'making'; file: File; details: SourceDetails }
   | { status: 'make-failed'; file: File; details: SourceDetails; reason?: VideoRefusal }
   | { status: 'cannot-encode'; file: File; details: SourceDetails }
+  | { status: 'making-song'; file: File; details: SourceDetails }
+  | { status: 'song-failed'; file: File; details: SourceDetails; reason?: VideoRefusal | SongRefusal }
   | { status: 'failed'; problem: SourceProblem }
 
 // A sample louder than this counts as sound.
@@ -75,20 +91,58 @@ export function makeFailedMessage(reason?: VideoRefusal): string {
   return messages.audioTracksFailed
 }
 
+// The message for a failure to make the song file: its own for each refusal
+// a user can fix, the video refusals' messages, and one plain message for
+// anything else. The core's own text is never shown.
+export function makeSongFailedMessage(reason?: VideoRefusal | SongRefusal): string {
+  if (reason === 'lyrics') return messages.songLyricsInvalid
+  if (reason === 'timing-file') return messages.songTimingFileRefused
+  if (reason === 'past-end') return messages.songTimingPastEnd
+  if (reason === 'keyframe gap') return messages.videoKeyframeGap
+  if (reason === 'group too large') return messages.videoGroupTooLarge
+  return messages.songFileFailed
+}
+
+function isVideoRefusal(reason: VideoRefusal | SongRefusal | undefined): reason is VideoRefusal {
+  return reason === 'keyframe gap' || reason === 'group too large'
+}
+
+// The last extension of a file name, such as ".webm".
+const EXTENSION = /\.[^.]*$/
+
+// The song's details from the source's tags, exactly as stored. Without a
+// title tag, the title is the source's file name without its extension. A
+// missing artist or composer is empty, which means not known.
+export function songDetailsFor(details: SourceDetails, fileName: string, vocalRole: VocalRole): SongDetailsInput {
+  return {
+    title: details.title ?? fileName.replace(EXTENSION, ''),
+    artist: details.artist ?? '',
+    composer: details.composer ?? '',
+    vocalRole,
+  }
+}
+
+// The name a song file made from the source `fileName` downloads as.
+export function songFileName(fileName: string): string {
+  return `${fileName.replace(EXTENSION, '')}.lyre`
+}
+
 // The source check page (docs/ui-conventions.md#check-pages). It reads a
 // picked source's details, stage 1 of processing, and can decode its audio at
 // a stage's rate, stage 2, or package it into the original track in a Web
 // Worker, stage 8, until the real song-making page exists. With a second
 // picked file standing in for the karaoke track, it can also make both audio
 // tracks, cut at the same times, and the video track, in the worker, or make
-// its thumbnail, also in the worker. A source this
+// its thumbnail, also in the worker. With picked lyrics and timing files and
+// a vocal role, it can then write all of these into a song file through the
+// core, in the worker, stage 9, and offer it as a download. A source this
 // browser cannot play shows the reason next to its details, and can still be
 // decoded and packaged, because this is a test page. Opened by its URL,
 // #/source-check.
 // The route is lazy, so Mediabunny stays out of the main app's initial load.
 @Component({
   selector: 'lyre-source-check',
-  imports: [MatButton],
+  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
@@ -123,14 +177,17 @@ export function makeFailedMessage(reason?: VideoRefusal): string {
       current.status === 'thumbnail-failed' ||
       current.status === 'making' ||
       current.status === 'make-failed' ||
-      current.status === 'cannot-encode'
+      current.status === 'cannot-encode' ||
+      current.status === 'making-song' ||
+      current.status === 'song-failed'
     ) {
       @let details = current.details;
       @let busy =
         current.status === 'decoding' ||
         current.status === 'packaging' ||
         current.status === 'thumbnailing' ||
-        current.status === 'making';
+        current.status === 'making' ||
+        current.status === 'making-song';
       @if (details.cannotPlay !== undefined) {
         <p role="alert">{{ cannotPlayReason(details.cannotPlay) }}</p>
       }
@@ -188,6 +245,37 @@ export function makeFailedMessage(reason?: VideoRefusal): string {
         >
           {{ messages.makeAudioTracks }}
         </button>
+        <button matButton="outlined" type="button" [disabled]="busy" (click)="lyricsInput.click()">
+          {{ messages.chooseLyrics }}
+        </button>
+        <input #lyricsInput type="file" accept=".txt,text/plain" hidden (change)="chooseLyrics(lyricsInput)" />
+        <button matButton="outlined" type="button" [disabled]="busy" (click)="timingInput.click()">
+          {{ messages.chooseTiming }}
+        </button>
+        <input #timingInput type="file" accept=".txt,text/plain" hidden (change)="chooseTiming(timingInput)" />
+        <mat-button-toggle-group
+          [attr.aria-label]="messages.vocalRole"
+          [value]="vocalRole()"
+          [disabled]="busy"
+          (change)="chooseVocalRole($event.value)"
+        >
+          <mat-button-toggle value="female">{{ messages.female }}</mat-button-toggle>
+          <mat-button-toggle value="male">{{ messages.male }}</mat-button-toggle>
+        </mat-button-toggle-group>
+        <button
+          matButton="outlined"
+          type="button"
+          [disabled]="
+            busy ||
+            karaokeFile() === undefined ||
+            lyricsFile() === undefined ||
+            timingFile() === undefined ||
+            vocalRole() === undefined
+          "
+          (click)="makeSong(current.file, details)"
+        >
+          {{ messages.makeSongFile }}
+        </button>
       }
       @if (current.status === 'decoding') {
         <p role="status">{{ messages.sourceDecoding }}</p>
@@ -205,6 +293,13 @@ export function makeFailedMessage(reason?: VideoRefusal): string {
         <p role="alert">{{ makeFailedMessage(current.reason) }}</p>
       } @else if (current.status === 'cannot-encode') {
         <p role="alert">{{ messages.cannotEncodeAudio }}</p>
+      } @else if (current.status === 'making-song') {
+        <p role="status">{{ messages.makingSongFile }}</p>
+      } @else if (current.status === 'song-failed') {
+        <p role="alert">{{ makeSongFailedMessage(current.reason) }}</p>
+      } @else if (current.song !== undefined) {
+        @let song = current.song;
+        <a matButton="filled" [href]="song.url" [download]="song.name">{{ messages.downloadSongFile }}</a>
       } @else if (current.thumbnail === 'none') {
         <p role="status">{{ messages.noThumbnail }}</p>
       } @else if (current.thumbnail !== undefined) {
@@ -272,15 +367,27 @@ export function makeFailedMessage(reason?: VideoRefusal): string {
 export class SourceCheck {
   protected readonly messages = messages
   protected readonly makeFailedMessage = makeFailedMessage
+  protected readonly makeSongFailedMessage = makeSongFailedMessage
   protected readonly state = signal<State>({ status: 'empty' })
   // The file that stands in for the karaoke track until separation exists.
   protected readonly karaokeFile = signal<File | undefined>(undefined)
+  // The lyrics, the hand-written timing and the vocal role of the song file.
+  // The role has no default, so a song is never made with a role nobody chose.
+  protected readonly lyricsFile = signal<File | undefined>(undefined)
+  protected readonly timingFile = signal<File | undefined>(undefined)
+  protected readonly vocalRole = signal<VocalRole | undefined>(undefined)
   protected readonly separation = SEPARATION_FORMAT
   protected readonly alignment = ALIGNMENT_FORMAT
   // Counts the sources picked, and the decodes and packagings started, so only the latest one shows.
   private attempts = 0
   // The packaging worker running, if any.
   private packaging: Packaging | undefined
+  // The blob: URL of the last song file made, if any.
+  private songUrl: string | undefined
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.revokeSongUrl())
+  }
 
   protected async read(input: HTMLInputElement): Promise<void> {
     const file = input.files?.[0]
@@ -415,13 +522,98 @@ export class SourceCheck {
       if (video !== undefined) tracks.video = video
       this.state.set({ status: 'ready', file, details, tracks })
     } else {
-      const reason = reply.type === 'failed' ? reply.reason : undefined
+      // Making the tracks gives only video refusals.
+      const reason = reply.type === 'failed' && isVideoRefusal(reply.reason) ? reply.reason : undefined
       this.state.set(
         reason === undefined
           ? { status: 'make-failed', file, details }
           : { status: 'make-failed', file, details, reason },
       )
     }
+  }
+
+  protected chooseLyrics(input: HTMLInputElement): void {
+    const file = input.files?.[0]
+    // Clears the choice, so the same file can be picked again.
+    input.value = ''
+    if (file) this.lyricsFile.set(file)
+  }
+
+  protected chooseTiming(input: HTMLInputElement): void {
+    const file = input.files?.[0]
+    // Clears the choice, so the same file can be picked again.
+    input.value = ''
+    if (file) this.timingFile.set(file)
+  }
+
+  protected chooseVocalRole(role: VocalRole): void {
+    this.vocalRole.set(role)
+  }
+
+  // Makes every track and the thumbnail, then writes them with the lyrics and
+  // the timing into a song file through the core, in a Web Worker, and offers
+  // it as a download. The details come from the source's tags. A browser that
+  // cannot encode Opus is told so before any work starts. Each refusal a user
+  // can fix gets its own message, and any other failure one plain message.
+  protected async makeSong(file: File, details: SourceDetails): Promise<void> {
+    const karaokeFile = this.karaokeFile()
+    const lyrics = this.lyricsFile()
+    const timing = this.timingFile()
+    const vocalRole = this.vocalRole()
+    if (
+      details.audioType === undefined ||
+      karaokeFile === undefined ||
+      lyrics === undefined ||
+      timing === undefined ||
+      vocalRole === undefined
+    ) {
+      return
+    }
+    this.stopPackaging()
+    this.revokeSongUrl()
+    const attempt = ++this.attempts
+    this.state.set({ status: 'making-song', file, details })
+    // Checked before the worker starts, so nothing is made in a browser that cannot encode.
+    const canEncode = await canEncodeKaraoke()
+    if (attempt !== this.attempts) return
+    if (!canEncode) {
+      this.state.set({ status: 'cannot-encode', file, details })
+      return
+    }
+    const packaging = makeSongInWorker({
+      baseUri: document.baseURI,
+      file,
+      karaokeFile,
+      lyrics,
+      timing,
+      storedType: details.audioType,
+      ...(details.videoType === undefined ? {} : { videoType: details.videoType }),
+      // The song ID is random, chosen when the song is made.
+      songId: crypto.getRandomValues(new Uint8Array(16)),
+      details: songDetailsFor(details, file.name, vocalRole),
+    })
+    this.packaging = packaging
+    const reply = await packaging.reply
+    if (attempt !== this.attempts) return
+    this.packaging = undefined
+    if (reply.type === 'song-done') {
+      const blob = new Blob([reply.bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      this.songUrl = url
+      this.state.set({ status: 'ready', file, details, song: { url, name: songFileName(file.name) } })
+    } else {
+      const reason = reply.type === 'failed' ? reply.reason : undefined
+      this.state.set(
+        reason === undefined
+          ? { status: 'song-failed', file, details }
+          : { status: 'song-failed', file, details, reason },
+      )
+    }
+  }
+
+  private revokeSongUrl(): void {
+    if (this.songUrl !== undefined) URL.revokeObjectURL(this.songUrl)
+    this.songUrl = undefined
   }
 
   private stopPackaging(): void {

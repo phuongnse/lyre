@@ -217,6 +217,18 @@ reference doc and reviewed before M3 implements them.
   than 50 ms after the timeline's start is refused too. The video must end
   within 1,000 ms of the song's duration, which the core's writer checks
   again. An audio-only source gives no video.
+- On the web, stage 9 writes the song file in the same worker, for now from
+  the source check page, with a hand-written timing file in place of
+  alignment. The worker first reads the timing file against the lyrics
+  through the core, so a timing file that does not fit fails before any media
+  work. It then makes the tracks and the thumbnail, and passes them, the
+  lyrics' bytes unchanged, the timing, the song details and a random 16-byte
+  song ID to lyre-wasm's `SongWriter`. That calls the core's writer, which
+  runs every check the reader runs, so the web client never lays out song
+  file bytes itself. A refusal crosses to the page only as a fixed reason
+  code. The writer holds every track in WebAssembly memory, which is fine
+  for short songs. Writing a long video in pieces is left for the real
+  song-making page.
 - The web client runs a model with ONNX Runtime Web (MIT), at a pinned
   version, in a Web Worker. It uses WebGPU when the browser gives it a GPU
   adapter and the session opens on it, and otherwise WebAssembly on one

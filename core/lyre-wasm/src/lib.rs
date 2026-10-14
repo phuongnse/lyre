@@ -12,8 +12,8 @@ use lyre_core::model;
 use lyre_core::onset_error;
 use lyre_core::separation::{self, SeparationError, SumCheckFailure};
 use lyre_core::song_file::{
-    self, Chunk, ChunkType, Header, Index, IndexEntry, SongDetails, SongFileError, SyllableTime,
-    Timing,
+    self, Chunk, ChunkType, Header, Index, IndexEntry, Segment, Song, SongDetails, SongFileError,
+    SyllableTime, Timing, Track,
 };
 use lyre_core::timing_file::{self, TimingErrorKind, TimingFileError};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -641,6 +641,204 @@ pub fn check_timing(times_ms: &[u32], lyrics: &[u8], song_ms: u32) -> Result<(),
         .collect();
     let timing = Timing::new(syllables)?;
     Ok(song_file::check_timing(&timing, &lyrics, song_ms)?)
+}
+
+/// One of a song's media tracks.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackKind {
+    Video = 0,
+    Karaoke = 1,
+    Original = 2,
+}
+
+/// The part of a song that the song file writer refused.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SongWriteErrorKind {
+    /// The title, artist or composer: a title that is empty, a field over
+    /// 1,024 bytes, or one that holds a NUL character.
+    Details,
+    /// The lyrics are not valid lyrics.
+    Lyrics,
+    /// The times are not a valid timing: not start and end pairs, none at
+    /// all, a syllable that does not start before it ends, or an overlap.
+    Times,
+    SyllableCount,
+    /// The last syllable ends after the song.
+    PastEnd,
+    /// The song ID, a track or the thumbnail breaks a rule of the format.
+    Media,
+}
+
+/// Why the song file writer refused a song. It holds no core message and
+/// never the lyric text.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SongWriteFault {
+    kind: SongWriteErrorKind,
+}
+
+#[wasm_bindgen]
+impl SongWriteFault {
+    #[wasm_bindgen(getter)]
+    pub fn kind(&self) -> SongWriteErrorKind {
+        self.kind
+    }
+}
+
+impl From<SongWriteErrorKind> for SongWriteFault {
+    fn from(kind: SongWriteErrorKind) -> SongWriteFault {
+        SongWriteFault { kind }
+    }
+}
+
+impl From<SongFileError> for SongWriteFault {
+    fn from(error: SongFileError) -> SongWriteFault {
+        let kind = match error {
+            SongFileError::SyllableMismatch { .. } => SongWriteErrorKind::SyllableCount,
+            SongFileError::TimingPastEnd { .. } => SongWriteErrorKind::PastEnd,
+            SongFileError::FieldLength { .. } | SongFileError::FieldNul { .. } => {
+                SongWriteErrorKind::Details
+            }
+            _ => SongWriteErrorKind::Media,
+        };
+        SongWriteFault { kind }
+    }
+}
+
+impl From<Role> for song_file::VocalRole {
+    fn from(role: Role) -> song_file::VocalRole {
+        match role {
+            Role::Male => song_file::VocalRole::Male,
+            Role::Female => song_file::VocalRole::Female,
+        }
+    }
+}
+
+/// Collects the parts of one song, then writes them as a song file through
+/// the core's writer, so the client never lays out song file bytes. Every
+/// check happens in [`SongWriter::write`]. The lyrics are kept exactly as
+/// supplied (D5).
+#[wasm_bindgen]
+pub struct SongWriter {
+    song_id: Vec<u8>,
+    title: String,
+    artist: String,
+    composer: String,
+    vocal_role: Role,
+    lyrics: Vec<u8>,
+    times_ms: Vec<u32>,
+    thumbnail: Option<Vec<u8>>,
+    video: Option<Track>,
+    karaoke: Track,
+    original: Track,
+}
+
+#[wasm_bindgen]
+impl SongWriter {
+    /// Starts a song from its 16-byte `song_id`, its details, its `lyrics`
+    /// as bytes, and `times_ms`, each syllable's start and end in lyric
+    /// order. An empty artist or composer means not known.
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        song_id: &[u8],
+        title: String,
+        artist: String,
+        composer: String,
+        vocal_role: Role,
+        lyrics: &[u8],
+        times_ms: &[u32],
+    ) -> SongWriter {
+        SongWriter {
+            song_id: song_id.to_vec(),
+            title,
+            artist,
+            composer,
+            vocal_role,
+            lyrics: lyrics.to_vec(),
+            times_ms: times_ms.to_vec(),
+            thumbnail: None,
+            video: None,
+            karaoke: Track::default(),
+            original: Track::default(),
+        }
+    }
+
+    /// Sets the thumbnail's JPEG bytes.
+    #[wasm_bindgen(js_name = setThumbnail)]
+    pub fn set_thumbnail(&mut self, bytes: &[u8]) {
+        self.thumbnail = Some(bytes.to_vec());
+    }
+
+    /// Sets a track's first segment start, its stored type and its container
+    /// init bytes, and clears its segments. Setting the video track gives the
+    /// song a video.
+    #[wasm_bindgen(js_name = setTrack)]
+    pub fn set_track(&mut self, kind: TrackKind, start_ms: u32, stored_type: String, init: &[u8]) {
+        *self.track(kind) = Track {
+            start_ms,
+            stored_type,
+            init: init.to_vec(),
+            segments: Vec::new(),
+        };
+    }
+
+    /// Adds a media segment to the end of a track.
+    #[wasm_bindgen(js_name = addSegment)]
+    pub fn add_segment(&mut self, kind: TrackKind, duration_ms: u32, bytes: &[u8]) {
+        self.track(kind).segments.push(Segment {
+            duration_ms,
+            bytes: bytes.to_vec(),
+        });
+    }
+
+    /// Writes the song file, or names the part the core refused.
+    pub fn write(&self) -> Result<Vec<u8>, SongWriteFault> {
+        let song_id: [u8; 16] = self
+            .song_id
+            .as_slice()
+            .try_into()
+            .map_err(|_| SongWriteErrorKind::Media)?;
+        let details = SongDetails::new(
+            self.title.clone(),
+            self.artist.clone(),
+            self.composer.clone(),
+            self.vocal_role.into(),
+        )
+        .map_err(|_| SongWriteErrorKind::Details)?;
+        let lyrics = Lyrics::parse(&self.lyrics).map_err(|_| SongWriteErrorKind::Lyrics)?;
+        let (pairs, rest) = self.times_ms.as_chunks::<2>();
+        if !rest.is_empty() {
+            return Err(SongWriteErrorKind::Times.into());
+        }
+        let syllables = pairs
+            .iter()
+            .map(|&[start_ms, end_ms]| SyllableTime { start_ms, end_ms })
+            .collect();
+        let timing = Timing::new(syllables).map_err(|_| SongWriteErrorKind::Times)?;
+        let song = Song {
+            song_id,
+            details,
+            thumbnail: self.thumbnail.clone(),
+            lyrics,
+            timing,
+            video: self.video.clone(),
+            karaoke: self.karaoke.clone(),
+            original: self.original.clone(),
+        };
+        Ok(song_file::write(&song)?)
+    }
+}
+
+impl SongWriter {
+    fn track(&mut self, kind: TrackKind) -> &mut Track {
+        match kind {
+            TrackKind::Video => self.video.get_or_insert_with(Track::default),
+            TrackKind::Karaoke => &mut self.karaoke,
+            TrackKind::Original => &mut self.original,
+        }
+    }
 }
 
 /// The onset error of every syllable, in lyric order, and its statistics.
@@ -1711,6 +1909,95 @@ mod tests {
             kind(&[0, 500, 500, 1000], b"a\xFF"),
             TimingCheckErrorKind::Lyrics
         );
+    }
+
+    /// A writer holding the known-answer example's parts, with `title`,
+    /// `lyrics` and `times_ms` in place of the example's.
+    fn example_writer(title: &str, lyrics: &[u8], times_ms: &[u32]) -> SongWriter {
+        let song_id: Vec<u8> = (0..16).collect();
+        let mut writer = SongWriter::new(
+            &song_id,
+            title.to_owned(),
+            String::new(),
+            String::new(),
+            Role::Female,
+            lyrics,
+            times_ms,
+        );
+        writer.set_track(
+            TrackKind::Karaoke,
+            0,
+            "audio/webm; codecs=\"opus\"".to_owned(),
+            b"ki",
+        );
+        writer.add_segment(TrackKind::Karaoke, 1000, b"ks");
+        writer.set_track(
+            TrackKind::Original,
+            0,
+            "audio/mp4; codecs=\"mp4a.40.2\"".to_owned(),
+            b"oi",
+        );
+        writer.add_segment(TrackKind::Original, 1000, b"os");
+        writer
+    }
+
+    #[test]
+    fn the_song_writer_gives_the_known_answer_example_from_its_parts() {
+        let writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        assert_eq!(writer.write(), Ok(example()));
+    }
+
+    #[test]
+    fn the_song_writer_refuses_a_timing_that_ends_after_the_song() {
+        let writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1500]);
+        assert_eq!(
+            writer.write().map_err(|fault| fault.kind()),
+            Err(SongWriteErrorKind::PastEnd)
+        );
+    }
+
+    #[test]
+    fn the_song_writer_names_the_part_it_refused() {
+        let kind = |title: &str, lyrics: &[u8], times: &[u32]| {
+            example_writer(title, lyrics, times)
+                .write()
+                .expect_err("refused")
+                .kind()
+        };
+        let lyrics = "Mưa rơi\n".as_bytes();
+        assert_eq!(
+            kind("", lyrics, &[0, 500, 500, 1000]),
+            SongWriteErrorKind::Details
+        );
+        assert_eq!(
+            kind("Mưa", b"a\xFF", &[0, 500, 500, 1000]),
+            SongWriteErrorKind::Lyrics
+        );
+        assert_eq!(
+            kind("Mưa", lyrics, &[0, 500, 500]),
+            SongWriteErrorKind::Times
+        );
+        assert_eq!(
+            kind("Mưa", lyrics, &[0, 500]),
+            SongWriteErrorKind::SyllableCount
+        );
+        let mut writer = example_writer("Mưa", lyrics, &[0, 500, 500, 1000]);
+        writer.set_track(TrackKind::Video, 0, "video/webm".to_owned(), b"vi");
+        assert_eq!(
+            writer.write().map_err(|fault| fault.kind()),
+            Err(SongWriteErrorKind::Media)
+        );
+    }
+
+    #[test]
+    fn the_song_writer_keeps_the_lyrics_byte_for_byte() {
+        // A decomposed "Hà" (NFD), two spaces, then a precomposed "Nội" (NFC).
+        let lyrics = "Ha\u{300}  Nội\n".as_bytes();
+        let file = example_writer("Mưa", lyrics, &[0, 500, 500, 1000])
+            .write()
+            .expect("a valid song");
+        let song = song_file::read(&file).expect("the song file reads back");
+        assert_eq!(song.lyrics.as_bytes(), lyrics);
     }
 
     #[test]

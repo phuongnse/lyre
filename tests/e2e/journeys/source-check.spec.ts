@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, Page, test } from '@playwright/test'
-import { Choice } from './song-file'
+import { Choice, openSongFile } from './song-file'
 
 // scripts/e2e.sh makes these with tests/fixtures/source/make.sh before the journeys run.
 const source = (name: string) => fileURLToPath(new URL(`../../../artifacts/e2e/sources/${name}`, import.meta.url))
@@ -392,5 +393,136 @@ test('song.mp3 has no cover art, so it gives no thumbnail', async ({ page }) => 
   const img = await makeThumbnail(page, 'song.mp3')
   await expect(page.getByRole('status')).toHaveText('This source gives no thumbnail.')
   await expect(img).toHaveCount(0)
+  expect(problems).toEqual([])
+})
+
+// Picks `file` with the button named `button`.
+async function pick(page: Page, button: string, file: Choice): Promise<void> {
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: button }).click()
+  await (await chooser).setFiles(file)
+}
+
+const text = (name: string, value: string): Choice => ({ name, mimeType: 'text/plain', buffer: Buffer.from(value) })
+
+// The lyrics of the song files the journeys make: one lyric line of two syllables.
+const songLyrics = 'Mưa rơi\n'
+// A timing that fits the 2 s sources, and one whose last syllable ends at 5 s.
+const goodTiming = '0 500 Mưa\n500 1000 rơi\n'
+const pastEndTiming = '0 500 Mưa\n500 5000 rơi\n'
+
+// Picks `file`, karaoke.webm, the lyrics, a timing file holding `timing` and
+// the Female vocal role, then makes the song file with the button.
+async function makeSong(page: Page, file: string, timing: string): Promise<void> {
+  await chooseSource(page, source(file))
+  await expect(labelled(page, 'Source details')).toBeVisible()
+  await pick(page, 'Choose a karaoke track', source('karaoke.webm'))
+  await pick(page, 'Choose the lyrics', text('lyrics.txt', songLyrics))
+  await pick(page, 'Choose a timing file', text('timing.txt', timing))
+  await page.getByRole('radio', { name: 'Female' }).click()
+  await page.getByRole('button', { name: 'Make the song file' }).click()
+}
+
+// Downloads the song file with the page's link, and returns its name and bytes.
+async function downloadSong(page: Page): Promise<{ name: string; bytes: Buffer }> {
+  const link = page.getByRole('link', { name: 'Download the song file' })
+  await expect(link).toBeVisible()
+  const download = page.waitForEvent('download')
+  await link.click()
+  const done = await download
+  const path = await done.path()
+  return { name: done.suggestedFilename(), bytes: readFileSync(path) }
+}
+
+// The chunk type of every index entry. The header's entry_count is the u32 at
+// byte 12, and each 24-byte entry from byte 32 starts with its u16 type.
+function chunkTypes(file: Buffer): number[] {
+  const count = file.readUInt32LE(12)
+  return Array.from({ length: count }, (_, index) => file.readUInt16LE(32 + 24 * index))
+}
+
+const THUMBNAIL = 2
+const VIDEO_INIT = 16
+const VIDEO_SEGMENT = 17
+
+const songSeconds = (page: Page) =>
+  page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime)
+
+// Counts the seeks of the Player's video, so a journey can show that none happened.
+async function countSeeks(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const video = document.querySelector('video') as HTMLVideoElement
+    const counted = window as unknown as { lyreSeeks: number }
+    counted.lyreSeeks = 0
+    video.addEventListener('seeking', () => counted.lyreSeeks++)
+  })
+}
+const seeks = (page: Page) => page.evaluate(() => (window as unknown as { lyreSeeks: number }).lyreSeeks)
+
+test('song.webm makes a song file with video and a thumbnail, which the Player plays and switches', async ({
+  page,
+}) => {
+  const problems = watchProblems(page)
+  await makeSong(page, 'song.webm', goodTiming)
+  const { name, bytes } = await downloadSong(page)
+  expect(name).toBe('song.lyre')
+  expect(chunkTypes(bytes)).toEqual(expect.arrayContaining([THUMBNAIL, VIDEO_INIT, VIDEO_SEGMENT]))
+
+  await openSongFile(page, { name, mimeType: 'application/octet-stream', buffer: bytes })
+  const video = page.getByLabel('Song video')
+  await expect(video).toBeVisible()
+  // song.webm has no title tag, so the title is its file name without the extension.
+  await expect(page.getByRole('list', { name: 'Library' }).getByRole('button', { name: 'song', exact: true })).toBeVisible()
+  await countSeeks(page)
+  await page.getByRole('button', { name: 'Play' }).click()
+  const poll = { intervals: [50] }
+  // Chromium counts the video bytes it decoded.
+  const decodedVideo = () =>
+    video.evaluate(
+      (element) => (element as HTMLVideoElement & { webkitVideoDecodedByteCount: number }).webkitVideoDecodedByteCount,
+    )
+  await expect.poll(decodedVideo, poll).toBeGreaterThan(0)
+  await expect.poll(() => songSeconds(page), poll).toBeGreaterThan(0.5)
+  await page.getByRole('button', { name: 'Pause' }).click()
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
+  const paused = await songSeconds(page)
+  const seeksBefore = await seeks(page)
+
+  await page.getByRole('radio', { name: 'Original' }).click()
+  await expect(page.getByRole('radio', { name: 'Original' })).toBeChecked()
+  expect(await songSeconds(page)).toBe(paused)
+  expect(await seeks(page)).toBe(seeksBefore)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(problems).toEqual([])
+})
+
+test('song.mp3 makes a song file without video or a thumbnail, which the Player opens', async ({ page }) => {
+  const problems = watchProblems(page)
+  await makeSong(page, 'song.mp3', goodTiming)
+  const { name, bytes } = await downloadSong(page)
+  expect(name).toBe('song.lyre')
+  const types = chunkTypes(bytes)
+  for (const type of [THUMBNAIL, VIDEO_INIT, VIDEO_SEGMENT]) expect(types).not.toContain(type)
+
+  await openSongFile(page, { name, mimeType: 'application/octet-stream', buffer: bytes })
+  // MP3 is stored as `audio/mp4; codecs="mp4a.6B"`, which Playwright's Chromium does not accept.
+  const mp3 = await page.evaluate(() => MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.6B"'))
+  if (mp3) {
+    await page.getByRole('button', { name: 'Play' }).click()
+    await expect.poll(() => songSeconds(page), { intervals: [50] }).toBeGreaterThan(0.5)
+    await expect(page.getByRole('alert')).toHaveCount(0)
+  } else {
+    await expect(page.getByRole('alert')).toHaveText("This device cannot play this song's original track.")
+    await expect(page.getByRole('alert')).toHaveCount(1)
+  }
+  expect(problems).toEqual([])
+})
+
+test('a timing that ends after the song shows the refusal and offers no song file', async ({ page }) => {
+  const problems = watchProblems(page)
+  await makeSong(page, 'song.webm', pastEndTiming)
+  await expect(page.getByRole('alert')).toHaveText('The timing ends after the song, so the song file was not made.')
+  await expect(page.getByRole('alert')).toHaveCount(1)
+  await expect(page.getByRole('link', { name: 'Download the song file' })).toHaveCount(0)
   expect(problems).toEqual([])
 })
