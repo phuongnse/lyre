@@ -42,8 +42,8 @@ export function separatorFile(test: boolean): 'test-mel-roformer' | 'mel-roforme
   return test ? 'test-mel-roformer' : 'mel-roformer-fp16'
 }
 
-// The backends a run measures, in order: WebGPU, then one-thread WebAssembly.
-// A forced WebAssembly gives only WebAssembly.
+// The backend a run measures: WebGPU. A forced WebAssembly, as ?backend=wasm
+// gives, measures only WebAssembly instead.
 export function backendsFor(forced: Backend | undefined): Backend[] {
-  return forced === 'wasm' ? ['wasm'] : ['webgpu', 'wasm']
+  return forced === 'wasm' ? ['wasm'] : ['webgpu']
 }

@@ -221,7 +221,7 @@ export const messages = {
   timingRefused: 'The song file timing check refused the timing.',
   alignerFailed: 'The test aligner could not run.',
   measurementAbout:
-    "Measures each candidate aligner on WebGPU and then on WebAssembly. On each backend it separates a source's audio once, then times the lyrics on the vocals with each aligner, in a Web Worker. The source and the lyrics are not sent anywhere.",
+    "Measures each candidate aligner on WebGPU. It separates a source's audio once, then times the lyrics on the vocals with each aligner, in a Web Worker. The source and the lyrics are not sent anywhere.",
   measureAligners: 'Measure the aligners',
   measurementDownloading: 'Downloading the models…',
   measurementExtracting: 'Extracting the audio…',

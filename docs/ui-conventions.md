@@ -407,14 +407,13 @@ Compose uses the same three values *(planned for M4)*.
   missing model files with the same progress bar, and a file that fails
   stops the run with the message naming it. The Playwright journeys check a
   separator file with one byte changed the same way. In one Web Worker, it decodes the
-  source once. Then it runs each backend in turn, first WebGPU and then
-  WebAssembly on one thread. On each, it separates the source with the separator,
+  source once. Then, on WebGPU, it separates the source with the separator,
   then times the lyrics on those vocals with `lyric-alignment` fp32 and
   `lyric-alignment` int8 in turn. A model never
   switches backend during a measurement: it runs on the backend measured, or
   its result says why not. A line, which is not a status line, names the
   stage running and its backend, such as "Aligning with lyric-alignment int8 on
-  WebAssembly…". Each candidate gets a result per backend, named after both,
+  WebGPU…". Each candidate gets a result per backend, named after both,
   such as "lyric-alignment int8 on WebGPU". It shows the backend, the extract,
   separate and align times, the model load time and the separator, which is
   "Mel-Band RoFormer (Kim)", or "Test separator" with `?model=test`. It
@@ -475,10 +474,11 @@ Compose uses the same three values *(planned for M4)*.
   measurement clears the line. Only a source without audio or an unreadable source stops the run, with the
   separation check page's messages. `?model=test` measures the test
   aligner after the test separator, and `?backend=wasm` measures only
-  WebAssembly. The source and the lyrics are never sent
+  WebAssembly instead of WebGPU. The source and the lyrics are never sent
   anywhere. The Playwright journeys use it to check a whole measurement of
   the test aligner in Chromium with its GPU turned off, so WebGPU gives no
-  adapter. Each WebGPU result then says WebGPU is not available, and each
+  adapter. Without `?backend=wasm`, each WebGPU result says WebGPU is not
+  available, and nothing runs on WebAssembly. With `?backend=wasm`, each
   WebAssembly result has its figures, with a WebAssembly memory above 0 bytes
   in each stage. They check that the Vocals and Karaoke track players each
   last as long as the 2 s source. They also check the Device section with no WebGPU object

@@ -2,8 +2,8 @@
 import { expect, test } from 'vitest'
 import { backendsFor, candidatesFor } from './candidates'
 
-test('with no backend forced, a run measures WebGPU, then WebAssembly', () => {
-  expect(backendsFor(undefined)).toEqual(['webgpu', 'wasm'])
+test('with no backend forced, a run measures only WebGPU', () => {
+  expect(backendsFor(undefined)).toEqual(['webgpu'])
 })
 
 test('with WebAssembly forced, as ?backend=wasm does, a run measures only WebAssembly', () => {
