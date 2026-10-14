@@ -12,14 +12,15 @@ runs it by hand. It does two jobs for the
   checkpoint.
 
 A third job is for tests: it makes the
-[test separator](#make_test_separatorpy), a tiny stand-in for htdemucs, which
-tests use until the code switches to D28's separator, and
-the [test aligners](#make_test_alignerspy), tiny stand-ins for Omnilingual
+[test separator](#make_test_separatorpy), a tiny stand-in for Mel-Band
+RoFormer, the [htdemucs test separator](#make_test_htdemucspy), a tiny
+stand-in for the htdemucs files the web client still loads, and the
+[test aligners](#make_test_alignerspy), tiny stand-ins for Omnilingual
 and lyric-alignment.
 
 No check script runs these commands. `scripts/test.sh` runs only the tool's
-unit tests, which need nothing beyond Python's standard library. Two of them
-rebuild the test separator and the test aligners in a temporary folder and
+unit tests, which need nothing beyond Python's standard library. Three of them
+rebuild the test separators and the test aligners in a temporary folder and
 compare them with the committed files.
 
 The terms in this doc are defined in the [concepts](../domain/concepts.md).
@@ -130,14 +131,38 @@ A run takes about 0.3 GB of disk for downloads and about 6 GB of memory.
 
 ### make_test_separator.py
 
-htdemucs is no longer Lyre's separator ([D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)). The script stays until
-the core and the web client switch.
-
 ```sh
 python3 tools/model-tool/make_test_separator.py
 ```
 
 It writes the test separator, a stand-in for the
+[Mel-Band RoFormer file](models.md#mel-band-roformer) that tests can load
+without its 464 MB. Tests never use the real models
+([testing](../architecture.md#testing)).
+
+- It writes `mel-roformer.onnx` to `tests/fixtures/models/`, or to the folder
+  given as its argument. It prints the file's size and SHA-256.
+- The graph has the real file's input and output names, shapes and types:
+  `mix_spec` in and `stems_spec` out, both float32 with shape (1, 4, 1025, 801).
+- Its output is the input times 0.5, and the 0.5 is stored in the file. So the
+  vocals are half of each segment, and the karaoke track is the other half. It
+  separates nothing.
+- It is one file with no weights file. The core does not pin it yet, because
+  the web client still loads the htdemucs test files.
+- It needs only Python's standard library, and every run writes the same
+  bytes. The web unit test `web/src/separation/test-separator.spec.ts` runs the
+  file on ONNX Runtime Web.
+
+### make_test_htdemucs.py
+
+htdemucs is no longer Lyre's separator ([D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)). The script stays until
+the core and the web client switch.
+
+```sh
+python3 tools/model-tool/make_test_htdemucs.py
+```
+
+It writes the htdemucs test separator, a stand-in for the
 [htdemucs files](models.md#htdemucs) that the web journeys can load without
 the 170 MB real model. Tests never use the real models
 ([testing](../architecture.md#testing)).

@@ -249,7 +249,7 @@ reference doc and reviewed before M3 implements them.
   audio into windows, the model runs on each, and the core joins them and
   checks the result for a broken run. Progress counts the windows done out of the total. The page
   runs the separator ([models reference](reference/models.md)), or the
-  [test separator](reference/model-tool.md#make_test_separatorpy) when its
+  [htdemucs test separator](reference/model-tool.md#make_test_htdemucspy) when its
   URL asks for it. On the separation check page, only the tracks' lengths
   reach the page. The model check page's measurement runs the
   same separation once per backend, then stage 4 on that backend's vocals,

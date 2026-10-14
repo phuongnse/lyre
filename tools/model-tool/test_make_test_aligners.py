@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from make_test_aligners import write
-from test_make_test_separator import every, one, text
+from test_make_test_htdemucs import every, one, text
 
 REPO = Path(__file__).resolve().parents[2]
 COMMITTED = REPO / 'tests' / 'fixtures' / 'models'

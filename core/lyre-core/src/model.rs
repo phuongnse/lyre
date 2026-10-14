@@ -23,9 +23,9 @@ pub struct PinnedFile {
 /// storage, so it uses only lowercase letters, digits and `-`.
 // The real files are the rows of docs/reference/models.md, and a test keeps
 // them identical. Each `test-` entry is a file of tests/fixtures/models/. The
-// first two are SHA-256 test vectors of FIPS 180-2. The test separator's two
-// are made by tools/model-tool/make_test_separator.py, and the test aligners'
-// four by tools/model-tool/make_test_aligners.py. Their URLs are relative
+// first two are SHA-256 test vectors of FIPS 180-2. The htdemucs test
+// separator's two are made by tools/model-tool/make_test_htdemucs.py, and the
+// test aligners' four by tools/model-tool/make_test_aligners.py. Their URLs are relative
 // `test-models/` paths that only the e2e server serves, so no release site has
 // them.
 pub const PINNED_FILES: &[PinnedFile] = &[

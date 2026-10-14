@@ -1,13 +1,12 @@
-"""Writes the test separator: a tiny stand-in for the htdemucs ONNX files, for tests only.
+"""Writes the test separator: a tiny stand-in for Mel-Band RoFormer, for tests only.
 
     python3 tools/model-tool/make_test_separator.py [<out-dir>]
 
-Writes htdemucs_fwd.onnx and htdemucs_fwd.onnx.data, by default to tests/fixtures/models/.
-The graph has the inputs and outputs of the pinned htdemucs export. Each output holds four
-copies of its input, one per stem, each multiplied by 0.125. So each branch's four stems add
-up to half the input, and the core's sum of the spectrogram and waveform branches gives back
-the input. The 0.125 is the only weight, and it is kept in the weights file, so the test
-separator loads as the real one does. It is not a model: it separates nothing.
+Writes mel-roformer.onnx, by default to tests/fixtures/models/. The graph has the input and
+output names, shapes and types of the pinned mel-roformer.fp16.onnx: `mix_spec` in and
+`stems_spec` out, both float32 of shape (1, 4, 1025, 801). The output is the input times 0.5,
+stored in the file itself. So the vocals it gives are half of each segment, and the karaoke
+track is the other half. It is not a model: it separates nothing.
 
 It needs only Python's standard library, and every run writes the same bytes.
 See docs/reference/model-tool.md.
@@ -19,24 +18,19 @@ import struct
 import sys
 from pathlib import Path
 
-GRAPH_NAME = 'htdemucs_fwd.onnx'
-# The graph names its weights file, as the real graph does.
-WEIGHTS_NAME = 'htdemucs_fwd.onnx.data'
+GRAPH_NAME = 'mel-roformer.onnx'
 DEFAULT_OUT_DIR = Path(__file__).resolve().parents[2] / 'tests' / 'fixtures' / 'models'
 
-# The inputs and outputs of the pinned htdemucs export (docs/reference/models.md#htdemucs).
-STEMS = 4
-INPUTS = {'x': (1, 4, 2048, 336), 'xt': (1, 2, 343_980)}
-OUTPUTS = {'x_out': (1, 16, 2048, 336), 'xt_out': (1, 8, 343_980)}
-SCALE = 0.125
+# The inputs and outputs of the pinned Mel-Band RoFormer (docs/reference/models.md#mel-band-roformer).
+INPUT = 'mix_spec'
+OUTPUT = 'stems_spec'
+SHAPE = (1, 4, 1025, 801)
+SCALE = 0.5
 
 IR_VERSION = 8
 OPSET_VERSION = 17
-# onnx.proto's TensorProto.DataType.FLOAT, AttributeProto.AttributeType.INT and
-# TensorProto.DataLocation.EXTERNAL.
+# onnx.proto's TensorProto.DataType.FLOAT.
 FLOAT = 1
-ATTRIBUTE_INT = 2
-EXTERNAL = 1
 
 # Protobuf wire types.
 VARINT = 0
@@ -70,15 +64,11 @@ def _string(field: int, value: str) -> bytes:
 # Each message below writes its fields in field-number order, as onnx.proto numbers them.
 
 
-def _node(op_type: str, inputs: list[str], output: str, axis: int | None = None) -> bytes:
-    """A NodeProto, with an `axis` attribute when one is given."""
+def _node(op_type: str, inputs: list[str], output: str) -> bytes:
     message = b''.join(_string(1, name) for name in inputs)
     message += _string(2, output)
     message += _string(3, output)
     message += _string(4, op_type)
-    if axis is not None:
-        attribute = _string(1, 'axis') + _int(3, axis) + _int(20, ATTRIBUTE_INT)
-        message += _bytes(5, attribute)
     return message
 
 
@@ -90,41 +80,28 @@ def _value_info(name: str, shape: tuple[int, ...]) -> bytes:
 
 
 def _scale_initializer() -> bytes:
-    """The scalar TensorProto `scale`, stored in the weights file."""
-    entries = [('location', WEIGHTS_NAME), ('offset', '0'), ('length', str(len(weights_bytes())))]
+    """The scalar TensorProto `scale`, with its value inline."""
     message = _int(2, FLOAT)
     message += _string(8, 'scale')
-    message += b''.join(_bytes(13, _string(1, key) + _string(2, value)) for key, value in entries)
-    message += _int(14, EXTERNAL)
+    message += _bytes(9, struct.pack('<f', SCALE))
     return message
 
 
 def graph_bytes() -> bytes:
     """The ONNX ModelProto of the test separator."""
-    nodes = []
-    for (name, _), out in zip(INPUTS.items(), OUTPUTS):
-        quarter = f'{name}_quarter'
-        nodes.append(_node('Mul', [name, 'scale'], quarter))
-        nodes.append(_node('Concat', [quarter] * STEMS, out, axis=1))
-    graph = b''.join(_bytes(1, node) for node in nodes)
+    graph = _bytes(1, _node('Mul', [INPUT, 'scale'], OUTPUT))
     graph += _string(2, 'test-separator')
     graph += _bytes(5, _scale_initializer())
-    graph += b''.join(_bytes(11, _value_info(name, shape)) for name, shape in INPUTS.items())
-    graph += b''.join(_bytes(12, _value_info(name, shape)) for name, shape in OUTPUTS.items())
+    graph += _bytes(11, _value_info(INPUT, SHAPE))
+    graph += _bytes(12, _value_info(OUTPUT, SHAPE))
     opset = _string(1, '') + _int(2, OPSET_VERSION)
     return _int(1, IR_VERSION) + _string(2, 'lyre-test-separator') + _bytes(7, graph) + _bytes(8, opset)
 
 
-def weights_bytes() -> bytes:
-    """The weights file: `scale` as one little-endian float32."""
-    return struct.pack('<f', SCALE)
-
-
 def write(out_dir: Path) -> None:
-    """Writes the graph and its weights file to `out_dir`."""
+    """Writes the graph to `out_dir`."""
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / GRAPH_NAME).write_bytes(graph_bytes())
-    (out_dir / WEIGHTS_NAME).write_bytes(weights_bytes())
 
 
 def main() -> int:
@@ -132,9 +109,8 @@ def main() -> int:
     parser.add_argument('out_dir', nargs='?', type=Path, default=DEFAULT_OUT_DIR, help='the folder to write to')
     args = parser.parse_args()
     write(args.out_dir)
-    for name in (GRAPH_NAME, WEIGHTS_NAME):
-        data = (args.out_dir / name).read_bytes()
-        print(f'{name}: {len(data)} bytes, SHA-256 {hashlib.sha256(data).hexdigest()}')
+    data = (args.out_dir / GRAPH_NAME).read_bytes()
+    print(f'{GRAPH_NAME}: {len(data)} bytes, SHA-256 {hashlib.sha256(data).hexdigest()}')
     return 0
 
 
