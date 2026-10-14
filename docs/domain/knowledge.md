@@ -127,6 +127,22 @@ What was learned:
   Frames, vocabulary size, entry length, syllables and the work grid have
   limits. Each syllable also gets a confidence score, the model's average
   probability over its frames.
+- **A syllable lasts as long as it is sung.** A CTC model marks only a
+  short peak where a syllable's sound starts, so the frames of its tokens
+  say when it starts but not when it ends. A syllable that is not last in
+  its lyric line ends where the next syllable of the line starts. The last
+  syllable of a lyric line ends where the vocals fall silent. The core
+  measures silence on the 16 kHz mono vocals the aligner ran on, in 20 ms
+  blocks. A block is silent when its RMS level, the average loudness of its
+  samples, is more than 40 dB below the loudest block of the whole vocals,
+  or below −60 dBFS. Audio past the end of the vocals counts as silent. The
+  vocals fall silent at a run of at least 200 ms of silent blocks, and the
+  syllable ends where the run starts. A shorter dip, such as a consonant or
+  a vibrato trough, does not end it. The search starts at the end of the
+  syllable's last token frame, so the syllable is never shorter than its
+  frames. It stops at the next lyric line's first start, or at the end of
+  the song. When it finds no run, the syllable ends there. The levels are
+  chosen, not measured. Start times and confidence scores never change.
 - **The core aligns in 30 s windows with 2 s of overlap.** Every window
   starts on the 20 ms frame grid, so its frames line up with the song's.
   Each overlap is cut at its middle, so every frame comes from exactly one

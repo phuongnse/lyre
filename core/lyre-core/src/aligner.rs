@@ -419,7 +419,7 @@ mod tests {
             blank: vocabulary.blank,
             frame_us: 20_000,
         };
-        let aligned = crate::alignment::align(&lyrics, &emissions, 4_000);
+        let aligned = crate::alignment::align(&lyrics, &emissions, &[], 4_000);
         assert!(aligned.is_ok(), "{aligned:?}");
     }
 }

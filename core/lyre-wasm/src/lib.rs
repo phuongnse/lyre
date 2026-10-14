@@ -273,8 +273,9 @@ const REJECTED: AlignmentFault = AlignmentFault {
 /// Times every syllable of `lyrics` from a CTC model's output for the whole
 /// song: `log_probs` holds `frames × vocabulary.length` natural-log
 /// probabilities, frame by frame. `blank` is the blank token's index,
-/// `frame_us` the frame length in microseconds and `song_ms` the song's
-/// duration. It returns one time per syllable, in lyric order.
+/// `frame_us` the frame length in microseconds, `vocals` the 16 kHz mono
+/// vocals the model ran on, which tell where the singing stops, and `song_ms`
+/// the song's duration. It returns one time per syllable, in lyric order.
 #[wasm_bindgen]
 pub fn align(
     lyrics: &[u8],
@@ -282,6 +283,7 @@ pub fn align(
     vocabulary: Vec<String>,
     blank: u32,
     frame_us: u32,
+    vocals: &[f32],
     song_ms: u32,
 ) -> Result<Vec<AlignedSyllable>, AlignmentFault> {
     let lyrics = Lyrics::parse(lyrics).map_err(|_| REJECTED)?;
@@ -291,7 +293,7 @@ pub fn align(
         blank: blank as usize,
         frame_us,
     };
-    let alignment = alignment::align(&lyrics, &emissions, song_ms)?;
+    let alignment = alignment::align(&lyrics, &emissions, vocals, song_ms)?;
     Ok(alignment
         .timing
         .syllables()
@@ -1718,6 +1720,7 @@ mod tests {
             vocabulary,
             0,
             20_000,
+            &[],
             1_000,
         )
     }
@@ -1726,7 +1729,7 @@ mod tests {
     fn aligns_the_known_answer() {
         let syllables = align_known_answer("Mưa r\u{1A1}i").expect("it aligns");
         let times: Vec<_> = syllables.iter().map(|s| (s.start_ms, s.end_ms)).collect();
-        assert_eq!(times, vec![(20, 80), (120, 180)]);
+        assert_eq!(times, vec![(20, 120), (120, 180)]);
         assert!(syllables.iter().all(|s| (s.confidence - 0.9).abs() < 1e-6));
     }
 
