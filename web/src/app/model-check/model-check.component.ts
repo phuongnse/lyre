@@ -75,8 +75,9 @@ const bytesOr = (bytes?: number) => (bytes === undefined ? messages.notReported 
 
 // A measured candidate's figures on one backend. The extract figures repeat in
 // every result, and the backend's separation figures in each of its
-// candidates' results. Each ID starts with the backend and the candidate, so
-// it is unique.
+// candidates' results. Without a timing file, the onset error rows say "not
+// measured". Each ID starts with the backend and the candidate, so it is
+// unique.
 function rowsFor(
   candidate: Candidate,
   backend: Backend,
@@ -90,6 +91,8 @@ function rowsFor(
     label,
     value,
   })
+  // Measured only against a timing file.
+  const { onset } = outcome
   return [
     row('backend', messages.measurementBackend, messages.backendNames[backend]),
     row('extract', messages.measurementExtract, seconds(extract.ms)),
@@ -97,9 +100,13 @@ function rowsFor(
     row('align', messages.measurementAlign, seconds(outcome.alignMs)),
     row('load', messages.measurementModelLoad, seconds(outcome.loadMs)),
     row('sum-check', messages.measurementSumCheck, messages.decibels(separation.sumCheckDb.toFixed(1))),
-    row('median', messages.measurementOnsetMedian, milliseconds(outcome.medianMs)),
-    row('p90', messages.measurementOnsetP90, milliseconds(outcome.p90Ms)),
-    row('within-100', messages.measurementWithin100Ms, messages.percent((outcome.within100Ms * 100).toFixed(0))),
+    row('median', messages.measurementOnsetMedian, onset ? milliseconds(onset.medianMs) : messages.notMeasured),
+    row('p90', messages.measurementOnsetP90, onset ? milliseconds(onset.p90Ms) : messages.notMeasured),
+    row(
+      'within-100',
+      messages.measurementWithin100Ms,
+      onset ? messages.percent((onset.within100Ms * 100).toFixed(0)) : messages.notMeasured,
+    ),
     row('extract-wasm', messages.measurementExtractWasmMemory, bytesOr(extract.memory.wasmBytes)),
     row('extract-heap', messages.measurementExtractHeap, bytesOr(extract.memory.heapBytes)),
     row('separate-wasm', messages.measurementSeparateWasmMemory, bytesOr(separation.memory.wasmBytes)),
@@ -139,14 +146,16 @@ function reasonFor(problem: RunProblem): string {
 // aligner in another, stage 4 of processing. Opened by its URL,
 // #/model-check. With ?backend=wasm, the separator runs on WebAssembly even
 // when the browser has a GPU, and Force WebAssembly starts ticked for the
-// aligner. Its measurement section measures each candidate aligner against a
-// hand-written timing (docs/reference/models.md#measurement-method), in a Web
-// Worker. It decodes a picked source once. Then, on WebGPU and then on
-// one-thread WebAssembly, it separates the source and times the picked lyrics
-// on the vocals with each candidate, never switching backend. Each candidate
-// on each backend gets its own result: its figures, or why it failed. With
-// ?model=test it measures the test aligners after the test separator, and
-// ?backend=wasm measures only WebAssembly. A Device section names the browser,
+// aligner. Its measurement section measures each candidate aligner
+// (docs/reference/models.md#measurement-method), in a Web Worker. It needs a
+// source and the lyrics. A hand-written timing file is optional: with one, the
+// page reads it against the lyrics first and reports onset error, and without
+// one the onset error rows say "not measured". It decodes a picked source
+// once. Then, on WebGPU and then on one-thread WebAssembly, it separates the
+// source and times the picked lyrics on the vocals with each candidate, never
+// switching backend. Each candidate on each backend gets its own result: its
+// figures, or why it failed. With ?model=test it measures the test aligners
+// after the test separator, and ?backend=wasm measures only WebAssembly. A Device section names the browser,
 // the OS and the GPU, and says whether WebGPU is available. Each result also
 // shows the highest WebAssembly memory and JavaScript heap seen in each stage,
 // or "not reported" for a figure the browser does not give. After each
@@ -292,12 +301,7 @@ function reasonFor(problem: RunProblem): string {
       {{ messages.chooseTiming }}
     </button>
     <input #timingInput type="file" accept="text/plain,.txt" hidden (change)="pick(timingInput, timing)" />
-    <button
-      matButton="filled"
-      type="button"
-      [disabled]="busy || !source() || !lyrics() || !timing()"
-      (click)="measure()"
-    >
+    <button matButton="filled" type="button" [disabled]="busy || !source() || !lyrics()" (click)="measure()">
       {{ messages.measureAligners }}
     </button>
     <!-- Not role="status", so the download's status line stays the page's only one. -->
@@ -487,27 +491,31 @@ export class ModelCheckPage {
     const source = this.source()
     const lyricsFile = this.lyrics()
     const timingFile = this.timing()
-    if (!source || !lyricsFile || !timingFile) return
+    if (!source || !lyricsFile) return
     this.run?.stop()
     this.run = undefined
     const attempt = ++this.attempts
     const current = () => attempt === this.attempts
-    this.measurement.set({ status: 'reading' })
+    this.measurement.set(timingFile ? { status: 'reading' } : { status: 'downloading' })
     this.extract.set(undefined)
     this.separations.set({})
     this.outcomes.set([])
     this.copyState.set('idle')
     this.revokeTracks()
-    // The timing file is read before anything is downloaded, so a bad one fails at once.
-    const handStartsMs = await this.handStarts(lyricsFile, timingFile).catch((): MeasurementState => ({
-      status: 'files-unreadable',
-    }))
-    if (!current()) return
-    if (!(handStartsMs instanceof Uint32Array)) {
-      this.measurement.set(handStartsMs)
-      return
+    let handStartsMs: Uint32Array | undefined
+    if (timingFile) {
+      // The timing file is read before anything is downloaded, so a bad one fails at once.
+      const read = await this.handStarts(lyricsFile, timingFile).catch((): MeasurementState => ({
+        status: 'files-unreadable',
+      }))
+      if (!current()) return
+      if (!(read instanceof Uint32Array)) {
+        this.measurement.set(read)
+        return
+      }
+      handStartsMs = read
+      this.measurement.set({ status: 'downloading' })
     }
-    this.measurement.set({ status: 'downloading' })
     const loaded = await this.loadFiles()
     if (!current()) return
     if ('status' in loaded) {
@@ -627,8 +635,8 @@ export class ModelCheckPage {
         break
       }
       case 'measured': {
-        const { candidate, backend, loadMs, alignMs, medianMs, p90Ms, within100Ms, memory } = reply
-        const outcome: Outcome = { status: 'measured', loadMs, alignMs, medianMs, p90Ms, within100Ms, memory }
+        const { candidate, backend, loadMs, alignMs, onset, memory } = reply
+        const outcome: Outcome = { status: 'measured', loadMs, alignMs, onset, memory }
         this.outcomes.update((outcomes) => [...outcomes, { candidate, backend, outcome }])
         break
       }

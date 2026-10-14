@@ -18,7 +18,12 @@ const candidates: MeasurementRequest['candidates'] = [
 
 const alignMemory = { wasmBytes: 300, heapBytes: 400 }
 const separateMemory = { wasmBytes: 100, heapBytes: 200 }
-const figures = { loadMs: 1, alignMs: 2, medianMs: 3, p90Ms: 4, within100Ms: 0.5, memory: alignMemory }
+const figures = {
+  loadMs: 1,
+  alignMs: 2,
+  onset: { medianMs: 3, p90Ms: 4, within100Ms: 0.5 },
+  memory: alignMemory,
+}
 
 // Stand-in WAV files, which name the backend that made them.
 const tracksOf = (backend: Backend) => ({
@@ -26,8 +31,12 @@ const tracksOf = (backend: Backend) => ({
   karaoke: Uint8Array.of(backend === 'webgpu' ? 3 : 4),
 })
 
-// Stand-in steps that succeed unless `fail` throws for the backend, or the backend and candidate.
-function steps(fail: { separate?: (backend: Backend) => unknown; measure?: (candidate: string) => unknown } = {}) {
+// Stand-in steps that succeed unless `fail` throws for the backend, or the
+// backend and candidate. Each measure step gives `measuredFigures`.
+function steps(
+  fail: { separate?: (backend: Backend) => unknown; measure?: (candidate: string) => unknown } = {},
+  measuredFigures: Awaited<ReturnType<MeasurementSteps['measure']>> = figures,
+) {
   const separatedOn: Backend[] = []
   const measured: { candidate: string; backend: Backend; vocals: Float32Array }[] = []
   const result: MeasurementSteps = {
@@ -47,7 +56,7 @@ function steps(fail: { separate?: (backend: Backend) => unknown; measure?: (cand
       measured.push({ candidate, backend, vocals })
       const error = fail.measure?.(candidate)
       if (error !== undefined) throw error
-      return figures
+      return measuredFigures
     },
   }
   return { separatedOn, measured, steps: result }
@@ -196,6 +205,22 @@ describe('a measurement on each backend', () => {
       const at = replies.findIndex((reply) => reply.type === 'separated' && reply.backend === backend)
       expect(replies[at + 1]).toEqual({ type: 'tracks', backend, ...tracksOf(backend) })
     }
+  })
+
+  test('gives a measured reply with no onset error when the step measured none, as without a timing file', async () => {
+    const { steps: fake } = steps({}, { loadMs: 1, alignMs: 2, memory: alignMemory })
+    const measured = ends(await run(['wasm'], fake))
+    expect(measured).toEqual(
+      ['test-omnilingual', 'test-lyric-alignment'].map((candidate) => ({
+        type: 'measured',
+        candidate,
+        backend: 'wasm',
+        loadMs: 1,
+        alignMs: 2,
+        memory: alignMemory,
+      })),
+    )
+    for (const reply of measured) expect(reply).not.toHaveProperty('onset')
   })
 
   test('with WebAssembly forced, measures only WebAssembly', async () => {

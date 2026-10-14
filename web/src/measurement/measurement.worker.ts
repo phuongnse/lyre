@@ -11,7 +11,7 @@ import { SourceError } from '../source-error'
 import { CandidateKind } from './candidates'
 import { measureBackends, MeasurementSteps } from './measure-backends'
 import { readMemory, StageMemory, watchStage, watchWasmMemories } from './memory'
-import { MeasurementReply, MeasurementRequest } from './measurement-messages'
+import { MeasurementReply, MeasurementRequest, OnsetError } from './measurement-messages'
 import { vocalsForAlignment } from './vocals'
 import { wavFile } from './wav'
 
@@ -27,17 +27,18 @@ const reply = (message: MeasurementReply) =>
 
 const bytesOf = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer())
 
-// Measures each candidate aligner against a hand-written timing, off the
-// page's main thread (docs/reference/models.md#measurement-method). It
-// decodes the source once. Then, on each backend in turn, it separates the
-// source and times the lyrics on the vocals with each candidate: stages 3 and
-// 4 of processing (docs/architecture.md#processing-planned-for-m2). Every
-// session opens in measurement mode, so a backend's figures always come from
-// that backend. It answers with figures, and with each separation's tracks as
-// WAV files for the page's players, never with the lyric text or an error's
-// text. Each stage's figures include the highest memory
-// seen in it. The WebAssembly memory is the total of every memory in this
-// worker, the core's and ONNX Runtime's, and it never shrinks.
+// Measures each candidate aligner, off the page's main thread
+// (docs/reference/models.md#measurement-method), and against a hand-written
+// timing when the page gives its starts. It decodes the source once. Then, on
+// each backend in turn, it separates the source and times the lyrics on the
+// vocals with each candidate: stages 3 and 4 of processing
+// (docs/architecture.md#processing-planned-for-m2). Every session opens in
+// measurement mode, so a backend's figures always come from that backend. It
+// answers with figures, and with each separation's tracks as WAV files for the
+// page's players, never with the lyric text or an error's text. Each stage's
+// figures include the highest memory seen in it. The WebAssembly memory is the
+// total of every memory in this worker, the core's and ONNX Runtime's, and it
+// never shrinks.
 addEventListener('message', (event: MessageEvent<MeasurementRequest>) => {
   if (event.data.type !== 'run') return
   void run(event.data).then(
@@ -113,8 +114,8 @@ async function separateOn(
 }
 
 // Times the lyrics on the vocals with one candidate on `backend`, and
-// measures the timing against the hand-written one. The memory covers loading
-// the model as well as aligning.
+// measures the timing against the hand-written one when there is one. The
+// memory covers loading the model as well as aligning.
 async function measureOn(
   request: MeasurementRequest,
   { kind, graph, vocabulary }: MeasurementRequest['candidates'][number],
@@ -125,9 +126,7 @@ async function measureOn(
 ): Promise<{
   loadMs: number
   alignMs: number
-  medianMs: number
-  p90Ms: number
-  within100Ms: number
+  onset?: OnsetError
   memory: StageMemory
 }> {
   const { result, memory } = await watchStage(read, async (sample) => {
@@ -143,13 +142,14 @@ async function measureOn(
       const runner = alignerRunner(session, kinds[kind])
       const timing = await alignSong(vocals, lyrics, kinds[kind], vocabularyBytes, runner, sample)
       const alignMs = performance.now() - alignStart
+      if (!request.handStartsMs) return { loadMs, alignMs, onset: undefined }
       const errors = measureOnsetError(
         request.handStartsMs,
         Uint32Array.from(timing, (syllable) => syllable.startMs),
       )
       const { medianMs, p90Ms, within100Ms } = errors
       errors.free()
-      return { loadMs, alignMs, medianMs, p90Ms, within100Ms }
+      return { loadMs, alignMs, onset: { medianMs, p90Ms, within100Ms } }
     } finally {
       await session?.release().catch(() => undefined)
     }
