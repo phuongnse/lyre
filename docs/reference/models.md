@@ -140,6 +140,12 @@ as the fp16 ONNX export by audiojs, which the owner publishes unchanged.
 - **STFT:** outside the file, so Lyre does it. n_fft 2048, hop 441, and a Hann
   window of 2048, centred with reflect padding, not normalised. The inverse
   STFT uses the same settings.
+- **In the core:** the `mel_roformer` module does the STFT, its inverse, the
+  segments, the join and the broken-run check.
+- **Segment edges:** the first segment has no fade-in and the last has no
+  fade-out. A song of 8 s or less is not reflected at its ends. A part shorter
+  than a segment is reflected when it is longer than half a segment, and
+  silent otherwise. These rules follow ZFTurbo's inference code.
 - **Input and output:** both have shape (1, 4, 1025, 801), holding the real
   part of the left channel, its imaginary part, the real part of the right
   channel and its imaginary part. The input is the segment's spectrogram. The
@@ -314,10 +320,10 @@ on each [target device](../decisions.md#d25-requirements-for-making-songs--propo
   in a measurement, and records whether clear leftover lead vocals remain. Backing vocals may remain and
   are noted, not failed.
 
-Until the core and the web client switch to Mel-Band RoFormer, they run
-htdemucs, which D28 replaces, with its sum check: the karaoke track plus the
-vocals stem is compared with the source, and the core fails a run under a
-provisional 10 dB.
+Until the web client switches to Mel-Band RoFormer, it still runs htdemucs,
+which D28 replaces, through the core's `separation` module and with its sum
+check: the karaoke track plus the vocals stem is compared with the source, and
+the core fails a run under a provisional 10 dB.
 
 ### The choice
 
