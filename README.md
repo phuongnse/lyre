@@ -56,9 +56,16 @@ their own licences. For example:
 - The Vietnamese word list from Wiktionary is under CC BY-SA 4.0. See
   [its notice](core/lyre-core/src/words/wiktionary_words.NOTICE.md) and
   [D18](docs/decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed).
-- The CC-BY-NC models that
+- The aligner `lyric-alignment` by nguyenvulebinh,
+  [model card at commit `2d0b61d13e9da6cae03a6c01fe3eeebdb6e4b4ed`](https://huggingface.co/nguyenvulebinh/lyric-alignment/tree/2d0b61d13e9da6cae03a6c01fe3eeebdb6e4b4ed).
+  Lyre's model tool converted it to ONNX, and the owner publishes the export as
+  `phuongnse/lyric-alignment-onnx`. It is under
+  [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/). See
+  [D29](docs/decisions.md#d29-the-aligner-is-lyric-alignment--agreed) and
+  [the models reference](docs/reference/models.md#lyric-alignment). Every other
+  CC-BY-NC model that
   [D20](docs/decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)
-  allows stay under their CC-BY-NC licence.
+  allows stays under its own licence.
 
 Mediabunny, which the web client uses to read and decode sources, is under
 MPL-2.0. It is used unmodified from npm, and the web build ships its licence

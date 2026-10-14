@@ -142,14 +142,14 @@ the section may refine them, and update this section when they do.
 - **Make the song** is off until a source, valid lyrics, a non-empty title
   and a vocal role are all set.
 - Before the first stage, the page downloads any missing model files:
-  htdemucs and the aligner the measurements chose
+  htdemucs and the `lyric-alignment` file the measurements chose, int8 or fp32
   ([the choice](reference/models.md#the-choice),
-  [D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
+  [D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
   It checks them with the same progress bar and byte line as the model check
   page. A file that fails its check stops the task, and the message names
   the file. Kept files download nothing on later runs.
-- The section waits for the measured choice. It has no temporary default
-  aligner.
+- The section waits for the measured choice between the two files. It has no
+  temporary default.
 - The task runs in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). The page shows
   the current stage's name, such as "Separating the vocals", and a progress
@@ -398,7 +398,7 @@ Compose uses the same three values *(planned for M4)*.
   failure one plain message. Neither shows lyric text or error text. The
   Playwright journeys use it to check a run of each test aligner on
   WebAssembly, under the page's policy.
-  Its measurement section measures each candidate aligner, as the
+  Its measurement section measures the aligner files, as the
   [measurement method](reference/models.md#measurement-method) says.
   **Choose a source** and **Choose the lyrics** buttons pick the files, and
   a **Measure the aligners** button starts once a source and the lyrics are
@@ -409,7 +409,9 @@ Compose uses the same three values *(planned for M4)*.
   source once. Then it runs each backend in turn, first WebGPU and then
   WebAssembly on one thread. On each, it separates the source with htdemucs,
   then times the lyrics on those vocals with Omnilingual int8,
-  `lyric-alignment` fp32 and `lyric-alignment` int8 in turn. A model never
+  `lyric-alignment` fp32 and `lyric-alignment` int8 in turn. Omnilingual int8
+  is no longer a candidate (D29). The page measures it until a later change
+  removes it. A model never
   switches backend during a measurement: it runs on the backend measured, or
   its result says why not. A line, which is not a status line, names the
   stage running and its backend, such as "Aligning with Omnilingual int8 on
