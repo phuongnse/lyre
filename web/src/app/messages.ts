@@ -218,6 +218,11 @@ export const messages = {
   measurementSeparating: (backend: string) => `Separating the vocals on ${backend}…`,
   measurementAligning: (candidate: string, backend: string) => `Aligning with ${candidate} on ${backend}…`,
   measurementDone: 'The measurement is done.',
+  // Names the backend whose separation the players play.
+  measurementTracks: (backend: string) => `Tracks separated on ${backend}`,
+  measurementTracksAbout: "The tracks play from this device's memory. They are not sent anywhere or kept.",
+  measurementVocals: 'Vocals',
+  measurementKaraoke: 'Karaoke track',
   // Keyed by Candidate.
   candidateNames: {
     'omnilingual-int8': 'Omnilingual int8',

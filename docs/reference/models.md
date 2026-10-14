@@ -276,8 +276,9 @@ on each [target device](../decisions.md#d25-target-devices-for-making-songs--pro
 - **Clipping:** the core fails a run only when the vocals or the karaoke track
   peaks more than 1 dB above the source's own peak. A sample over 1.0 alone
   does not fail, because decoded loud masters already exceed it.
-- **Leftover vocals:** the owner listens to the karaoke track and records
-  whether clear leftover lead vocals remain. Backing vocals may remain and
+- **Leftover vocals:** the owner listens to the karaoke track on the model
+  check page's **Karaoke track** player, which appears after each separation
+  in a measurement, and records whether clear leftover lead vocals remain. Backing vocals may remain and
   are noted, not failed.
 
 ### The choice

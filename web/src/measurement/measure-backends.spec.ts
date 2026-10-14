@@ -20,6 +20,12 @@ const alignMemory = { wasmBytes: 300, heapBytes: 400 }
 const separateMemory = { wasmBytes: 100, heapBytes: 200 }
 const figures = { loadMs: 1, alignMs: 2, medianMs: 3, p90Ms: 4, within100Ms: 0.5, memory: alignMemory }
 
+// Stand-in WAV files, which name the backend that made them.
+const tracksOf = (backend: Backend) => ({
+  vocals: Uint8Array.of(backend === 'webgpu' ? 1 : 2),
+  karaoke: Uint8Array.of(backend === 'webgpu' ? 3 : 4),
+})
+
 // Stand-in steps that succeed unless `fail` throws for the backend, or the backend and candidate.
 function steps(fail: { separate?: (backend: Backend) => unknown; measure?: (candidate: string) => unknown } = {}) {
   const separatedOn: Backend[] = []
@@ -31,6 +37,7 @@ function steps(fail: { separate?: (backend: Backend) => unknown; measure?: (cand
       if (error !== undefined) throw error
       return {
         vocals: Float32Array.of(backend === 'webgpu' ? 1 : 2),
+        tracks: tracksOf(backend),
         separateMs: 10,
         sumCheckDb: 30,
         memory: separateMemory,
@@ -159,6 +166,36 @@ describe('a measurement on each backend', () => {
       ['measured', 'wasm'],
       ['measured', 'wasm'],
     ])
+  })
+
+  test("sends each backend's tracks right after its separation figures, and none for a separation that failed", async () => {
+    const { steps: fake } = steps({
+      separate: (backend) => (backend === 'webgpu' ? new SessionFault('webgpu-unavailable') : undefined),
+    })
+    const replies = await run(['webgpu', 'wasm'], fake)
+    const separatedAt = replies.findIndex((reply) => reply.type === 'separated')
+    expect(replies[separatedAt]).toMatchObject({ type: 'separated', backend: 'wasm' })
+    expect(replies[separatedAt + 1]).toEqual({ type: 'tracks', backend: 'wasm', ...tracksOf('wasm') })
+    expect(replies.filter((reply) => reply.type === 'tracks')).toHaveLength(1)
+  })
+
+  test('sends the tracks of every backend that separated, each after its own figures', async () => {
+    const { steps: fake } = steps()
+    const replies = await run(['webgpu', 'wasm'], fake)
+    expect(
+      replies
+        .filter((reply) => reply.type === 'separated' || reply.type === 'tracks')
+        .map((reply) => [reply.type, reply.backend]),
+    ).toEqual([
+      ['separated', 'webgpu'],
+      ['tracks', 'webgpu'],
+      ['separated', 'wasm'],
+      ['tracks', 'wasm'],
+    ])
+    for (const backend of ['webgpu', 'wasm'] as const) {
+      const at = replies.findIndex((reply) => reply.type === 'separated' && reply.backend === backend)
+      expect(replies[at + 1]).toEqual({ type: 'tracks', backend, ...tracksOf(backend) })
+    }
   })
 
   test('with WebAssembly forced, measures only WebAssembly', async () => {

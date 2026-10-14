@@ -6,11 +6,16 @@ type Candidate = MeasurementRequest['candidates'][number]
 
 // The two steps of a measurement on one backend: separating the source, and
 // timing the lyrics on the vocals with one candidate. Each step runs on the
-// backend it is given, or throws.
+// backend it is given, or throws. Separating also gives the tracks as WAV
+// files, for the page's players.
 export interface MeasurementSteps {
-  separate(
-    backend: Backend,
-  ): Promise<{ vocals: Float32Array; separateMs: number; sumCheckDb: number; memory: StageMemory }>
+  separate(backend: Backend): Promise<{
+    vocals: Float32Array
+    tracks: { vocals: Uint8Array<ArrayBuffer>; karaoke: Uint8Array<ArrayBuffer> }
+    separateMs: number
+    sumCheckDb: number
+    memory: StageMemory
+  }>
   measure(
     candidate: Candidate,
     backend: Backend,
@@ -27,8 +32,8 @@ export interface MeasurementSteps {
 
 // Measures every candidate on each backend in turn
 // (docs/reference/models.md#measurement-method). Each backend separates the
-// source once, and its candidates run on its own vocals. A separation that
-// fails marks every candidate on that backend as not run, with its reason. A
+// source once, and its candidates run on its own vocals. Its tracks follow its
+// separation figures, before any candidate runs. A separation that fails marks every candidate on that backend as not run, with its reason. A
 // candidate that fails is a finding too. Either way the next one still runs.
 export async function measureBackends(
   backends: readonly Backend[],
@@ -49,6 +54,7 @@ export async function measureBackends(
         sumCheckDb: separated.sumCheckDb,
         memory: separated.memory,
       })
+      reply({ type: 'tracks', backend, ...separated.tracks })
     } catch (error) {
       // Read once, since reading frees a core fault.
       const problem = runProblem(error)
