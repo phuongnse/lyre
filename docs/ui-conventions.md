@@ -339,24 +339,37 @@ Compose uses the same three values *(planned for M4)*.
   lyrics get "The lyrics file is not valid lyrics." The page then downloads the
   missing model files with the same progress bar, and a file that fails
   stops the run with the message naming it. In one Web Worker, it decodes the
-  source and separates it once with htdemucs, then times the lyrics on the
-  vocals with Omnilingual int8, `lyric-alignment` fp32 and `lyric-alignment`
-  int8 in turn. A line, which is not a status line, names the stage running.
-  Each candidate gets a result named after it, with its backend, the extract,
+  source once. Then it runs each backend in turn, first WebGPU and then
+  WebAssembly on one thread. On each, it separates the source with htdemucs,
+  then times the lyrics on those vocals with Omnilingual int8,
+  `lyric-alignment` fp32 and `lyric-alignment` int8 in turn. A model never
+  switches backend during a measurement: it runs on the backend measured, or
+  its result says why not. A line, which is not a status line, names the
+  stage running and its backend, such as "Aligning with Omnilingual int8 on
+  WebAssembly…". Each candidate gets a result per backend, named after both,
+  such as "Omnilingual int8 on WebGPU". It shows the backend, the extract,
   separate and align times, the model load time, the sum check in dB, and the
   onset error median, 90th percentile and share within 100 ms. The extract
-  time, separate time and sum check are the same in every result, because the
-  source is separated once. A candidate that fails shows its own message in
-  its result, one for a timing the song file timing check refused and one for
-  any other failure, and the next candidate still runs. A failed sum check, a
-  source without audio or an unreadable source stops the run, with the
+  time is the same in every result, because the source is decoded once. The
+  separate time and the sum check are the same in every result on one
+  backend, because the source is separated once per backend. A run that fails
+  shows one reason in its result: WebGPU is not available, the model could
+  not be loaded on this backend, the run ran out of memory, the separation
+  failed the sum check (with the separation check page's message naming the
+  rule and the value), the alignment was refused, the song file timing check
+  refused the timing, or the run could not finish. When the separation fails
+  on a backend, each candidate's result on it says "Not run." and the same
+  reason. Either way the next candidate and the next backend still run. Only
+  a source without audio or an unreadable source stops the run, with the
   separation check page's messages. `?model=test` measures the two test
-  aligners after the test separator, and `?backend=wasm` runs every model on
+  aligners after the test separator, and `?backend=wasm` measures only
   WebAssembly. The source, the lyrics and the timing file are never sent
-  anywhere. The Playwright journeys use it to check a whole measurement of the
-  test aligners on WebAssembly, an overlap in the timing file, that the main
-  page does not load the page's code, and that every request goes to the
-  site's own origin.
+  anywhere. The Playwright journeys use it to check a whole measurement of
+  the test aligners in Chromium with its GPU turned off, so WebGPU gives no
+  adapter. Each WebGPU result then says WebGPU is not available, and each
+  WebAssembly result has its figures. They also check an overlap in the timing file, that the main page
+  does not load the page's code, and that every request goes to the site's
+  own origin.
 - The separation check page separates a picked source's audio into vocals and
   a karaoke track in a Web Worker
   ([processing](architecture.md#processing-planned-for-m2)). While it runs, a

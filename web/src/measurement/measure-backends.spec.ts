@@ -1,0 +1,163 @@
+// @vitest-environment node
+import { readFileSync } from 'node:fs'
+import { beforeAll, describe, expect, test } from 'vitest'
+import { initSync, Separation, SeparationFault } from '../lyre-wasm/lyre_wasm.js'
+import { Backend } from '../separation/backend'
+import { SessionFault } from '../session-backend'
+import { measureBackends, MeasurementSteps } from './measure-backends'
+import { MeasurementReply, MeasurementRequest } from './measurement-messages'
+
+beforeAll(() => {
+  initSync({ module: readFileSync(new URL('../lyre-wasm/lyre_wasm_bg.wasm', import.meta.url)) })
+})
+
+const candidates: MeasurementRequest['candidates'] = [
+  { candidate: 'test-omnilingual', kind: 'omnilingual', graph: new Blob(), vocabulary: new Blob() },
+  { candidate: 'test-lyric-alignment', kind: 'lyric-alignment', graph: new Blob(), vocabulary: new Blob() },
+]
+
+const figures = { loadMs: 1, alignMs: 2, medianMs: 3, p90Ms: 4, within100Ms: 0.5 }
+
+// Stand-in steps that succeed unless `fail` throws for the backend, or the backend and candidate.
+function steps(fail: { separate?: (backend: Backend) => unknown; measure?: (candidate: string) => unknown } = {}) {
+  const separatedOn: Backend[] = []
+  const measured: { candidate: string; backend: Backend; vocals: Float32Array }[] = []
+  const result: MeasurementSteps = {
+    async separate(backend) {
+      separatedOn.push(backend)
+      const error = fail.separate?.(backend)
+      if (error !== undefined) throw error
+      return { vocals: Float32Array.of(backend === 'webgpu' ? 1 : 2), separateMs: 10, sumCheckDb: 30 }
+    },
+    async measure({ candidate }, backend, vocals) {
+      measured.push({ candidate, backend, vocals })
+      const error = fail.measure?.(candidate)
+      if (error !== undefined) throw error
+      return figures
+    },
+  }
+  return { separatedOn, measured, steps: result }
+}
+
+// The fault of a separation of a sine whose model outputs nothing, which
+// fails the sum check's energy rule.
+function failedSumCheck(): unknown {
+  const sine = Float32Array.from({ length: 50_000 }, (_, n) => 0.5 * Math.sin((2 * Math.PI * 440 * n) / 44_100))
+  const separation = new Separation(sine, sine)
+  const xOut = new Float32Array(4 * 4 * 2048 * 336)
+  const xtOut = new Float32Array(4 * 2 * 343_980)
+  for (let index = 0; index < separation.windowCount; index++) {
+    separation.input(index).free()
+    separation.output(index, xOut, xtOut)
+  }
+  try {
+    separation.finish().free()
+  } catch (fault) {
+    return fault
+  } finally {
+    separation.free()
+  }
+  throw new Error('the sum check passed')
+}
+
+async function run(backends: readonly Backend[], measurementSteps: MeasurementSteps): Promise<MeasurementReply[]> {
+  const replies: MeasurementReply[] = []
+  await measureBackends(backends, candidates, measurementSteps, (reply) => replies.push(reply))
+  return replies
+}
+
+// The replies that end a candidate's run on a backend.
+const ends = (replies: MeasurementReply[]) =>
+  replies.filter((reply) => reply.type === 'measured' || reply.type === 'candidate-failed')
+
+describe('a measurement on each backend', () => {
+  test('separates once per backend and measures every candidate on that backend, in order', async () => {
+    const { separatedOn, measured, steps: fake } = steps()
+    const replies = await run(['webgpu', 'wasm'], fake)
+    expect(separatedOn).toEqual(['webgpu', 'wasm'])
+    expect(measured.map(({ candidate, backend }) => `${candidate} ${backend}`)).toEqual([
+      'test-omnilingual webgpu',
+      'test-lyric-alignment webgpu',
+      'test-omnilingual wasm',
+      'test-lyric-alignment wasm',
+    ])
+    // Each backend's candidates run on its own vocals.
+    expect(measured.map(({ vocals }) => vocals[0])).toEqual([1, 1, 2, 2])
+    expect(replies.filter((reply) => reply.type === 'separated')).toEqual([
+      { type: 'separated', backend: 'webgpu', separateMs: 10, sumCheckDb: 30 },
+      { type: 'separated', backend: 'wasm', separateMs: 10, sumCheckDb: 30 },
+    ])
+    expect(replies.filter((reply) => reply.type === 'stage')).toEqual([
+      { type: 'stage', stage: 'separate', backend: 'webgpu' },
+      { type: 'stage', stage: 'align', backend: 'webgpu', candidate: 'test-omnilingual' },
+      { type: 'stage', stage: 'align', backend: 'webgpu', candidate: 'test-lyric-alignment' },
+      { type: 'stage', stage: 'separate', backend: 'wasm' },
+      { type: 'stage', stage: 'align', backend: 'wasm', candidate: 'test-omnilingual' },
+      { type: 'stage', stage: 'align', backend: 'wasm', candidate: 'test-lyric-alignment' },
+    ])
+    expect(ends(replies)).toEqual([
+      { type: 'measured', candidate: 'test-omnilingual', backend: 'webgpu', ...figures },
+      { type: 'measured', candidate: 'test-lyric-alignment', backend: 'webgpu', ...figures },
+      { type: 'measured', candidate: 'test-omnilingual', backend: 'wasm', ...figures },
+      { type: 'measured', candidate: 'test-lyric-alignment', backend: 'wasm', ...figures },
+    ])
+  })
+
+  test('gives a candidate whose session fails to open the model reason, and still measures the next one', async () => {
+    const { steps: fake } = steps({
+      measure: (candidate) => (candidate === 'test-omnilingual' ? new SessionFault('model') : undefined),
+    })
+    expect(ends(await run(['wasm'], fake))).toEqual([
+      {
+        type: 'candidate-failed',
+        candidate: 'test-omnilingual',
+        backend: 'wasm',
+        ran: true,
+        problem: { kind: 'model' },
+      },
+      { type: 'measured', candidate: 'test-lyric-alignment', backend: 'wasm', ...figures },
+    ])
+  })
+
+  test('marks every candidate on a backend whose separation failed as not run, with its reason, and measures the next backend', async () => {
+    const { measured, steps: fake } = steps({
+      separate: (backend) => (backend === 'webgpu' ? new SessionFault('webgpu-unavailable') : undefined),
+    })
+    const replies = await run(['webgpu', 'wasm'], fake)
+    const problem = { kind: 'webgpu-unavailable' }
+    expect(ends(replies)).toEqual([
+      { type: 'candidate-failed', candidate: 'test-omnilingual', backend: 'webgpu', ran: false, problem },
+      { type: 'candidate-failed', candidate: 'test-lyric-alignment', backend: 'webgpu', ran: false, problem },
+      { type: 'measured', candidate: 'test-omnilingual', backend: 'wasm', ...figures },
+      { type: 'measured', candidate: 'test-lyric-alignment', backend: 'wasm', ...figures },
+    ])
+    expect(measured.every(({ backend }) => backend === 'wasm')).toBe(true)
+  })
+
+  test('marks every candidate on WebGPU as not run with the sum check rule and value when the separation there fails it, and measures WebAssembly', async () => {
+    const fault = failedSumCheck()
+    expect(fault).toBeInstanceOf(SeparationFault)
+    const { steps: fake } = steps({ separate: (backend) => (backend === 'webgpu' ? fault : undefined) })
+    const replies = ends(await run(['webgpu', 'wasm'], fake))
+    expect(replies.slice(0, 2)).toEqual(
+      ['test-omnilingual', 'test-lyric-alignment'].map((candidate) => ({
+        type: 'candidate-failed',
+        candidate,
+        backend: 'webgpu',
+        ran: false,
+        problem: { kind: 'sum-check', rule: 'energy', measuredDb: expect.closeTo(0, 3) },
+      })),
+    )
+    expect(replies.slice(2).map((reply) => [reply.type, reply.backend])).toEqual([
+      ['measured', 'wasm'],
+      ['measured', 'wasm'],
+    ])
+  })
+
+  test('with WebAssembly forced, measures only WebAssembly', async () => {
+    const { separatedOn, measured, steps: fake } = steps()
+    await run(['wasm'], fake)
+    expect(separatedOn).toEqual(['wasm'])
+    expect(measured.every(({ backend }) => backend === 'wasm')).toBe(true)
+  })
+})

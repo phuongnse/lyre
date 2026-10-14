@@ -7,11 +7,15 @@ import { ActivatedRoute } from '@angular/router'
 import { TestAligner } from '../../alignment/aligner-session'
 import { loadCore } from '../../core'
 import { parseTimingFile, TimingFileErrorKind, TimingFileFault } from '../../lyre-wasm/lyre_wasm.js'
-import { Candidate, candidateFiles, candidatesFor, separatorFiles } from '../../measurement/candidates'
-import { MeasurementReply, MeasurementRequest, MeasurementStage } from '../../measurement/measurement-messages'
+import { backendsFor, Candidate, candidateFiles, candidatesFor, separatorFiles } from '../../measurement/candidates'
+import {
+  MeasurementReply,
+  MeasurementRequest,
+  MeasurementStage,
+  RunProblem,
+} from '../../measurement/measurement-messages'
 import { ModelCheckFailed } from '../../models/model-download'
 import { Backend } from '../../separation/backend'
-import { SumCheckRule } from '../../separation/separation-messages'
 import { SourceProblem } from '../../source-error'
 import { runAlignerCheck } from '../aligner-check'
 import { MeasurementRun, runMeasurement } from '../measurement-run'
@@ -49,18 +53,18 @@ type MeasurementState =
   | { status: 'timing-refused'; kind: TimingFileErrorKind; line: number }
   | { status: 'downloading' }
   | { status: 'download-failed'; id: string; checkFailed: boolean }
-  | { status: 'running'; stage: MeasurementStage; candidate?: Candidate }
+  | { status: 'running'; stage: MeasurementStage; backend?: Backend; candidate?: Candidate }
   | { status: 'done' }
-  | { status: 'sum-check-failed'; rule: SumCheckRule; measuredDb: number }
-  | { status: 'failed'; problem: SourceProblem | 'model' }
+  | { status: 'failed'; problem: SourceProblem }
 
-// What the shared stages measured, once for every candidate.
-type Shared = Omit<Extract<MeasurementReply, { type: 'separated' }>, 'type'>
+// What the separation measured on one backend, once for every candidate on it.
+type Separation = Omit<Extract<MeasurementReply, { type: 'separated' }>, 'type' | 'backend'>
 
-// What a candidate gave: its figures, or why it failed.
+// What a candidate gave on one backend: its figures, or why it failed and
+// whether it ran at all.
 type Outcome =
-  | ({ status: 'measured' } & Omit<Extract<MeasurementReply, { type: 'measured' }>, 'type' | 'candidate'>)
-  | { status: 'failed'; problem: 'timing' | 'other' }
+  | ({ status: 'measured' } & Omit<Extract<MeasurementReply, { type: 'measured' }>, 'type' | 'candidate' | 'backend'>)
+  | { status: 'failed'; ran: boolean; problem: RunProblem }
 
 // One labelled figure of a candidate's result.
 interface Row {
@@ -72,22 +76,40 @@ interface Row {
 const seconds = (ms: number) => messages.seconds((ms / 1000).toFixed(2))
 const milliseconds = (ms: number) => messages.milliseconds(ms.toFixed(0))
 
-// A measured candidate's figures. The shared stages' figures repeat in
-// every candidate's result. Each ID starts with the candidate, so it is unique.
-function rowsFor(candidate: Candidate, outcome: Outcome, shared: Shared | undefined): Row[] {
-  if (outcome.status !== 'measured' || shared === undefined) return []
-  const row = (key: string, label: string, value: string): Row => ({ id: `${candidate}-${key}`, label, value })
+// A measured candidate's figures on one backend. The extract time repeats in
+// every result, and the backend's separation figures in each of its
+// candidates' results. Each ID starts with the backend and the candidate, so
+// it is unique.
+function rowsFor(
+  candidate: Candidate,
+  backend: Backend,
+  outcome: Outcome,
+  extractMs: number | undefined,
+  separation: Separation | undefined,
+): Row[] {
+  if (outcome.status !== 'measured' || extractMs === undefined || separation === undefined) return []
+  const row = (key: string, label: string, value: string): Row => ({
+    id: `${backend}-${candidate}-${key}`,
+    label,
+    value,
+  })
   return [
-    row('backend', messages.measurementBackend, messages.backendNames[outcome.backend]),
-    row('extract', messages.measurementExtract, seconds(shared.extractMs)),
-    row('separate', messages.measurementSeparate, seconds(shared.separateMs)),
+    row('backend', messages.measurementBackend, messages.backendNames[backend]),
+    row('extract', messages.measurementExtract, seconds(extractMs)),
+    row('separate', messages.measurementSeparate, seconds(separation.separateMs)),
     row('align', messages.measurementAlign, seconds(outcome.alignMs)),
     row('load', messages.measurementModelLoad, seconds(outcome.loadMs)),
-    row('sum-check', messages.measurementSumCheck, messages.decibels(shared.sumCheckDb.toFixed(1))),
+    row('sum-check', messages.measurementSumCheck, messages.decibels(separation.sumCheckDb.toFixed(1))),
     row('median', messages.measurementOnsetMedian, milliseconds(outcome.medianMs)),
     row('p90', messages.measurementOnsetP90, milliseconds(outcome.p90Ms)),
     row('within-100', messages.measurementWithin100Ms, messages.percent((outcome.within100Ms * 100).toFixed(0))),
   ]
+}
+
+// Why a run failed, as the page says it.
+function reasonFor(problem: RunProblem): string {
+  if (problem.kind === 'sum-check') return messages.sumCheckFailed[problem.rule](problem.measuredDb.toFixed(1))
+  return messages.runProblems[problem.kind]
 }
 
 // The model check page (docs/ui-conventions.md#check-pages). It downloads,
@@ -98,10 +120,13 @@ function rowsFor(candidate: Candidate, outcome: Outcome, shared: Shared | undefi
 // #/model-check. With ?backend=wasm, the separator runs on WebAssembly even
 // when the browser has a GPU, and Force WebAssembly starts ticked for the
 // aligner. Its measurement section measures each candidate aligner against a
-// hand-written timing (docs/reference/models.md#measurement-method): it
-// separates a picked source once, then times the picked lyrics on the vocals
-// with each candidate, in a Web Worker. With ?model=test it measures the test
-// aligners after the test separator, and ?backend=wasm runs it on WebAssembly.
+// hand-written timing (docs/reference/models.md#measurement-method), in a Web
+// Worker. It decodes a picked source once. Then, on WebGPU and then on
+// one-thread WebAssembly, it separates the source and times the picked lyrics
+// on the vocals with each candidate, never switching backend. Each candidate
+// on each backend gets its own result: its figures, or why it failed. With
+// ?model=test it measures the test aligners after the test separator, and
+// ?backend=wasm measures only WebAssembly.
 @Component({
   selector: 'lyre-model-check',
   imports: [MatButton, MatCheckbox, MatProgressBar, MatRadioButton, MatRadioGroup],
@@ -238,11 +263,14 @@ function rowsFor(candidate: Candidate, outcome: Outcome, shared: Shared | undefi
     </button>
     <!-- Not role="status", so the download's status line stays the page's only one. -->
     <p aria-live="polite">{{ measurementLine() }}</p>
-    @for (result of results(); track result.candidate) {
-      <section [attr.aria-labelledby]="result.candidate + '-name'">
-        <h3 [id]="result.candidate + '-name'">{{ messages.candidateNames[result.candidate] }}</h3>
-        @if (result.problem) {
-          <p>{{ messages.candidateFailed[result.problem] }}</p>
+    @for (result of results(); track result.id) {
+      <section [attr.aria-labelledby]="result.id + '-name'">
+        <h3 [id]="result.id + '-name'">{{ result.name }}</h3>
+        @if (result.failure; as failure) {
+          @if (!failure.ran) {
+            <p>{{ messages.notRun }}</p>
+          }
+          <p>{{ failure.reason }}</p>
         } @else {
           <!-- Each value is alone in its row, so the row's text is exactly the value. -->
           <dl>
@@ -277,15 +305,18 @@ export class ModelCheckPage {
   protected readonly lyrics = signal<File | undefined>(undefined)
   protected readonly timing = signal<File | undefined>(undefined)
   protected readonly measurement = signal<MeasurementState>({ status: 'idle' })
-  protected readonly shared = signal<Shared | undefined>(undefined)
-  // Each candidate that has finished, in the order it ran.
-  protected readonly outcomes = signal<{ candidate: Candidate; outcome: Outcome }[]>([])
+  protected readonly extractMs = signal<number | undefined>(undefined)
+  // The separation's figures on each backend that separated.
+  protected readonly separations = signal<Partial<Record<Backend, Separation>>>({})
+  // Each candidate that has finished on a backend, in the order it ran.
+  protected readonly outcomes = signal<{ candidate: Candidate; backend: Backend; outcome: Outcome }[]>([])
   protected readonly measurementLine = computed(() => this.lineFor(this.measurement()))
   protected readonly results = computed(() =>
-    this.outcomes().map(({ candidate, outcome }) => ({
-      candidate,
-      rows: rowsFor(candidate, outcome, this.shared()),
-      problem: outcome.status === 'failed' ? outcome.problem : undefined,
+    this.outcomes().map(({ candidate, backend, outcome }) => ({
+      id: `${backend}-${candidate}`,
+      name: messages.candidateOnBackend(messages.candidateNames[candidate], messages.backendNames[backend]),
+      rows: rowsFor(candidate, backend, outcome, this.extractMs(), this.separations()[backend]),
+      failure: outcome.status === 'failed' ? { ran: outcome.ran, reason: reasonFor(outcome.problem) } : undefined,
     })),
   )
   // Counts the measurements started, so only the latest one shows.
@@ -379,7 +410,8 @@ export class ModelCheckPage {
     const attempt = ++this.attempts
     const current = () => attempt === this.attempts
     this.measurement.set({ status: 'reading' })
-    this.shared.set(undefined)
+    this.extractMs.set(undefined)
+    this.separations.set({})
     this.outcomes.set([])
     // The timing file is read before anything is downloaded, so a bad one fails at once.
     const handStartsMs = await this.handStarts(lyricsFile, timingFile).catch((): MeasurementState => ({
@@ -404,7 +436,7 @@ export class ModelCheckPage {
       handStartsMs,
       ...loaded,
       baseUri: document.baseURI,
-      forced: this.forced,
+      backends: backendsFor(this.forced),
     }
     this.run = runMeasurement(request, (reply) => {
       if (current()) this.show(reply)
@@ -471,28 +503,33 @@ export class ModelCheckPage {
   private show(reply: MeasurementReply): void {
     switch (reply.type) {
       case 'stage':
-        this.measurement.set({ status: 'running', stage: reply.stage, candidate: reply.candidate })
+        this.measurement.set({
+          status: 'running',
+          stage: reply.stage,
+          backend: reply.backend,
+          candidate: reply.candidate,
+        })
+        break
+      case 'extracted':
+        this.extractMs.set(reply.extractMs)
         break
       case 'separated': {
-        const { extractMs, separateMs, sumCheckDb } = reply
-        this.shared.set({ extractMs, separateMs, sumCheckDb })
+        const { backend, separateMs, sumCheckDb } = reply
+        this.separations.update((separations) => ({ ...separations, [backend]: { separateMs, sumCheckDb } }))
         break
       }
       case 'measured': {
         const { candidate, backend, loadMs, alignMs, medianMs, p90Ms, within100Ms } = reply
-        const outcome: Outcome = { status: 'measured', backend, loadMs, alignMs, medianMs, p90Ms, within100Ms }
-        this.outcomes.update((outcomes) => [...outcomes, { candidate, outcome }])
+        const outcome: Outcome = { status: 'measured', loadMs, alignMs, medianMs, p90Ms, within100Ms }
+        this.outcomes.update((outcomes) => [...outcomes, { candidate, backend, outcome }])
         break
       }
-      case 'candidate-failed':
-        this.outcomes.update((outcomes) => [
-          ...outcomes,
-          { candidate: reply.candidate, outcome: { status: 'failed', problem: reply.problem } },
-        ])
+      case 'candidate-failed': {
+        const { candidate, backend, ran, problem } = reply
+        const outcome: Outcome = { status: 'failed', ran, problem }
+        this.outcomes.update((outcomes) => [...outcomes, { candidate, backend, outcome }])
         break
-      case 'sum-check-failed':
-        this.measurement.set({ status: 'sum-check-failed', rule: reply.rule, measuredDb: reply.measuredDb })
-        break
+      }
       case 'failed':
         this.measurement.set({ status: 'failed', problem: reply.problem })
         break
@@ -520,16 +557,15 @@ export class ModelCheckPage {
         return messages.measurementDownloading
       case 'download-failed':
         return state.checkFailed ? messages.modelCheckFailed(state.id) : messages.modelDownloadFailed(state.id)
-      case 'running':
+      case 'running': {
         if (state.stage === 'extract') return messages.measurementExtracting
-        if (state.stage === 'separate') return messages.measurementSeparating
-        return messages.measurementAligning(state.candidate ? messages.candidateNames[state.candidate] : '')
+        const backend = state.backend ? messages.backendNames[state.backend] : ''
+        if (state.stage === 'separate') return messages.measurementSeparating(backend)
+        return messages.measurementAligning(state.candidate ? messages.candidateNames[state.candidate] : '', backend)
+      }
       case 'done':
         return messages.measurementDone
-      case 'sum-check-failed':
-        return messages.sumCheckFailed[state.rule](state.measuredDb.toFixed(1))
       case 'failed':
-        if (state.problem === 'model') return messages.separatorNotLoaded
         return state.problem === 'no-audio' ? messages.sourceNoAudio : messages.sourceUnreadable
     }
   }

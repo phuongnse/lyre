@@ -232,7 +232,9 @@ reference doc and reviewed before M3 implements them.
 - The web client runs a model with ONNX Runtime Web (MIT), at a pinned
   version, in a Web Worker. It uses WebGPU when the browser gives it a GPU
   adapter and the session opens on it, and otherwise WebAssembly on one
-  thread. The worker gets only model bytes that already passed their check.
+  thread. The model check page's measurement never falls back: it opens each
+  session on the backend it measures, or reports why it could not. The
+  worker gets only model bytes that already passed their check.
   ONNX Runtime's WebAssembly file is served from the site itself, at `ort/`,
   never from a CDN.
 - On the web, stage 3, separation, runs in a Web Worker, for now from the
@@ -244,7 +246,8 @@ reference doc and reviewed before M3 implements them.
   [test separator](reference/model-tool.md#make_test_separatorpy) when its
   URL asks for it. The vocals and the karaoke track are not kept yet: only
   their lengths reach the page. The model check page's measurement runs the
-  same separation, then stage 4 on the vocals, in one Web Worker.
+  same separation once per backend, then stage 4 on that backend's vocals,
+  in one Web Worker.
 - On the web, stage 4, alignment, is a loop in the web client that takes the
   model runner as a function, so it is tested without ONNX Runtime. The core
   plans the windows over 16 kHz mono audio, prepares each window's input for
@@ -255,8 +258,8 @@ reference doc and reviewed before M3 implements them.
   page runs it in a Web Worker with a
   [test aligner](reference/model-tool.md#make_test_alignerspy) on test audio.
   Its measurement runs it on the separated vocals instead, mixed to mono and
-  resampled to 16 kHz once, with each candidate aligner in turn in the same
-  worker as the separation.
+  resampled to 16 kHz once per backend, with each candidate aligner in turn
+  on the backend that separated them, in the same worker as the separation.
   The model's input and output names come from the core's rules for each
   aligner. The aligner opens its ONNX Runtime session through the same helper
   as the separator.

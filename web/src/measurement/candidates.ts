@@ -1,3 +1,5 @@
+import { Backend } from '../separation/backend'
+
 // The aligners the measurement compares (docs/reference/models.md#measurement-method),
 // and the test aligners that stand in for them with ?model=test.
 export type Candidate =
@@ -44,4 +46,10 @@ export function candidatesFor(test: boolean): readonly Candidate[] {
 export function separatorFiles(test: boolean): { graph: string; weights: string } {
   const prefix = test ? 'test-htdemucs' : 'htdemucs'
   return { graph: `${prefix}-graph`, weights: `${prefix}-weights` }
+}
+
+// The backends a run measures, in order: WebGPU, then one-thread WebAssembly.
+// A forced WebAssembly gives only WebAssembly.
+export function backendsFor(forced: Backend | undefined): Backend[] {
+  return forced === 'wasm' ? ['wasm'] : ['webgpu', 'wasm']
 }

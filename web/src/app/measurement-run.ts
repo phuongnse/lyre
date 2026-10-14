@@ -19,8 +19,8 @@ export interface MeasurementRun {
 
 // Measures the candidates of `request` in a Web Worker. Only the checked
 // bytes the page loaded reach the worker. `onReply` gets every reply in
-// order. `done` settles once the run ends, with 'done', a failed sum check or
-// a failure, and the worker then ends. Nothing is answered after a stop.
+// order. `done` settles once the run ends, with 'done' or a failure, and the
+// worker then ends. Nothing is answered after a stop.
 export function runMeasurement(
   request: MeasurementRequest,
   onReply: (reply: MeasurementReply) => void,
@@ -37,7 +37,7 @@ export function runMeasurement(
   })
   worker.onmessage = ({ data }: MessageEvent<MeasurementReply>) => {
     onReply(data)
-    if (data.type === 'done' || data.type === 'failed' || data.type === 'sum-check-failed') finish()
+    if (data.type === 'done' || data.type === 'failed') finish()
   }
   worker.onerror = () => {
     onReply({ type: 'failed', problem: 'unreadable' })
