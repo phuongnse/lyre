@@ -23,7 +23,6 @@ const timesMs = Uint32Array.of(100, 400, 500, 900)
 const figures = {
   loadMs: 1,
   alignMs: 2,
-  onset: { medianMs: 3, p90Ms: 4, within100Ms: 0.5 },
   memory: alignMemory,
   timesMs,
 }
@@ -208,23 +207,6 @@ describe('a measurement on each backend', () => {
       const at = replies.findIndex((reply) => reply.type === 'separated' && reply.backend === backend)
       expect(replies[at + 1]).toEqual({ type: 'tracks', backend, ...tracksOf(backend) })
     }
-  })
-
-  test('gives a measured reply with no onset error when the step measured none, as without a timing file', async () => {
-    const { steps: fake } = steps({}, { loadMs: 1, alignMs: 2, memory: alignMemory, timesMs })
-    const measured = ends(await run(['wasm'], fake))
-    expect(measured).toEqual(
-      ['test-omnilingual', 'test-lyric-alignment'].map((candidate) => ({
-        type: 'measured',
-        candidate,
-        backend: 'wasm',
-        loadMs: 1,
-        alignMs: 2,
-        memory: alignMemory,
-        timesMs,
-      })),
-    )
-    for (const reply of measured) expect(reply).not.toHaveProperty('onset')
   })
 
   test('with WebAssembly forced, measures only WebAssembly', async () => {

@@ -9,7 +9,6 @@ use lyre_core::highlight;
 use lyre_core::lyrics::Lyrics;
 use lyre_core::lyrics_rows;
 use lyre_core::model;
-use lyre_core::onset_error;
 use lyre_core::separation::{self, SeparationError, SumCheckFailure};
 use lyre_core::song_file::{
     self, Chunk, ChunkType, Header, Index, IndexEntry, Segment, Song, SongDetails, SongFileError,
@@ -839,67 +838,6 @@ impl SongWriter {
             TrackKind::Original => &mut self.original,
         }
     }
-}
-
-/// The onset error of every syllable, in lyric order, and its statistics.
-/// The definitions are in the core's `onset_error` module.
-#[wasm_bindgen]
-#[derive(Debug, Clone, PartialEq)]
-pub struct OnsetErrors {
-    #[wasm_bindgen(getter_with_clone, js_name = errorsMs)]
-    pub errors_ms: Vec<u32>,
-    #[wasm_bindgen(js_name = medianMs)]
-    pub median_ms: f64,
-    #[wasm_bindgen(js_name = p90Ms)]
-    pub p90_ms: f64,
-    /// The share of errors at or under 100 ms, from 0 to 1.
-    #[wasm_bindgen(js_name = within100Ms)]
-    pub within_100_ms: f64,
-}
-
-/// Why two timings were not measured: the syllable counts given. The
-/// counts differ, or both are 0 or over the limit of a song file.
-#[wasm_bindgen]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MeasureFault {
-    hand_count: u32,
-    aligned_count: u32,
-}
-
-#[wasm_bindgen]
-impl MeasureFault {
-    #[wasm_bindgen(getter, js_name = handCount)]
-    pub fn hand_count(&self) -> u32 {
-        self.hand_count
-    }
-
-    #[wasm_bindgen(getter, js_name = alignedCount)]
-    pub fn aligned_count(&self) -> u32 {
-        self.aligned_count
-    }
-}
-
-/// Measures the onset error of `aligned_starts_ms` against
-/// `hand_starts_ms`, the starts written by hand. Both give one start per
-/// syllable, in milliseconds and lyric order.
-#[wasm_bindgen(js_name = measureOnsetError)]
-pub fn measure_onset_error(
-    hand_starts_ms: &[u32],
-    aligned_starts_ms: &[u32],
-) -> Result<OnsetErrors, MeasureFault> {
-    let measured = onset_error::measure(hand_starts_ms, aligned_starts_ms).map_err(|_| {
-        // WebAssembly memory holds under 4 GiB, so both counts fit.
-        MeasureFault {
-            hand_count: u32::try_from(hand_starts_ms.len()).unwrap_or(u32::MAX),
-            aligned_count: u32::try_from(aligned_starts_ms.len()).unwrap_or(u32::MAX),
-        }
-    })?;
-    Ok(OnsetErrors {
-        errors_ms: measured.errors_ms,
-        median_ms: measured.median_ms,
-        p90_ms: measured.p90_ms,
-        within_100_ms: measured.within_100_ms,
-    })
 }
 
 /// Reads a song file the way the format's reading model says: the header,
@@ -1833,29 +1771,6 @@ mod tests {
         let fault = parse_timing_file(b"0 100 a\n", b"a\xFF").expect_err("refused");
         assert_eq!(fault.line(), None);
         assert_eq!(fault.kind(), TimingFileErrorKind::Lyrics);
-    }
-
-    #[test]
-    fn measures_the_known_answer_onset_error() {
-        let measured =
-            measure_onset_error(&[0, 1000, 2000, 3000, 4000], &[50, 1150, 1900, 3300, 4000])
-                .expect("it measures");
-        assert_eq!(
-            measured,
-            OnsetErrors {
-                errors_ms: vec![50, 150, 100, 300, 0],
-                median_ms: 100.0,
-                p90_ms: 240.0,
-                within_100_ms: 0.6,
-            }
-        );
-    }
-
-    #[test]
-    fn refuses_to_measure_timings_with_different_syllable_counts() {
-        let fault = measure_onset_error(&[0, 100], &[0, 100, 200]).expect_err("refused");
-        assert_eq!(fault.hand_count(), 2);
-        assert_eq!(fault.aligned_count(), 3);
     }
 
     #[test]

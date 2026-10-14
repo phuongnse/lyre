@@ -116,16 +116,11 @@ Done when all ten were merged and the owner accepted the Player.
   It runs the D15 separator and both candidate aligners, Omnilingual and
   `lyric-alignment`, on WebGPU and on the one-thread WebAssembly fallback
   (see [knowledge](domain/knowledge.md#running-on-the-users-device)). It
-  reports time, memory as the browser reports it and syllable onset error
-  only when a hand-written timing file is given. The
+  reports time and memory as the browser reports it. The
   [models reference](reference/models.md#measurement-method) sets the method.
   Its first part is the measurement section of the model check page, at
   `#/model-check`. Each run measures WebGPU, then one-thread WebAssembly,
   without the download time yet.
-- The core computes the [onset error](domain/concepts.md#processing) of each
-  syllable against a timing file written by hand. It also gives the median,
-  the 90th percentile and the share of syllables within 100 ms, 100 ms
-  included. Both statistics interpolate linearly between ranks.
 - The owner chooses the aligner by watching each candidate's timing in the
   Player
   ([D26](decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).

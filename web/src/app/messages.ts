@@ -1,5 +1,4 @@
 import type { MediaCodec } from 'mediabunny'
-import type { TimingFileErrorKind } from '../lyre-wasm/lyre_wasm.js'
 import type { RunProblem } from '../measurement/measurement-messages'
 
 // Every user-visible string lives here (docs/ui-conventions.md#strings).
@@ -224,10 +223,8 @@ export const messages = {
   timingRefused: 'The song file timing check refused the timing.',
   alignerFailed: 'The test aligner could not run.',
   measurementAbout:
-    "Measures each candidate aligner on WebGPU and then on WebAssembly. On each backend it separates a source's audio once, then times the lyrics on the vocals with each aligner, in a Web Worker. A hand-written timing file is optional: only the onset error needs it. The source, the lyrics and the timing file are not sent anywhere.",
+    "Measures each candidate aligner on WebGPU and then on WebAssembly. On each backend it separates a source's audio once, then times the lyrics on the vocals with each aligner, in a Web Worker. The source and the lyrics are not sent anywhere.",
   measureAligners: 'Measure the aligners',
-  measurementReading: 'Reading the timing file…',
-  measurementFilesUnreadable: 'The lyrics file or the timing file could not be read.',
   measurementDownloading: 'Downloading the models…',
   measurementExtracting: 'Extracting the audio…',
   measurementSeparating: (backend: string) => `Separating the vocals on ${backend}…`,
@@ -267,9 +264,6 @@ export const messages = {
   measurementAlign: 'Align',
   measurementModelLoad: 'Model load',
   measurementSumCheck: 'Sum check',
-  measurementOnsetMedian: 'Onset error median',
-  measurementOnsetP90: 'Onset error 90th percentile',
-  measurementWithin100Ms: 'Within 100 ms',
   measurementExtractWasmMemory: 'Extract audio WebAssembly memory',
   measurementExtractHeap: 'Extract audio JavaScript heap',
   measurementSeparateWasmMemory: 'Separate WebAssembly memory',
@@ -286,21 +280,7 @@ export const messages = {
   webGpuAvailable: 'Available',
   webGpuNotAvailable: 'Not available',
   notReported: 'not reported',
-  notMeasured: 'not measured',
   decibels: (value: string) => `${value} dB`,
-  milliseconds: (value: string) => `${value} ms`,
-  percent: (value: string) => `${value}%`,
-  // Keyed by TimingFileErrorKind. Each rule has its own sentence naming the
-  // line, so each translates whole. Invalid lyrics get songLyricsInvalid.
-  measurementTimingFile: {
-    Malformed: (line: number) => `Line ${line} of the timing file is not a start in ms, an end in ms and a syllable.`,
-    UnknownSyllable: (line: number) =>
-      `Line ${line} of the timing file names a syllable that is not the next one in the lyrics.`,
-    MissingSyllable: (line: number) => `The timing file misses a syllable of the lyrics at line ${line}.`,
-    Backwards: (line: number) =>
-      `Line ${line} of the timing file ends before it starts, or starts before the line before it.`,
-    Overlap: (line: number) => `Line ${line} of the timing file overlaps the line before it.`,
-  } satisfies Record<Exclude<keyof typeof TimingFileErrorKind, 'Lyrics'>, (line: number) => string>,
   // A candidate that did not run, because the separation on its backend failed.
   notRun: 'Not run.',
   // Keyed by RunProblem's kind. A failed sum check gets sumCheckFailed.

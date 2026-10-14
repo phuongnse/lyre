@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, FileChooser, Locator, Page, test } from "@playwright/test";
 import { fixture, openSongFile } from "./song-file";
@@ -23,15 +22,12 @@ const adapterFound = (page: Page) =>
   });
 
 // The 2 s tone, which scripts/e2e.sh makes with tests/fixtures/source/make.sh,
-// with the fixture song's lyrics and hand-written timing.
+// with the fixture song's lyrics.
 const source = fileURLToPath(
   new URL("../../../artifacts/e2e/sources/song.webm", import.meta.url),
 );
 const lyrics = fileURLToPath(
   new URL("../../fixtures/song/lyrics.txt", import.meta.url),
-);
-const timing = fileURLToPath(
-  new URL("../../fixtures/song/timing.txt", import.meta.url),
 );
 
 // The test separator and the test aligners, on WebGPU and then on WebAssembly.
@@ -39,6 +35,9 @@ const PAGE = "/#/model-check?model=test";
 // The same, on WebAssembly only.
 const WASM_PAGE = "/#/model-check?model=test&backend=wasm";
 const CANDIDATES = ["Test Omnilingual", "Test lyric-alignment"];
+// The labels of the rows the measurement no longer has. The pattern is the
+// same for the result's rows and for the lines of the copied text.
+const REMOVED_ROWS = /^(Onset\s+error|Within 100 ms)/;
 
 // Records every Content Security Policy or Trusted Types violation, console
 // error and page error, from before the page loads.
@@ -74,24 +73,20 @@ async function choose(
   await (await chooser).setFiles(files);
 }
 
-// Picks the source, `lyricsFile` and `timingFile`, if given, then starts the
-// measurement.
+// Picks the source and `lyricsFile`, then starts the measurement.
 async function measure(
   page: Page,
-  timingFile?: Parameters<FileChooser["setFiles"]>[0],
   lyricsFile: Parameters<FileChooser["setFiles"]>[0] = lyrics,
 ): Promise<void> {
   await choose(page, "Choose a source", source);
   await choose(page, "Choose the lyrics", lyricsFile);
-  if (timingFile !== undefined)
-    await choose(page, "Choose a timing file", timingFile);
   await page.getByRole("button", { name: "Measure the aligners" }).click();
 }
 
 const labelled = (scope: Page | Locator, name: string) =>
   scope.getByLabel(name, { exact: true });
 
-test("measuring the test aligners says WebGPU is not available, shows each one's stage times, sum check and onset error on WebAssembly, and sends nothing to another origin", async ({
+test("measuring the test aligners says WebGPU is not available, shows each one's stage times, sum check and none of the removed accuracy rows on WebAssembly, and sends nothing to another origin", async ({
   page,
 }) => {
   const problems = await watch(page);
@@ -101,7 +96,7 @@ test("measuring the test aligners says WebGPU is not available, shows each one's
   const origins: string[] = [];
   page.on("request", (request) => origins.push(new URL(request.url()).origin));
 
-  await measure(page, timing);
+  await measure(page);
 
   await expect(page.getByText("The measurement is done.")).toBeVisible({
     timeout: RUN_TIMEOUT,
@@ -120,11 +115,7 @@ test("measuring the test aligners says WebGPU is not available, shows each one's
       await expect(labelled(result, row)).toHaveText(/^\d+\.\d{2} s$/);
     }
     await expect(labelled(result, "Sum check")).toHaveText(/^-?\d+\.\d dB$/);
-    await expect(labelled(result, "Onset error median")).toHaveText(/^\d+ ms$/);
-    await expect(labelled(result, "Onset error 90th percentile")).toHaveText(
-      /^\d+ ms$/,
-    );
-    await expect(labelled(result, "Within 100 ms")).toHaveText(/^\d+%$/);
+    await expect(result.getByLabel(REMOVED_ROWS)).toHaveCount(0);
   }
   // The test models came from the site's own origin too.
   expect(origins.length).toBeGreaterThan(0);
@@ -133,7 +124,7 @@ test("measuring the test aligners says WebGPU is not available, shows each one's
   expect(problems).toEqual([]);
 });
 
-test("measuring without a timing file shows each WebAssembly result's figures with onset error not measured, and copies it the same", async ({
+test("measuring shows each WebAssembly result's figures without the removed accuracy rows, and the copied text has none", async ({
   page,
   context,
 }) => {
@@ -145,11 +136,6 @@ test("measuring without a timing file shows each WebAssembly result's figures wi
   await expect(page.getByText("The measurement is done.")).toBeVisible({
     timeout: RUN_TIMEOUT,
   });
-  const onsetRows = [
-    "Onset error median",
-    "Onset error 90th percentile",
-    "Within 100 ms",
-  ];
   for (const name of CANDIDATES) {
     const result = labelled(page, `${name} on WebAssembly`);
     await expect(result).toBeVisible();
@@ -157,9 +143,7 @@ test("measuring without a timing file shows each WebAssembly result's figures wi
       await expect(labelled(result, row)).toHaveText(/^\d+\.\d{2} s$/);
     }
     await expect(labelled(result, "Sum check")).toHaveText(/^-?\d+\.\d dB$/);
-    for (const row of onsetRows) {
-      await expect(labelled(result, row)).toHaveText("not measured");
-    }
+    await expect(result.getByLabel(REMOVED_ROWS)).toHaveCount(0);
   }
 
   await page.getByRole("button", { name: "Copy results" }).click();
@@ -171,15 +155,18 @@ test("measuring without a timing file shows each WebAssembly result's figures wi
     expect(start).toBeGreaterThanOrEqual(0);
     const end = copied.indexOf("\n\n", start);
     const block = copied.slice(start, end === -1 ? undefined : end);
-    for (const row of onsetRows)
-      expect(block).toContain(`${row}: not measured`);
+    expect(block).not.toMatch(new RegExp(REMOVED_ROWS, "m"));
   }
+  expect(copied).not.toMatch(new RegExp(REMOVED_ROWS, "m"));
 });
 
-test("Measure the aligners stays off until a source and the lyrics are picked, and needs no timing file", async ({
+test("the measurement section has no timing file button, and Measure the aligners stays off until a source and the lyrics are picked", async ({
   page,
 }) => {
   await page.goto(WASM_PAGE);
+  await expect(
+    page.getByRole("button", { name: "Choose a timing file" }),
+  ).toHaveCount(0);
   const button = page.getByRole("button", { name: "Measure the aligners" });
 
   await expect(button).toBeDisabled();
@@ -244,7 +231,7 @@ test("each stage of a WebAssembly run shows the WebAssembly memory it used, and 
 }) => {
   await page.goto(WASM_PAGE);
 
-  await measure(page, timing);
+  await measure(page);
 
   await expect(page.getByText("The measurement is done.")).toBeVisible({
     timeout: RUN_TIMEOUT,
@@ -270,7 +257,7 @@ test("after a WebAssembly measurement, the vocals and karaoke track players each
   const urls: string[] = [];
   page.on("request", (request) => urls.push(request.url()));
 
-  await measure(page, timing);
+  await measure(page);
 
   await expect(page.getByText("The measurement is done.")).toBeVisible({
     timeout: RUN_TIMEOUT,
@@ -299,7 +286,7 @@ test("Copy results puts the Device section and every result on the clipboard as 
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto(WASM_PAGE);
 
-  await measure(page, timing);
+  await measure(page);
 
   await expect(page.getByText("The measurement is done.")).toBeVisible({
     timeout: RUN_TIMEOUT,
@@ -343,34 +330,6 @@ test("Copy results says the browser refused when the clipboard rejects the write
     page.getByText("The browser refused to copy the results."),
   ).toBeVisible();
   await expect(page.getByText("The results are copied.")).toHaveCount(0);
-});
-
-test("a timing file with an overlap gets the message naming its line, and no result", async ({
-  page,
-}) => {
-  await page.goto(WASM_PAGE);
-  // Line 4, nhẹ, now starts at 2500 ms, before line 3, rơi, ends at 2600 ms.
-  // The comment on line 1 counts as a line.
-  const text = readFileSync(timing, "utf8").replace(
-    "2600 3200 nhẹ",
-    "2500 3200 nhẹ",
-  );
-  expect(text).toContain("2500 3200 nhẹ");
-
-  await measure(page, {
-    name: "timing.txt",
-    mimeType: "text/plain",
-    buffer: Buffer.from(text),
-  });
-
-  await expect(
-    page.getByText("Line 4 of the timing file overlaps the line before it."),
-  ).toBeVisible();
-  for (const name of CANDIDATES)
-    await expect(labelled(page, `${name} on WebAssembly`)).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Measure the aligners" }),
-  ).toBeEnabled();
 });
 
 test("the main page has no link to the model check page, and the page's code loads only when it opens", async ({
@@ -502,7 +461,7 @@ test("after a measurement with invalid lyrics, each result says the alignment wa
 }) => {
   await page.goto(WASM_PAGE);
 
-  await measure(page, undefined, {
+  await measure(page, {
     name: "lyrics.txt",
     mimeType: "text/plain",
     // Not UTF-8, so the core refuses the lyrics.

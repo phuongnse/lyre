@@ -214,9 +214,7 @@ text, for recording in these docs.
 
 ### Inputs
 
-- **A source** and its **lyrics**, plus, if the owner has one, a **timing
-  file** written by hand in the
-  [lyre-cli timing file format](lyre-cli.md#timing-file).
+- **A source** and its **lyrics**.
 - The owner picks them. They stay on the device: the page never uploads
   them, and they are never committed.
 - The page measures a few Vietnamese songs
@@ -249,21 +247,6 @@ The page is not cross-origin isolated
 ([knowledge](../domain/knowledge.md#running-on-the-users-device)), so the
 browser does not report total or GPU memory. The owner reads the operating
 system's figure by hand when it is needed.
-
-### Onset error
-
-- It is measured only when the owner gives a timing file. It is reported for
-  information and does not decide the choice
-  ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
-- For each syllable, the [onset error](../domain/concepts.md#processing) is
-  the absolute difference between the aligned start and the hand-written
-  start.
-- The page reports the median, the 90th percentile and the share of
-  syllables within 100 ms, 100 ms included.
-- Without a timing file, the page and its copied results show "not measured"
-  for all three.
-- Both statistics interpolate linearly between ranks, as the
-  [roadmap](../roadmap.md#early-checks-on-real-devices) says.
 
 ### Separator target
 
@@ -301,4 +284,4 @@ on each [target device](../decisions.md#d25-target-devices-for-making-songs--pro
   result through **Play with this timing** on the model check page
   ([D26](../decisions.md#d26-the-owner-chooses-the-aligner-by-watching-its-timing-in-the-player--agreed)).
 - **One-thread WebAssembly** results are reported for information. They do
-  not decide the choice. Onset error is also reported for information only.
+  not decide the choice.
