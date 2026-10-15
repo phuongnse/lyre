@@ -154,7 +154,7 @@ The byte layout, limits and media codecs are specified in
 The detailed scheme, its threat model and its test vectors are written in a
 reference doc and reviewed before M3 implements them.
 
-## Processing *(planned for M2)*
+## Processing
 
 - A task runs the stages in [knowledge](domain/knowledge.md#processing) one
   after another, on one song at a time. Tasks run only in the web client
@@ -277,8 +277,8 @@ reference doc and reviewed before M3 implements them.
 - On the web, the main page's
   [Make a song](ui-conventions.md#making-a-song) section runs a task's real
   stages, from reading the source to writing the song file, with alignment in
-  place of the hand-written timing file. Keeping and opening the finished song
-  is not built yet. Each stage also runs from its check page.
+  place of the hand-written timing file. The finished song opens in the Player
+  and is kept in the library. Each stage also runs from its check page.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is

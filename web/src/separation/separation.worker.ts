@@ -9,7 +9,7 @@ import { openSeparator, separatorRunner } from './separator-session'
 class ModelError extends Error {}
 
 // Separates a source's audio into vocals and a karaoke track, off the page's
-// main thread: stage 3 of processing (docs/architecture.md#processing-planned-for-m2).
+// main thread: stage 3 of processing (docs/architecture.md#processing).
 // It answers with progress and lengths, never with the tracks or the error's text.
 addEventListener('message', (event: MessageEvent<SeparationRequest>) => {
   if (event.data.type !== 'run') return

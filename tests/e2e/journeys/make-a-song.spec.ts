@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, Page, test } from '@playwright/test'
 import { Choice } from './song-file'
@@ -306,6 +307,7 @@ test('lyrics the aligner cannot time show one message, keep no song and leave th
   await expect(page.getByRole('alert')).toHaveCount(1)
   await expect.poll(() => workingAreas(page)).toEqual([])
   await expect(page.getByRole('list', { name: 'Library' }).getByRole('listitem')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Download the song file' })).toHaveCount(0)
   // The picked files, the details and the role stay as they were.
   await expect(page.getByText('Source: song.webm')).toBeVisible()
   await expect(page.getByText('Lyrics: lyrics.txt')).toBeVisible()
@@ -340,5 +342,99 @@ test('while another tab holds the task lock, Make the song says so and starts no
   expect(await workingAreas(page)).toEqual([])
   expect(requests).toEqual([])
   await expect(makeTheSong(page)).toBeEnabled()
+  expect(problems).toEqual([])
+})
+
+// The fixture's syllables, which the test aligner times on the source.
+const SYLLABLES = ['Mưa', 'rơi', 'nhẹ', 'Em', 'về', 'bên', 'sông', 'Trăng', 'lên']
+
+const songSeconds = (page: Page) =>
+  page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime)
+
+// Counts the seeks of the Player's video, so a journey can show that none happened.
+async function countSeeks(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const video = document.querySelector('video') as HTMLVideoElement
+    const counted = window as unknown as { lyreSeeks: number }
+    counted.lyreSeeks = 0
+    video.addEventListener('seeking', () => counted.lyreSeeks++)
+  })
+}
+const seeks = (page: Page) => page.evaluate(() => (window as unknown as { lyreSeeks: number }).lyreSeeks)
+
+// Whether any of the fixture's syllables is the current one.
+async function syllableCurrent(page: Page): Promise<boolean> {
+  const region = page.getByRole('region', { name: 'Lyrics' })
+  for (const text of SYLLABLES) {
+    for (const syllable of await region.getByText(text, { exact: true }).all()) {
+      if ((await syllable.getAttribute('aria-current')) === 'true') return true
+    }
+  }
+  return false
+}
+
+// The bytes of the first chunk of `type`. The header's entry_count is the u32
+// at byte 12, and each 24-byte entry from byte 32 holds the u16 type, the u32
+// length at +4 and the u64 offset at +8.
+function chunkBytes(file: Buffer, type: number): Buffer | undefined {
+  for (let index = 0; index < file.readUInt32LE(12); index++) {
+    const entry = 32 + index * 24
+    if (file.readUInt16LE(entry) !== type) continue
+    const length = file.readUInt32LE(entry + 4)
+    const offset = Number(file.readBigUInt64LE(entry + 8))
+    return file.subarray(offset, offset + length)
+  }
+  return undefined
+}
+
+const LYRICS_CHUNK = 3
+
+test('a finished song is listed in the library with the entered details, plays with its lyrics, keeps the position on a switch and downloads as song.lyre with the supplied lyrics', async ({
+  page,
+}) => {
+  test.setTimeout(180_000)
+  const problems = watchProblems(page)
+  await openSection(page, TEST_PAGE)
+  await pick(page, 'Choose a source', source('song.webm'))
+  await expect(page.getByText('Source: song.webm')).toBeVisible()
+  await pick(page, 'Choose the lyrics', fixtureLyrics)
+  await expect(page.getByText('Lyrics: lyrics.txt')).toBeVisible()
+  await field(page, 'Title').fill('Bài hát mới')
+  await field(page, 'Artist').fill('Nguyễn Thị Hà')
+  await field(page, 'Composer').fill('Trần Văn Lê')
+  await page.getByRole('radio', { name: 'Female', exact: true }).click()
+  await makeTheSong(page).click()
+
+  await expect(page.getByLabel('Song video')).toBeVisible({ timeout: 150_000 })
+  const library = page.getByRole('list', { name: 'Library' })
+  await expect(library.getByRole('listitem')).toHaveCount(1)
+  await expect(library.getByRole('button', { name: 'Bài hát mới', exact: true })).toBeVisible()
+  await expect(library).toContainText('Artist: Nguyễn Thị Hà')
+  await expect(library).toContainText('Composer: Trần Văn Lê')
+
+  await countSeeks(page)
+  await page.getByRole('button', { name: 'Play', exact: true }).click()
+  const poll = { intervals: [50] }
+  await expect.poll(() => syllableCurrent(page), poll).toBe(true)
+  await expect.poll(() => songSeconds(page), poll).toBeGreaterThan(0.3)
+  await page.getByRole('button', { name: 'Pause', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
+  const paused = await songSeconds(page)
+  const seeksBefore = await seeks(page)
+  await page.getByRole('radio', { name: 'Original' }).click()
+  await expect(page.getByRole('radio', { name: 'Original' })).toBeChecked()
+  expect(await songSeconds(page)).toBe(paused)
+  expect(await seeks(page)).toBe(seeksBefore)
+
+  const link = page.getByRole('link', { name: 'Download the song file' })
+  await expect(link).toBeVisible()
+  const download = page.waitForEvent('download')
+  await link.click()
+  const done = await download
+  expect(done.suggestedFilename()).toBe('song.lyre')
+  const bytes = readFileSync(await done.path())
+  expect(chunkBytes(bytes, LYRICS_CHUNK)?.equals(readFileSync(fixtureLyrics))).toBe(true)
+
+  await expect(page.getByRole('alert')).toHaveCount(0)
   expect(problems).toEqual([])
 })

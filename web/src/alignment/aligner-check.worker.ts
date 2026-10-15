@@ -7,7 +7,7 @@ import { testAudio } from './test-audio'
 
 // Times the syllables of a lyrics file on the test audio with the lyric-alignment test aligner,
 // off the page's main thread: stage 4 of processing
-// (docs/architecture.md#processing-planned-for-m2). It answers with progress
+// (docs/architecture.md#processing). It answers with progress
 // and counts, never with the lyric text or the error's text.
 addEventListener('message', (event: MessageEvent<AlignerCheckRequest>) => {
   if (event.data.type !== 'run') return
