@@ -248,10 +248,15 @@ describe('a song task', () => {
   )
 
   test(
-    'fails at alignment when a syllable has no character the vocabulary knows, and removes the working area',
+    'fails at alignment when a syllable has no character the vocabulary knows, names its place and removes the working area',
     async () => {
       const { reports, areas } = await run({ lyrics: new TextEncoder().encode('Mưa rơi ♪ nhẹ\n') })
-      expect(reports.at(-1)).toEqual({ type: 'failed', stage: 'align', reason: 'alignment-failed' })
+      expect(reports.at(-1)).toEqual({
+        type: 'failed',
+        stage: 'align',
+        reason: 'alignment-failed',
+        unknown: { lyricLine: 0, syllable: 2 },
+      })
       expect(reports.some((report) => report.type === 'done')).toBe(false)
       expect(areas.areas.has(taskId)).toBe(false)
     },

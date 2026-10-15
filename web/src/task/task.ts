@@ -18,9 +18,19 @@ export type TaskFailure =
   | 'song-refused'
   | 'unexpected'
 
-// What a stage throws to stop the task with a reason the page can show.
+// The place of a syllable the aligner has no sound for. Both count from 0.
+export interface UnknownSyllable {
+  lyricLine: number
+  syllable: number
+}
+
+// What a stage throws to stop the task with a reason the page can show. It
+// carries the place of the syllable that could not be timed, never its text.
 export class StageFailure extends Error {
-  constructor(readonly reason: TaskFailure) {
+  constructor(
+    readonly reason: TaskFailure,
+    readonly unknown?: UnknownSyllable,
+  ) {
     super(reason)
   }
 }
@@ -51,7 +61,9 @@ export type ProgressReport = {
 
 // The done report carries the song file only when a stage handed one over.
 export type TaskReport =
-  ProgressReport | { type: 'done'; song?: Uint8Array } | { type: 'failed'; stage: string; reason: TaskFailure }
+  | ProgressReport
+  | { type: 'done'; song?: Uint8Array }
+  | { type: 'failed'; stage: string; reason: TaskFailure; unknown?: UnknownSyllable }
 
 // What the page sends to start a task. Without `song`, the task runs the test
 // stages, as the task check page does. With `song`, it makes a song file from
@@ -114,7 +126,8 @@ export async function runTask(o: {
   } catch (error) {
     const reason = error instanceof StageFailure ? error.reason : 'unexpected'
     await o.areas.remove(o.taskId).catch(() => {})
-    o.report({ type: 'failed', stage, reason })
+    const unknown = error instanceof StageFailure ? error.unknown : undefined
+    o.report(unknown === undefined ? { type: 'failed', stage, reason } : { type: 'failed', stage, reason, unknown })
     return
   }
   await o.areas.remove(o.taskId).catch(() => {})

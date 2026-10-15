@@ -3,7 +3,7 @@ import { WORKING_AREAS } from '../app/working-areas'
 import { Backend } from '../separation/backend'
 import { trustedScriptUrl } from '../worker-url'
 import { SongTaskInput } from './song-task'
-import { ProgressReport, TaskFailure, TaskReport, TaskStart } from './task'
+import { ProgressReport, TaskFailure, TaskReport, TaskStart, UnknownSyllable } from './task'
 import { TASK_LOCK } from './working-area'
 
 // The song a task makes, and the backend its models run on.
@@ -17,7 +17,7 @@ export type TaskState =
   | { status: 'running'; report?: ProgressReport }
   | { status: 'done' }
   | { status: 'cancelled' }
-  | { status: 'failed'; stage?: string; reason: TaskFailure }
+  | { status: 'failed'; stage?: string; reason: TaskFailure; unknown?: UnknownSyllable }
 
 // How far the current stage is, from 0 to 100.
 export function stagePercent(state: TaskState): number {
@@ -50,6 +50,13 @@ export class TaskRunner {
   private readonly current = signal<TaskState>({ status: 'idle' })
   private cancelTask?: () => Promise<void>
   readonly state = this.current.asReadonly()
+
+  // Whether a task in another tab, or the startup cleanup there, holds the task lock.
+  async anotherTaskRunning(): Promise<boolean> {
+    if (!navigator.locks) return false
+    const { held } = await navigator.locks.query()
+    return held?.some((lock) => lock.name === TASK_LOCK) ?? false
+  }
 
   // Without `song`, the task runs the test stages. With it, the task makes
   // that song, on `backend`, WebGPU when none is given.
@@ -91,7 +98,11 @@ export class TaskRunner {
         if (ended) return
         if (data.type === 'progress') this.current.set({ status: 'running', report: data })
         else if (data.type === 'done') void end({ status: 'done' })
-        else void end({ status: 'failed', stage: data.stage, reason: data.reason })
+        else {
+          const failed: TaskState = { status: 'failed', stage: data.stage, reason: data.reason }
+          if (data.unknown !== undefined) failed.unknown = data.unknown
+          void end(failed)
+        }
       }
       worker.onerror = () => void end({ status: 'failed', reason: 'unexpected' })
       const start: TaskStart =
