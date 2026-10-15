@@ -49,8 +49,8 @@ See [the life of a milestone](../delivery.md#the-life-of-a-milestone).
 | **Device key** | A device's key pair. The private key never leaves the device (D6, D8). | M3 |
 | **Device code** | A device's public key, encoded so a person can send it as text or a QR code. | M3 |
 | **Fingerprint** | A short code derived from a device code, read aloud or compared by eye to make sure a device code was not swapped on the way. | M3 |
-| **Content key** | The random key that encrypts one song file. | M3 |
-| **Access file** | A small file that holds a song's content key wrapped for one device. Without one for the device, the song does not open there. | M3 |
+| **Content key** | The random key of one song. Each write of its song file derives the file's encryption keys from it. | M3 |
+| **Access file** | A small `.lyrekey` file for one device that holds the wrapped content keys of one or more songs, each marked as the owner's or a recipient's. Lyre matches each to its song file by song ID. Without an entry for the device, the song does not open there. | M3 |
 | **Owner** | The person who made a song. Their web client can share it (D27). | M3 |
 | **Recipient** | A person whose device was given an access file for a song. | M3 |
-| **Recovery key** | The owner's offline key. Every song the owner makes is also wrapped for it, so a new device can be given access to all of them (D7). | M3 |
+| **Recovery key** | The owner's offline key, created before the first song and shown once as 24 words and a QR code. Every song the owner makes is also wrapped for it, so a new device can be given access to all of them (D7). | M3 |
