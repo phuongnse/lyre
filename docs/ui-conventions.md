@@ -382,10 +382,10 @@ Compose uses the same three values *(planned for M4)*.
   of Female or Male has no default. Once the karaoke track, the lyrics, the
   timing file and the role are all picked, a **Make the song file** button
   reads the timing file against the lyrics, makes every track and the
-  thumbnail, and writes a version-0 song file through the core, in a Web
-  Worker. The song's title, artist and composer are the source's tags,
-  exactly as stored. Without a title tag, the title is the source's file name
-  without its extension. The lyrics are stored exactly as supplied (D5). The
+  thumbnail, and writes a version-0 song file through the core, in pieces
+  into a working area, in a Web Worker. The song's title, artist and
+  composer are the source's tags, exactly as stored. Without a title tag, the
+  title is the source's file name without its extension. The lyrics are stored exactly as supplied (D5). The
   page then shows a **Download the song file** link, named after the source
   file with `.lyre` in place of its extension, which the Player opens. Each
   refusal a user can fix has its own message, and none offers a download:

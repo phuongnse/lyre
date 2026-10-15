@@ -11,8 +11,8 @@ use lyre_core::lyrics_rows;
 use lyre_core::mel_roformer::{self, BrokenRun, SeparationError};
 use lyre_core::model;
 use lyre_core::song_file::{
-    self, Chunk, ChunkType, Header, Index, IndexEntry, Segment, Song, SongDetails, SongFileError,
-    SyllableTime, Timing, Track,
+    self, Chunk, ChunkType, Header, Index, IndexEntry, Next, PieceWriter, SegmentPlan, SongDetails,
+    SongFileError, SongPlan, SyllableTime, Timing, TrackPlan,
 };
 use lyre_core::timing_file::{self, TimingErrorKind, TimingFileError};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -707,10 +707,27 @@ impl From<Role> for song_file::VocalRole {
     }
 }
 
-/// Collects the parts of one song, then writes them as a song file through
-/// the core's writer, so the client never lays out song file bytes. Every
-/// check happens in [`SongWriter::write`]. The lyrics are kept exactly as
-/// supplied (D5).
+/// What [`SongWriter::next_chunk`] says comes next in the song file.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NextChunk {
+    /// A chunk that the core makes. Take it with [`SongWriter::core_chunk`].
+    Core,
+    /// The next video media segment. Give its bytes to
+    /// [`SongWriter::segment`].
+    VideoSegment,
+    KaraokeSegment,
+    OriginalSegment,
+    /// Every chunk has been written.
+    End,
+}
+
+/// Collects the parts of one song, then gives the song file out in pieces
+/// through the core's writer, so the client never lays out song file bytes.
+/// The media segments are planned by length. [`SongWriter::start`] runs every
+/// check on the plan and gives the header and index. The chunks follow in file
+/// order, and only one media segment at a time passes through the writer. The
+/// lyrics are kept exactly as supplied (D5).
 #[wasm_bindgen]
 pub struct SongWriter {
     song_id: Vec<u8>,
@@ -721,9 +738,12 @@ pub struct SongWriter {
     lyrics: Vec<u8>,
     times_ms: Vec<u32>,
     thumbnail: Option<Vec<u8>>,
-    video: Option<Track>,
-    karaoke: Track,
-    original: Track,
+    video: Option<TrackPlan>,
+    karaoke: TrackPlan,
+    original: TrackPlan,
+    writer: Option<PieceWriter>,
+    /// A chunk the core made, found by `next_chunk` and not yet taken.
+    pending: Option<Vec<u8>>,
 }
 
 #[wasm_bindgen]
@@ -751,8 +771,10 @@ impl SongWriter {
             times_ms: times_ms.to_vec(),
             thumbnail: None,
             video: None,
-            karaoke: Track::default(),
-            original: Track::default(),
+            karaoke: TrackPlan::default(),
+            original: TrackPlan::default(),
+            writer: None,
+            pending: None,
         }
     }
 
@@ -767,7 +789,7 @@ impl SongWriter {
     /// song a video.
     #[wasm_bindgen(js_name = setTrack)]
     pub fn set_track(&mut self, kind: TrackKind, start_ms: u32, stored_type: String, init: &[u8]) {
-        *self.track(kind) = Track {
+        *self.track(kind) = TrackPlan {
             start_ms,
             stored_type,
             init: init.to_vec(),
@@ -775,17 +797,23 @@ impl SongWriter {
         };
     }
 
-    /// Adds a media segment to the end of a track.
+    /// Plans a media segment at the end of a track by its duration and its
+    /// byte length. The bytes come later, through [`SongWriter::segment`].
     #[wasm_bindgen(js_name = addSegment)]
-    pub fn add_segment(&mut self, kind: TrackKind, duration_ms: u32, bytes: &[u8]) {
-        self.track(kind).segments.push(Segment {
+    pub fn add_segment(&mut self, kind: TrackKind, duration_ms: u32, length: u32) {
+        self.track(kind).segments.push(SegmentPlan {
             duration_ms,
-            bytes: bytes.to_vec(),
+            length,
         });
     }
 
-    /// Writes the song file, or names the part the core refused.
-    pub fn write(&self) -> Result<Vec<u8>, SongWriteFault> {
+    /// Checks the whole song, then gives the header and the index: the first
+    /// piece of the file. Names the part the core refused, before any piece is
+    /// given. Calling it again gives `Media`.
+    pub fn start(&mut self) -> Result<Vec<u8>, SongWriteFault> {
+        if self.writer.is_some() {
+            return Err(SongWriteErrorKind::Media.into());
+        }
         let song_id: [u8; 16] = self
             .song_id
             .as_slice()
@@ -808,7 +836,7 @@ impl SongWriter {
             .map(|&[start_ms, end_ms]| SyllableTime { start_ms, end_ms })
             .collect();
         let timing = Timing::new(syllables).map_err(|_| SongWriteErrorKind::Times)?;
-        let song = Song {
+        let plan = SongPlan {
             song_id,
             details,
             thumbnail: self.thumbnail.clone(),
@@ -818,14 +846,56 @@ impl SongWriter {
             karaoke: self.karaoke.clone(),
             original: self.original.clone(),
         };
-        Ok(song_file::write(&song)?)
+        let writer = PieceWriter::new(plan)?;
+        let head = writer.head().to_vec();
+        self.writer = Some(writer);
+        Ok(head)
+    }
+
+    /// Says what the next chunk is. Calling it again before that chunk is
+    /// taken gives the same answer. A call before `start` gives `Media`.
+    #[wasm_bindgen(js_name = nextChunk)]
+    pub fn next_chunk(&mut self) -> Result<NextChunk, SongWriteFault> {
+        let writer = self.writer.as_mut().ok_or(SongWriteErrorKind::Media)?;
+        if self.pending.is_some() {
+            return Ok(NextChunk::Core);
+        }
+        Ok(match writer.next_chunk() {
+            Next::Chunk(bytes) => {
+                self.pending = Some(bytes);
+                NextChunk::Core
+            }
+            Next::Segment(ChunkType::VideoSegment) => NextChunk::VideoSegment,
+            Next::Segment(ChunkType::KaraokeSegment) => NextChunk::KaraokeSegment,
+            Next::Segment(_) => NextChunk::OriginalSegment,
+            Next::End => NextChunk::End,
+        })
+    }
+
+    /// Takes the bytes of the chunk that `nextChunk` said the core made.
+    #[wasm_bindgen(js_name = coreChunk)]
+    pub fn core_chunk(&mut self) -> Result<Vec<u8>, SongWriteFault> {
+        self.pending
+            .take()
+            .ok_or_else(|| SongWriteErrorKind::Media.into())
+    }
+
+    /// Takes the bytes of the media segment that `nextChunk` named, checks
+    /// their length against the plan and hands them back to write. The bytes
+    /// are taken by value, so only one copy sits in memory.
+    pub fn segment(&mut self, bytes: Vec<u8>) -> Result<Vec<u8>, SongWriteFault> {
+        let writer = self.writer.as_mut().ok_or(SongWriteErrorKind::Media)?;
+        if self.pending.is_some() {
+            return Err(SongWriteErrorKind::Media.into());
+        }
+        Ok(writer.segment(bytes)?)
     }
 }
 
 impl SongWriter {
-    fn track(&mut self, kind: TrackKind) -> &mut Track {
+    fn track(&mut self, kind: TrackKind) -> &mut TrackPlan {
         match kind {
-            TrackKind::Video => self.video.get_or_insert_with(Track::default),
+            TrackKind::Video => self.video.get_or_insert_with(TrackPlan::default),
             TrackKind::Karaoke => &mut self.karaoke,
             TrackKind::Original => &mut self.original,
         }
@@ -1857,28 +1927,80 @@ mod tests {
             "audio/webm; codecs=\"opus\"".to_owned(),
             b"ki",
         );
-        writer.add_segment(TrackKind::Karaoke, 1000, b"ks");
+        writer.add_segment(TrackKind::Karaoke, 1000, 2);
         writer.set_track(
             TrackKind::Original,
             0,
             "audio/mp4; codecs=\"mp4a.40.2\"".to_owned(),
             b"oi",
         );
-        writer.add_segment(TrackKind::Original, 1000, b"os");
+        writer.add_segment(TrackKind::Original, 1000, 2);
         writer
+    }
+
+    /// Writes the whole file in pieces: the head, then each chunk in turn,
+    /// with `ks` and `os` as the example's media segments.
+    fn write_in_pieces(writer: &mut SongWriter) -> Result<Vec<u8>, SongWriteFault> {
+        let mut file = writer.start()?;
+        loop {
+            match writer.next_chunk()? {
+                NextChunk::Core => file.extend(writer.core_chunk()?),
+                NextChunk::KaraokeSegment => file.extend(writer.segment(b"ks".to_vec())?),
+                NextChunk::OriginalSegment => file.extend(writer.segment(b"os".to_vec())?),
+                NextChunk::VideoSegment => file.extend(writer.segment(b"vs".to_vec())?),
+                NextChunk::End => return Ok(file),
+            }
+        }
     }
 
     #[test]
     fn the_song_writer_gives_the_known_answer_example_from_its_parts() {
-        let writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
-        assert_eq!(writer.write(), Ok(example()));
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        assert_eq!(write_in_pieces(&mut writer), Ok(example()));
+    }
+
+    #[test]
+    fn the_song_writer_refuses_a_call_out_of_turn() {
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        fn kind<T>(result: Result<T, SongWriteFault>) -> Result<T, SongWriteErrorKind> {
+            result.map_err(|fault| fault.kind())
+        }
+        assert_eq!(kind(writer.next_chunk()), Err(SongWriteErrorKind::Media));
+        assert_eq!(
+            kind(writer.segment(b"ks".to_vec())),
+            Err(SongWriteErrorKind::Media)
+        );
+        writer.start().expect("a valid song");
+        assert_eq!(kind(writer.start()), Err(SongWriteErrorKind::Media));
+        assert_eq!(kind(writer.core_chunk()), Err(SongWriteErrorKind::Media));
+        // A chunk of the core is next, so a segment is out of turn.
+        assert_eq!(kind(writer.next_chunk()), Ok(NextChunk::Core));
+        assert_eq!(
+            kind(writer.segment(b"ks".to_vec())),
+            Err(SongWriteErrorKind::Media)
+        );
+    }
+
+    #[test]
+    fn the_song_writer_refuses_a_segment_of_the_wrong_length() {
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        writer.start().expect("a valid song");
+        while writer.next_chunk() == Ok(NextChunk::Core) {
+            writer.core_chunk().expect("a chunk of the core");
+        }
+        assert_eq!(
+            writer
+                .segment(b"too long".to_vec())
+                .map_err(|fault| fault.kind()),
+            Err(SongWriteErrorKind::Media)
+        );
     }
 
     #[test]
     fn the_song_writer_refuses_a_timing_that_ends_after_the_song() {
-        let writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1500]);
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1500]);
         assert_eq!(
-            writer.write().map_err(|fault| fault.kind()),
+            writer.start().map_err(|fault| fault.kind()),
             Err(SongWriteErrorKind::PastEnd)
         );
     }
@@ -1887,7 +2009,7 @@ mod tests {
     fn the_song_writer_names_the_part_it_refused() {
         let kind = |title: &str, lyrics: &[u8], times: &[u32]| {
             example_writer(title, lyrics, times)
-                .write()
+                .start()
                 .expect_err("refused")
                 .kind()
         };
@@ -1911,7 +2033,7 @@ mod tests {
         let mut writer = example_writer("Mưa", lyrics, &[0, 500, 500, 1000]);
         writer.set_track(TrackKind::Video, 0, "video/webm".to_owned(), b"vi");
         assert_eq!(
-            writer.write().map_err(|fault| fault.kind()),
+            writer.start().map_err(|fault| fault.kind()),
             Err(SongWriteErrorKind::Media)
         );
     }
@@ -1920,8 +2042,7 @@ mod tests {
     fn the_song_writer_keeps_the_lyrics_byte_for_byte() {
         // A decomposed "Hà" (NFD), two spaces, then a precomposed "Nội" (NFC).
         let lyrics = "Ha\u{300}  Nội\n".as_bytes();
-        let file = example_writer("Mưa", lyrics, &[0, 500, 500, 1000])
-            .write()
+        let file = write_in_pieces(&mut example_writer("Mưa", lyrics, &[0, 500, 500, 1000]))
             .expect("a valid song");
         let song = song_file::read(&file).expect("the song file reads back");
         assert_eq!(song.lyrics.as_bytes(), lyrics);

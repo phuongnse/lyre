@@ -14,7 +14,7 @@ import { PackagedTrack, PackageError } from '../original-track'
 import { Resampler } from '../resampler'
 import { separate, SeparatorRunner } from '../separation/separate'
 import { SessionFault } from '../session-backend'
-import { SongRefused, writeSong } from '../song-writer'
+import { SONG_FILE, SongRefused, writeSong } from '../song-writer'
 import { SourceDetails } from '../source'
 import { AudioFormat, SEPARATION_FORMAT } from '../source-audio'
 import { SourceError } from '../source-error'
@@ -241,21 +241,25 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
     },
     {
       name: 'write-song',
-      async run({ progress, handOver }) {
-        let song: Uint8Array
+      async run({ area, progress, handOver }) {
+        // The core gives the song file out in pieces, which go to the working area.
+        const file = await area.open(SONG_FILE)
         try {
-          song = writeSong({
+          await writeSong({
             songId: crypto.getRandomValues(new Uint8Array(16)),
             details: { ...input.details, vocalRole: input.vocalRole },
             lyrics,
             timesMs,
             ...tracks,
             thumbnail,
+            out: file,
           })
         } catch (error) {
+          await file.close().catch(() => {})
           refused('song-refused', error instanceof SongRefused, error)
         }
-        handOver(song)
+        await file.close()
+        handOver(await bytesOf(await area.read(SONG_FILE)))
         progress(1)
       },
     },

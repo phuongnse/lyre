@@ -11,6 +11,17 @@ export class FakeWorkingAreas implements WorkingAreas {
       async write(name, data) {
         files.set(name, new Blob([data]))
       },
+      async open(name) {
+        const parts: BlobPart[] = []
+        return {
+          async write(data) {
+            parts.push(data)
+          },
+          async close() {
+            files.set(name, new Blob(parts))
+          },
+        }
+      },
       async read(name) {
         const file = files.get(name)
         if (file === undefined) throw new DOMException(name, 'NotFoundError')

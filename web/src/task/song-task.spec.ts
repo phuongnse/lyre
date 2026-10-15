@@ -144,7 +144,12 @@ function fakeMedia(): SongMedia & { karaokeFrames: number } {
   }
 }
 
-async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners; models?: SongModels }): Promise<{
+async function run(o: {
+  lyrics?: Uint8Array
+  aligner?: keyof typeof aligners
+  models?: SongModels
+  areas?: FakeWorkingAreas
+}): Promise<{
   reports: TaskReport[]
   areas: FakeWorkingAreas
   segments: { count: number }
@@ -165,7 +170,7 @@ async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners; mo
   const media = fakeMedia()
   const models = o.models ?? fakeModels({ aligner: o.aligner ?? 'lyric-alignment', segments })
   const reports: TaskReport[] = []
-  const areas = new FakeWorkingAreas()
+  const areas = o.areas ?? new FakeWorkingAreas()
   await runTask({ taskId, stages: songStages(input, media, models), areas, report: (report) => reports.push(report) })
   return { reports, areas, segments, media, models }
 }
@@ -186,7 +191,35 @@ async function lyricsChunk(song: Uint8Array): Promise<Uint8Array> {
   }
 }
 
+// Working areas that keep a copy of each area's files as it is removed.
+class KeepingAreas extends FakeWorkingAreas {
+  readonly kept = new Map<string, Map<string, Blob>>()
+
+  override async remove(taskId: string): Promise<void> {
+    const files = this.areas.get(taskId)
+    if (files !== undefined) this.kept.set(taskId, new Map(files))
+    await super.remove(taskId)
+  }
+}
+
 describe('a song task', () => {
+  test(
+    'writes the song file to its working area, and hands over exactly those bytes',
+    async () => {
+      const areas = new KeepingAreas()
+      const { reports } = await run({ areas })
+
+      const done = reports.at(-1) as { type: string; song?: Uint8Array }
+      expect(done.type).toBe('done')
+      const written = areas.kept.get(taskId)?.get('song.lyre')
+      expect(written).toBeDefined()
+      expect(new Uint8Array(await written!.arrayBuffer())).toEqual(done.song)
+      // The area is removed when the task ends.
+      expect(areas.areas.has(taskId)).toBe(false)
+    },
+    TIMEOUT_MS,
+  )
+
   for (const aligner of Object.keys(aligners) as (keyof typeof aligners)[]) {
     test(
       `with the test separator and the ${aligner} test aligner, gives a song file with the lyrics byte for byte`,

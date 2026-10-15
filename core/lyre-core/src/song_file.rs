@@ -410,6 +410,40 @@ pub struct Song {
     pub original: Track,
 }
 
+/// One media segment as the piece writer plans it: its duration and its
+/// byte length, without the bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SegmentPlan {
+    pub duration_ms: u32,
+    pub length: u32,
+}
+
+/// A [`Track`] whose media segments are planned by length, not held.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TrackPlan {
+    /// The first media segment's start, 0 to 50 ms.
+    pub start_ms: u32,
+    /// The track's MSE type, such as `video/webm; codecs="vp09.00.40.08"`.
+    pub stored_type: String,
+    /// The container's init bytes, without the stored type.
+    pub init: Vec<u8>,
+    pub segments: Vec<SegmentPlan>,
+}
+
+/// Every part of one song except the bytes of its media segments, which a
+/// [`PieceWriter`] takes one at a time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SongPlan {
+    pub song_id: [u8; 16],
+    pub details: SongDetails,
+    pub thumbnail: Option<Vec<u8>>,
+    pub lyrics: Lyrics,
+    pub timing: Timing,
+    pub video: Option<TrackPlan>,
+    pub karaoke: TrackPlan,
+    pub original: TrackPlan,
+}
+
 /// The parsed content of one chunk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chunk {
@@ -557,92 +591,266 @@ fn track_of<'a>(
     }
 }
 
+/// What a [`PieceWriter`] gives out next.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Next {
+    /// The bytes of a chunk that the writer makes itself.
+    Chunk(Vec<u8>),
+    /// A media segment of this type is next. Hand its bytes to
+    /// [`PieceWriter::segment`].
+    Segment(ChunkType),
+    /// Every chunk has been given out.
+    End,
+}
+
+/// Gives out a song file piece by piece: [`head`](PieceWriter::head) first,
+/// then each chunk in file order. The writer makes every chunk but the media
+/// segments. It takes those one at a time from the caller and hands each back
+/// once it has checked the length, so no more than one segment is held.
+///
+/// [`PieceWriter::new`] runs every check that the reader runs, on the whole
+/// plan, before any piece is given out.
+#[derive(Debug)]
+pub struct PieceWriter {
+    head: Vec<u8>,
+    entries: Vec<IndexEntry>,
+    /// The bytes of each chunk the writer makes. `None` for a media segment
+    /// and for a chunk already given out.
+    chunks: Vec<Option<Vec<u8>>>,
+    position: usize,
+    file_size: u64,
+}
+
+impl PieceWriter {
+    /// Plans the song file and checks it as the reader would. A plan that the
+    /// reader would reject is refused before any piece is given out.
+    pub fn new(plan: SongPlan) -> Result<PieceWriter, SongFileError> {
+        let details = encode_details(&plan.details)?;
+        let timing = encode_timing(&plan.timing)?;
+        // Each init chunk is checked as the reader would check it.
+        let video_init = plan
+            .video
+            .as_ref()
+            .map(|video| encode_init(ChunkType::VideoInit, &video.stored_type, &video.init))
+            .transpose()?;
+        let karaoke_init = encode_init(
+            ChunkType::KaraokeInit,
+            &plan.karaoke.stored_type,
+            &plan.karaoke.init,
+        )?;
+        let original_init = encode_init(
+            ChunkType::OriginalInit,
+            &plan.original.stored_type,
+            &plan.original.init,
+        )?;
+        let mut chunks: Vec<PlannedChunk> = vec![(ChunkType::SongDetails, Some(details), 0, 0)];
+        if let Some(thumbnail) = plan.thumbnail {
+            chunks.push((ChunkType::Thumbnail, Some(thumbnail), 0, 0));
+        }
+        let lyrics = plan.lyrics.as_bytes().to_vec();
+        chunks.push((ChunkType::Lyrics, Some(lyrics), 0, 0));
+        chunks.push((ChunkType::Timing, Some(timing), 0, 0));
+        if let (Some(video), Some(init)) = (&plan.video, video_init) {
+            push_track_plan(
+                &mut chunks,
+                video,
+                (ChunkType::VideoInit, init),
+                ChunkType::VideoSegment,
+            );
+        }
+        push_track_plan(
+            &mut chunks,
+            &plan.karaoke,
+            (ChunkType::KaraokeInit, karaoke_init),
+            ChunkType::KaraokeSegment,
+        );
+        push_track_plan(
+            &mut chunks,
+            &plan.original,
+            (ChunkType::OriginalInit, original_init),
+            ChunkType::OriginalSegment,
+        );
+
+        let parts: Vec<_> = chunks
+            .iter()
+            .map(|&(chunk_type, ref bytes, len, time)| {
+                let len = bytes.as_ref().map_or(len, Vec::len);
+                (chunk_type, len, time)
+            })
+            .collect();
+        let (entries, file_size) = layout(&parts)?;
+        let song_ms = validate(&entries, file_size)?;
+        check_timing(&plan.timing, &plan.lyrics, song_ms)?;
+
+        usize::try_from(file_size).map_err(|_| SongFileError::FileTooLarge { size: file_size })?;
+        let mut head = Vec::with_capacity(HEADER_LEN + INDEX_ENTRY_LEN * entries.len());
+        head.extend_from_slice(&MAGIC);
+        head.extend_from_slice(&VERSION.to_le_bytes());
+        head.extend_from_slice(&0u16.to_le_bytes());
+        let entry_count = u32::try_from(entries.len()).map_err(|_| SongFileError::EntryCount {
+            count: entries.len() as u64,
+        })?;
+        head.extend_from_slice(&entry_count.to_le_bytes());
+        head.extend_from_slice(&plan.song_id);
+        for entry in &entries {
+            head.extend_from_slice(&entry.chunk_type.code().to_le_bytes());
+            head.extend_from_slice(&0u16.to_le_bytes());
+            head.extend_from_slice(&entry.length.to_le_bytes());
+            head.extend_from_slice(&entry.offset.to_le_bytes());
+            head.extend_from_slice(&entry.start_ms.to_le_bytes());
+            head.extend_from_slice(&entry.duration_ms.to_le_bytes());
+        }
+        Ok(PieceWriter {
+            head,
+            entries,
+            chunks: chunks.into_iter().map(|(_, bytes, _, _)| bytes).collect(),
+            position: 0,
+            file_size,
+        })
+    }
+
+    /// The header and the index: the first piece of the file.
+    pub fn head(&self) -> &[u8] {
+        &self.head
+    }
+
+    /// The size of the whole file, in bytes.
+    pub fn file_size(&self) -> u64 {
+        self.file_size
+    }
+
+    /// The next chunk to give out. A chunk the writer makes is given out and
+    /// the writer moves on. For a media segment the writer stays until
+    /// [`PieceWriter::segment`] takes its bytes.
+    pub fn next_chunk(&mut self) -> Next {
+        let Some(entry) = self.entries.get(self.position) else {
+            return Next::End;
+        };
+        match self.chunks[self.position].take() {
+            Some(bytes) => {
+                self.position += 1;
+                Next::Chunk(bytes)
+            }
+            None => Next::Segment(entry.chunk_type),
+        }
+    }
+
+    /// Takes the bytes of the media segment that [`PieceWriter::next_chunk`] named,
+    /// checks their length against the plan, and hands them back to write.
+    pub fn segment(&mut self, bytes: Vec<u8>) -> Result<Vec<u8>, SongFileError> {
+        self.take_segment(bytes.len())?;
+        Ok(bytes)
+    }
+
+    /// Checks that a media segment of `len` bytes is the next chunk, and
+    /// moves past it.
+    fn take_segment(&mut self, len: usize) -> Result<(), SongFileError> {
+        let position = self.position;
+        let entry = self
+            .entries
+            .get(position)
+            .filter(|entry| entry.chunk_type.is_segment())
+            .ok_or(SongFileError::SegmentNotNext { position })?;
+        if usize::try_from(entry.length) != Ok(len) {
+            return Err(SongFileError::ChunkBytes {
+                chunk_type: entry.chunk_type.code(),
+                len,
+                expected: entry.length,
+            });
+        }
+        self.position += 1;
+        Ok(())
+    }
+}
+
+/// A chunk to write: its type, the bytes if the writer makes them, the length
+/// if it does not, and its time.
+type PlannedChunk = (ChunkType, Option<Vec<u8>>, usize, u32);
+
+/// Adds a track's encoded init segment and its planned media segments to the
+/// chunks to write.
+fn push_track_plan(
+    chunks: &mut Vec<PlannedChunk>,
+    track: &TrackPlan,
+    (init_type, init): (ChunkType, Vec<u8>),
+    segment: ChunkType,
+) {
+    chunks.push((init_type, Some(init), 0, track.start_ms));
+    for part in &track.segments {
+        chunks.push((segment, None, part.length as usize, part.duration_ms));
+    }
+}
+
 /// Writes `song` as a song file. A song that the reader would reject is
 /// refused before any file bytes are written.
 pub fn write(song: &Song) -> Result<Vec<u8>, SongFileError> {
-    let details = encode_details(&song.details)?;
-    let timing = encode_timing(&song.timing)?;
-    // Each init chunk is checked as the reader would check it.
-    let video_init = song
-        .video
-        .as_ref()
-        .map(|video| encode_init(ChunkType::VideoInit, video))
-        .transpose()?;
-    let karaoke_init = encode_init(ChunkType::KaraokeInit, &song.karaoke)?;
-    let original_init = encode_init(ChunkType::OriginalInit, &song.original)?;
-    let mut chunks: Vec<(ChunkType, &[u8], u32)> =
-        vec![(ChunkType::SongDetails, details.as_slice(), 0)];
-    if let Some(thumbnail) = &song.thumbnail {
-        chunks.push((ChunkType::Thumbnail, thumbnail, 0));
-    }
-    chunks.push((ChunkType::Lyrics, song.lyrics.as_bytes(), 0));
-    chunks.push((ChunkType::Timing, &timing, 0));
-    if let (Some(video), Some(init)) = (&song.video, &video_init) {
-        push_track(
-            &mut chunks,
-            video,
-            (ChunkType::VideoInit, init),
-            ChunkType::VideoSegment,
-        );
-    }
-    push_track(
-        &mut chunks,
-        &song.karaoke,
-        (ChunkType::KaraokeInit, &karaoke_init),
-        ChunkType::KaraokeSegment,
-    );
-    push_track(
-        &mut chunks,
-        &song.original,
-        (ChunkType::OriginalInit, &original_init),
-        ChunkType::OriginalSegment,
-    );
-
-    let parts: Vec<_> = chunks
-        .iter()
-        .map(|&(chunk_type, bytes, duration_ms)| (chunk_type, bytes.len(), duration_ms))
-        .collect();
-    let (entries, file_size) = layout(&parts)?;
-    let song_ms = validate(&entries, file_size)?;
-    check_timing(&song.timing, &song.lyrics, song_ms)?;
-
+    let plan = SongPlan {
+        song_id: song.song_id,
+        details: song.details.clone(),
+        thumbnail: song.thumbnail.clone(),
+        lyrics: song.lyrics.clone(),
+        timing: song.timing.clone(),
+        video: song
+            .video
+            .as_ref()
+            .map(|video| plan_track(video, ChunkType::VideoSegment))
+            .transpose()?,
+        karaoke: plan_track(&song.karaoke, ChunkType::KaraokeSegment)?,
+        original: plan_track(&song.original, ChunkType::OriginalSegment)?,
+    };
+    let mut writer = PieceWriter::new(plan)?;
     let capacity =
-        usize::try_from(file_size).map_err(|_| SongFileError::FileTooLarge { size: file_size })?;
+        usize::try_from(writer.file_size()).map_err(|_| SongFileError::FileTooLarge {
+            size: writer.file_size(),
+        })?;
     let mut file = Vec::with_capacity(capacity);
-    file.extend_from_slice(&MAGIC);
-    file.extend_from_slice(&VERSION.to_le_bytes());
-    file.extend_from_slice(&0u16.to_le_bytes());
-    let entry_count = u32::try_from(entries.len()).map_err(|_| SongFileError::EntryCount {
-        count: entries.len() as u64,
-    })?;
-    file.extend_from_slice(&entry_count.to_le_bytes());
-    file.extend_from_slice(&song.song_id);
-    for entry in &entries {
-        file.extend_from_slice(&entry.chunk_type.code().to_le_bytes());
-        file.extend_from_slice(&0u16.to_le_bytes());
-        file.extend_from_slice(&entry.length.to_le_bytes());
-        file.extend_from_slice(&entry.offset.to_le_bytes());
-        file.extend_from_slice(&entry.start_ms.to_le_bytes());
-        file.extend_from_slice(&entry.duration_ms.to_le_bytes());
+    file.extend_from_slice(writer.head());
+    // The segments of each track, in the order the writer asks for them.
+    let mut video = song.video.iter().flat_map(|video| &video.segments);
+    let mut karaoke = song.karaoke.segments.iter();
+    let mut original = song.original.segments.iter();
+    loop {
+        match writer.next_chunk() {
+            Next::Chunk(bytes) => file.extend_from_slice(&bytes),
+            Next::Segment(chunk_type) => {
+                let segment = match chunk_type {
+                    ChunkType::VideoSegment => video.next(),
+                    ChunkType::KaraokeSegment => karaoke.next(),
+                    _ => original.next(),
+                };
+                let bytes = segment.map_or(&[][..], |segment| &segment.bytes);
+                writer.take_segment(bytes.len())?;
+                file.extend_from_slice(bytes);
+            }
+            Next::End => return Ok(file),
+        }
     }
-    for (_, bytes, _) in &chunks {
-        file.extend_from_slice(bytes);
-    }
-    Ok(file)
 }
 
-/// Adds a track's encoded init segment and its media segments to the chunks
-/// to write.
-fn push_track<'a>(
-    chunks: &mut Vec<(ChunkType, &'a [u8], u32)>,
-    track: &'a Track,
-    (init_type, init): (ChunkType, &'a [u8]),
-    segment: ChunkType,
-) {
-    chunks.push((init_type, init, track.start_ms));
-    for part in &track.segments {
-        chunks.push((segment, &part.bytes, part.duration_ms));
-    }
+/// Plans `track` by its segments' lengths. `segment` is the chunk type of
+/// its media segments.
+fn plan_track(track: &Track, segment: ChunkType) -> Result<TrackPlan, SongFileError> {
+    let segments = track
+        .segments
+        .iter()
+        .map(|part| {
+            let length =
+                u32::try_from(part.bytes.len()).map_err(|_| SongFileError::ChunkLength {
+                    chunk_type: segment.code(),
+                    length: part.bytes.len() as u64,
+                })?;
+            Ok(SegmentPlan {
+                duration_ms: part.duration_ms,
+                length,
+            })
+        })
+        .collect::<Result<_, SongFileError>>()?;
+    Ok(TrackPlan {
+        start_ms: track.start_ms,
+        stored_type: track.stored_type.clone(),
+        init: track.init.clone(),
+        segments,
+    })
 }
 
 /// A field of the song details.
@@ -750,6 +958,9 @@ pub enum SongFileError {
         len: usize,
         expected: u32,
     },
+    /// A media segment was given, but the chunk at index entry `position` is
+    /// not a media segment, or every chunk has been written.
+    SegmentNotNext { position: usize },
     /// The song details chunk ends inside a field.
     DetailsTruncated { field: DetailField },
     /// Bytes are left after the vocal role.
@@ -909,6 +1120,10 @@ impl fmt::Display for SongFileError {
             } => write!(
                 f,
                 "chunk of type {chunk_type} was given {len} bytes, not its stored {expected}"
+            ),
+            SongFileError::SegmentNotNext { position } => write!(
+                f,
+                "a media segment was given, but index entry {position} is not the next media segment"
             ),
             SongFileError::DetailsTruncated { field } => {
                 write!(f, "song details end inside the {field}")
@@ -1477,10 +1692,14 @@ fn parse_init(chunk_type: ChunkType, bytes: &[u8]) -> Result<(String, Vec<u8>), 
     Ok((stored_type, init.to_vec()))
 }
 
-/// Encodes `track`'s init segment chunk of `chunk_type` and checks it as
+/// Encodes an init segment chunk of `chunk_type` and checks it as
 /// the reader does.
-fn encode_init(chunk_type: ChunkType, track: &Track) -> Result<Vec<u8>, SongFileError> {
-    let len = track.stored_type.len();
+fn encode_init(
+    chunk_type: ChunkType,
+    stored_type: &str,
+    init: &[u8],
+) -> Result<Vec<u8>, SongFileError> {
+    let len = stored_type.len();
     let type_length = u16::try_from(len)
         .ok()
         .filter(|_| len <= MAX_STORED_TYPE_BYTES)
@@ -1488,10 +1707,10 @@ fn encode_init(chunk_type: ChunkType, track: &Track) -> Result<Vec<u8>, SongFile
             chunk_type: chunk_type.code(),
             len,
         })?;
-    let mut bytes = Vec::with_capacity(2 + len + track.init.len());
+    let mut bytes = Vec::with_capacity(2 + len + init.len());
     bytes.extend_from_slice(&type_length.to_le_bytes());
-    bytes.extend_from_slice(track.stored_type.as_bytes());
-    bytes.extend_from_slice(&track.init);
+    bytes.extend_from_slice(stored_type.as_bytes());
+    bytes.extend_from_slice(init);
     parse_init(chunk_type, &bytes)?;
     Ok(bytes)
 }
@@ -1703,6 +1922,159 @@ mod tests {
     #[test]
     fn writes_the_known_answer_example() {
         assert_eq!(write(&example_song()), Ok(example()));
+    }
+
+    /// The plan of `song`: the same parts, with each segment as its length.
+    fn plan_of(song: &Song) -> SongPlan {
+        let plan = |track: &Track, segment| plan_track(track, segment).expect("a u32 length");
+        SongPlan {
+            song_id: song.song_id,
+            details: song.details.clone(),
+            thumbnail: song.thumbnail.clone(),
+            lyrics: song.lyrics.clone(),
+            timing: song.timing.clone(),
+            video: song
+                .video
+                .as_ref()
+                .map(|video| plan(video, ChunkType::VideoSegment)),
+            karaoke: plan(&song.karaoke, ChunkType::KaraokeSegment),
+            original: plan(&song.original, ChunkType::OriginalSegment),
+        }
+    }
+
+    /// The example's plan: the example song with its segments held back.
+    fn example_plan() -> SongPlan {
+        plan_of(&example_song())
+    }
+
+    /// Gives out the whole file in pieces. Each segment is taken from `song`
+    /// in turn. Returns the pieces.
+    fn pieces_of(song: &Song) -> Vec<Vec<u8>> {
+        let mut writer = PieceWriter::new(plan_of(song)).expect("the plan is valid");
+        let mut pieces = vec![writer.head().to_vec()];
+        let mut video = song.video.iter().flat_map(|video| &video.segments);
+        let mut karaoke = song.karaoke.segments.iter();
+        let mut original = song.original.segments.iter();
+        loop {
+            match writer.next_chunk() {
+                Next::Chunk(bytes) => pieces.push(bytes),
+                Next::Segment(chunk_type) => {
+                    let segment = match chunk_type {
+                        ChunkType::VideoSegment => video.next(),
+                        ChunkType::KaraokeSegment => karaoke.next(),
+                        _ => original.next(),
+                    };
+                    let bytes = segment.expect("a planned segment").bytes.clone();
+                    pieces.push(writer.segment(bytes).expect("the length is planned"));
+                }
+                Next::End => break,
+            }
+        }
+        let total: usize = pieces.iter().map(Vec::len).sum();
+        assert_eq!(total as u64, writer.file_size());
+        pieces
+    }
+
+    #[test]
+    fn writes_the_known_answer_example_in_pieces() {
+        let pieces = pieces_of(&example_song());
+        // The header and index, then the 7 chunks.
+        assert_eq!(pieces.len(), 1 + 7);
+        assert_eq!(pieces[0].len(), HEADER_LEN + 7 * INDEX_ENTRY_LEN);
+        assert_eq!(pieces.concat(), example());
+    }
+
+    #[test]
+    fn writes_a_song_with_a_thumbnail_and_a_video_in_pieces_as_write_does() {
+        let mut song = example_song();
+        song.thumbnail = Some(b"thumb".to_vec());
+        song.video = Some(track(
+            "video/webm; codecs=\"vp09.00.40.08\"",
+            b"vi",
+            &[(400, b"v1"), (300, b"v22"), (300, b"v333")],
+        ));
+        song.karaoke = track(
+            KARAOKE_TYPE,
+            b"ki",
+            &[(400, b"k1"), (300, b"k22"), (300, b"k333")],
+        );
+        song.original = track(
+            AAC_TYPE,
+            b"oi",
+            &[(400, b"o1"), (300, b"o22"), (300, b"o333")],
+        );
+        let file = write(&song).expect("the song is valid");
+        assert_eq!(pieces_of(&song).concat(), file);
+        assert_eq!(read(&file), Ok(song));
+    }
+
+    #[test]
+    fn refuses_a_plan_that_breaks_a_format_rule_before_any_piece() {
+        let mut original_differs = example_song();
+        original_differs.original.segments[0].duration_ms = 949;
+        let mut wrong_type = example_song();
+        wrong_type.karaoke.stored_type = AAC_TYPE.to_owned();
+        for song in [original_differs, wrong_type] {
+            // The same reason `write` gives. No piece is given out.
+            let refused = PieceWriter::new(plan_of(&song)).expect_err("the plan breaks a rule");
+            assert_eq!(write(&song), Err(refused));
+        }
+        let mut original_differs = example_song();
+        original_differs.original.segments[0].duration_ms = 949;
+        assert!(matches!(
+            PieceWriter::new(plan_of(&original_differs)),
+            Err(SongFileError::SegmentMismatch { .. })
+        ));
+        let mut wrong_type = example_song();
+        wrong_type.karaoke.stored_type = AAC_TYPE.to_owned();
+        assert!(matches!(
+            PieceWriter::new(plan_of(&wrong_type)),
+            Err(SongFileError::StoredTypeContainer { chunk_type: 18 })
+        ));
+    }
+
+    #[test]
+    fn refuses_a_media_segment_of_the_wrong_length() {
+        let mut writer = PieceWriter::new(example_plan()).expect("the plan is valid");
+        loop {
+            match writer.next_chunk() {
+                Next::Chunk(_) => {}
+                Next::Segment(_) => break,
+                Next::End => panic!("the example has segments"),
+            }
+        }
+        assert_eq!(
+            writer.segment(b"ks!".to_vec()),
+            Err(SongFileError::ChunkBytes {
+                chunk_type: 19,
+                len: 3,
+                expected: 2
+            })
+        );
+        // The refused segment is still the next chunk.
+        assert_eq!(
+            writer.next_chunk(),
+            Next::Segment(ChunkType::KaraokeSegment)
+        );
+        assert_eq!(writer.segment(b"ks".to_vec()), Ok(b"ks".to_vec()));
+    }
+
+    #[test]
+    fn refuses_a_media_segment_when_a_chunk_of_the_writer_is_next() {
+        let mut writer = PieceWriter::new(example_plan()).expect("the plan is valid");
+        assert_eq!(
+            writer.segment(b"ks".to_vec()),
+            Err(SongFileError::SegmentNotNext { position: 0 })
+        );
+        while writer.next_chunk() != Next::End {
+            if matches!(writer.next_chunk(), Next::Segment(_)) {
+                writer.segment(b"xx".to_vec()).expect("a planned length");
+            }
+        }
+        assert_eq!(
+            writer.segment(b"xx".to_vec()),
+            Err(SongFileError::SegmentNotNext { position: 7 })
+        );
     }
 
     #[test]
