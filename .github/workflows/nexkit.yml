@@ -52,11 +52,10 @@ jobs:
     # Runs for other events, such as the schedule, form a group per event.
     concurrency:
       group: nexkit-${{ github.event.issue.number || github.event.pull_request.number || inputs.number || github.event_name }}
-    uses: phuongnse/nexkit/.github/workflows/pipeline.yml@v2.1.0
+    uses: phuongnse/nexkit/.github/workflows/pipeline.yml@v3.0.0
     with:
       nexkit_repository: phuongnse/nexkit
-      nexkit_ref: v2.1.0
-    secrets:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      NEXKIT_PUSH_TOKEN: ${{ secrets.NEXKIT_PUSH_TOKEN }}
+      nexkit_ref: v3.0.0
+    # The pipeline passes each job only the secrets .nexkit/config.json names for it (its
+    # stages' agents, or the push token), so it can read them by those names.
+    secrets: inherit
