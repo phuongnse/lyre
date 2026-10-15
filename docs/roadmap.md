@@ -207,9 +207,11 @@ must settle:
 
 - **M3:** the scheme is settled by
   [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
-  The reference docs for the encrypted format's byte layout and for access
-  files and recovery still need to be written and reviewed before
-  implementation. What the web client tells a user whose passkey was refused
+  Device codes, access files and recovery are specified in
+  [the devices and access reference](reference/device-access.md).
+  The encrypted format's byte layout still needs its own reference doc,
+  written and reviewed before implementation.
+  What the web client tells a user whose passkey was refused
   because it can sync.
 - **M4:** Android playback and device keys
   ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed));

@@ -26,6 +26,7 @@ A development build of the web client runs at
 | [Decisions](docs/decisions.md) | Decisions agreed or proposed, with reasons |
 | [Architecture](docs/architecture.md) | The core, the clients, the song file, devices and access, testing |
 | [Song file format v0](docs/reference/song-file-format-v0.md) | The byte layout of development song files |
+| [Devices and access](docs/reference/device-access.md) | The device code, fingerprint, access file and recovery key: text, bytes and what a reader rejects |
 | [lyre-cli](docs/reference/lyre-cli.md) | The developer tool that builds song files from fixtures: its manifest, the timing file and the fixture song |
 | [Models](docs/reference/models.md) | The pinned model files, what each model takes and gives, how the model measurement page measures them, and the results |
 | [UI conventions](docs/ui-conventions.md) | How both clients build their UI: Material 3 tokens, strings, accessibility, the Player |
