@@ -47,13 +47,14 @@ change with a NexKit release or a settings change.
   python3 -c "import json; c = json.load(open('.nexkit/config.json')); print(json.dumps({k: c.get(k) for k in ['protected_paths', 'fix', 'merge', 'conflicts', 'usage_limit', 'close_parent_issues', 'notify']}, indent=2))"
   ```
 
-- **Profiles, their `when` texts and models:** `.nexkit/config.json`. A
-  profile's stage settings override `stages`, which override the top-level
-  `model` and `effort`. The rules behind the profiles are in
-  [delivery.md](../../../docs/delivery.md#profiles).
+- **Profiles, their `when` texts, agents and models:** `.nexkit/config.json`.
+  A profile's stage settings override `stages`, which override the top-level
+  `agent`, `model` and `effort`. Each agent in `agents` names its runtime, its
+  provider, its secrets and its `fallback` agents. The rules behind the
+  profiles are in [delivery.md](../../../docs/delivery.md#profiles).
 
   ```bash
-  python3 -c "import json; c = json.load(open('.nexkit/config.json')); print(json.dumps({'default_profile': c.get('default_profile'), 'triage': c.get('stages', {}).get('triage'), 'profiles': c.get('profiles')}, indent=2))"
+  python3 -c "import json; c = json.load(open('.nexkit/config.json')); print(json.dumps({'agents': c.get('agents'), 'default_profile': c.get('default_profile'), 'triage': c.get('stages', {}).get('triage'), 'profiles': c.get('profiles')}, indent=2))"
   ```
 
 - **Caches:** the `cache` entries in `.nexkit/config.json`, which NexKit
@@ -221,7 +222,8 @@ An upgrade is a hand-made pull request, because it changes `.github/` and
    pull request. Settings that need a matching change elsewhere, such as
    caches and their CI steps, change together.
 4. Run `nexkit doctor` at the new tag, from a clone as for `status`. Every line
-   must pass.
+   must pass, including the secret of every agent the configuration names.
+   Only the owner sets secrets.
 5. Update [delivery.md](../../../docs/delivery.md) and this file when the
    release changes how work flows, and run `node scripts/check-links.mjs`.
 6. Open the pull request from a branch whose name does not start with
@@ -238,7 +240,9 @@ An upgrade is a hand-made pull request, because it changes `.github/` and
 | Conflict in a path NexKit may not change, or a merge that brings workflow changes | Merge `origin/main` into the pull request branch by hand, in a separate worktree. Run the build, lint and test scripts listed in AGENTS.md. Ask the owner before pushing, then comment `/nexkit review`. |
 | The plan comment says triage failed | The plan ran on the previous plan's profile or on `default_profile`. If that profile is wrong for the issue, re-plan with `/nexkit plan Use the <profile> profile`. |
 | A round stops because its plan names a profile that is no longer configured | Re-plan with `/nexkit plan`, then repeat the command that stopped. Ask the owner first when that command is `/nexkit go`. |
-| A run is paused at the Claude usage limit (⏸️) | Nothing: NexKit runs the same command again after the reset. If it stops a second time with an unknown reset time, repeat the command. |
+| A Claude stage hit its usage limit | Nothing: the stage moves to its fallback agent by itself. |
+| A run is paused at the usage limit (⏸️) | Every Claude agent of the stage is at its limit. Nothing: NexKit runs the same command again after the reset and shows ⏭️ once it carries on. If it stops a second time with an unknown reset time, repeat the command. |
+| A stage on a GPT model ends as an error from an Azure rate limit or quota | Repeat the command later. If it fails the same way again, tell the owner. |
 | The review job errored | Comment `/nexkit review` to retry. |
 | The review requested changes | NexKit runs automatic fix rounds up to the configured limit. After that, ask the owner and post `/nexkit fix <instructions>`. |
 | NexKit's automatic merge was refused (`merge_refused`) | A conflict starts a conflict round by itself. Otherwise the round's comment says why, usually a rule on `main`. NexKit has mentioned the owner; tell them what you found. |

@@ -42,8 +42,21 @@ models, are not copied here. Look them up where they live.
   `conflicts.auto_resolve` on, each time `main` moves NexKit starts a fix round
   for every open NexKit pull request that now conflicts with it. A conflict
   that needs a choice ends the round as `blocked`, with a question.
-- **NexKit pauses at the Claude usage limit and resumes after it resets.** The
-  run's comment shows the reset time. No person repeats the command.
+- **A Claude stage moves to an API key at the subscription's usage limit.**
+  A stage on Claude starts on the Claude subscription. When the subscription
+  hits its usage limit, the stage starts again on an Anthropic API key, which
+  is billed per token. Only when both are at their limit does NexKit pause the
+  run and resume it after the reset. The run's comment shows the reset time.
+  No person repeats the command.
+- **A stage on a GPT model does not pause.** GPT models run through Azure AI
+  Foundry, which reports no usage limit to NexKit. When Azure refuses a
+  request for its rate limit or quota, the run ends as an error, and the local
+  agent repeats the command later.
+- **NexKit names every secret it reads.** Each agent in NexKit's
+  [`agents` setting][nexkit-agents] names its secrets, and the workflow passes
+  the pipeline all repository secrets. NexKit gives each job only the secrets
+  of the agents it may run. A new agent's secrets are set before the pull
+  request that adds it merges.
 - **A parent issue closes when its last part does.** With
   `close_parent_issues` on, NexKit closes a parent issue once every sub-issue
   is closed and at least one was completed.
@@ -233,4 +246,5 @@ These rules apply to issues, plans, pull request descriptions and reviews.
 
 [nexkit-config]: https://github.com/phuongnse/nexkit/blob/main/docs/configuration.md
 [nexkit-profiles]: https://github.com/phuongnse/nexkit/blob/main/docs/configuration.md#profiles
+[nexkit-agents]: https://github.com/phuongnse/nexkit/blob/main/docs/configuration.md#agents
 [nexkit-auto-merge]: https://github.com/phuongnse/nexkit/blob/main/docs/configuration.md#automatic-merge
