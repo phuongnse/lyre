@@ -9,7 +9,6 @@ import {
   WindowFault,
 } from '../lyre-wasm/lyre_wasm.js'
 import { vocalsForAlignment } from '../measurement/vocals'
-import { ModelCheckFailed, ModelDownloadFailed } from '../models/model-download'
 import { VocalRole } from '../original-track-messages'
 import { PackagedTrack, PackageError } from '../original-track'
 import { Resampler } from '../resampler'
@@ -27,17 +26,18 @@ import { Stage, StageFailure } from './task'
 // The media work and the model runs come in as functions, so tests run the
 // stages without WebCodecs or ONNX Runtime. The caller has loaded the core.
 
-// What the song is made from. The aligner's files are named by the caller:
-// the task never picks an aligner itself.
+// What the song is made from. The caller passes the model files after they
+// passed their check, and names the aligner: the task never picks one itself,
+// and never loads a model file.
 export interface SongTaskInput {
   source: Blob
   // The lyrics exactly as supplied. No stage copies or changes them (D5).
   lyrics: Uint8Array
   details: { title: string; artist: string; composer: string }
   vocalRole: VocalRole
-  // The IDs of the pinned model files.
-  separator: string
-  aligner: { kind: 'lyric-alignment'; model: string; vocabulary: string }
+  // The checked model files.
+  separator: Blob
+  aligner: { kind: 'lyric-alignment'; model: Blob; vocabulary: Blob }
 }
 
 // The media work of stages 1, 2 and 8.
@@ -50,10 +50,8 @@ export interface SongMedia {
   makeThumbnail(file: Blob): Promise<Uint8Array | null>
 }
 
-// The model files and model runs of stages 3 and 4. `load` gives only a file
-// that passed its check.
+// The model runs of stages 3 and 4, from checked model files.
 export interface SongModels {
-  load(id: string): Promise<Blob>
   openSeparator(graph: Uint8Array): Promise<{ run: SeparatorRunner; release(): Promise<void> }>
   openAligner(kind: AlignerKind, graph: Uint8Array): Promise<{ run: ModelRunner; release(): Promise<void> }>
 }
@@ -102,7 +100,6 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
   let details: SourceDetails
   let audioType: string
   let audioMs = 0
-  let aligner: { model: Blob; vocabulary: Blob }
   let timesMs: Uint32Array
   let tracks: { original: PackagedTrack; karaoke: PackagedTrack; video: PackagedTrack | null }
   let thumbnail: Uint8Array | null
@@ -146,23 +143,9 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
     {
       name: 'separate',
       async run({ area, progress }) {
-        // Every model file the task needs is checked before any audio is
-        // separated, so a bad aligner file never wastes a long separation.
-        const ids = [input.separator, input.aligner.model, input.aligner.vocabulary]
-        const files: Blob[] = []
-        try {
-          for (const id of ids) files.push(await models.load(id))
-        } catch (error) {
-          if (error instanceof ModelCheckFailed) throw new StageFailure('model-check-failed')
-          if (error instanceof ModelDownloadFailed) throw new StageFailure('model-unavailable')
-          throw error
-        }
-        const [graph, model, vocabulary] = files as [Blob, Blob, Blob]
-        aligner = { model, vocabulary }
-
         const audio = await floatsOf(await area.read(AUDIO))
         const frames = audio.length / 2
-        const separator = await models.openSeparator(await bytesOf(graph))
+        const separator = await models.openSeparator(await bytesOf(input.separator))
         try {
           const separated = await separate(
             separator.run,
@@ -186,8 +169,8 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
       name: 'align',
       async run({ area, progress }) {
         const vocals = await floatsOf(await area.read(VOCALS))
-        const vocabulary = await bytesOf(aligner.vocabulary)
-        const session = await models.openAligner(kind, await bytesOf(aligner.model))
+        const vocabulary = await bytesOf(input.aligner.vocabulary)
+        const session = await models.openAligner(kind, await bytesOf(input.aligner.model))
         try {
           // The lyric bytes go to the core as they are (D5).
           const timing = await alignSong(vocals, lyrics, kind, vocabulary, session.run, (p) =>

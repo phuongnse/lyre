@@ -235,8 +235,10 @@ reference doc and reviewed before M3 implements them.
 - The web client runs a model with ONNX Runtime Web (MIT), at a pinned
   version, in a Web Worker. The check pages use WebGPU when the browser gives
   them a GPU adapter and the session opens on it, and otherwise WebAssembly
-  on one thread. A task runs only on WebGPU, and the Make a song section does
-  not start one below the requirements of
+  on one thread. A task runs only on WebGPU, unless the page asks for
+  WebAssembly with `?backend=wasm` for the journeys: it opens each session on
+  that backend and never falls back. The Make a song section does not yet
+  start one below the requirements of
   [D25](decisions.md#d25-requirements-for-making-songs--proposed)
   *(planned for M2)*. The model check page's measurement never falls back: it opens each
   session on the backend it measures, or reports why it could not. The
@@ -273,30 +275,31 @@ reference doc and reviewed before M3 implements them.
 - On the web, the main page's
   [Make a song](ui-conventions.md#making-a-song) section runs a task's real
   stages, from reading the source to writing the song file, with alignment in
-  place of the hand-written timing file. Until it is built, each stage runs
-  only from its check page.
+  place of the hand-written timing file. Keeping and opening the finished song
+  is not built yet. Each stage also runs from its check page.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is
   all worker and storage work. Given a source, its lyrics, the song details,
-  the vocal role and the IDs of the model files to use, a task runs stages 1
+  the vocal role and the checked model files to use, a task runs stages 1
   to 4 and 7 to 9 in its worker and hands over the song file's bytes. It never
-  picks an aligner itself. No page starts one yet:
-  [the Make a song section](ui-conventions.md#making-a-song) will
-  *(planned for M2)*. The task check page still runs three test stages.
+  picks an aligner itself. [The Make a song
+  section](ui-conventions.md#making-a-song) starts it. The task check page
+  still runs three test stages.
 - In a task, the decoded audio, the vocals and the karaoke track from
   separation, and the timing go through the working area. The packaged
   tracks stay in memory from stage 8 to stage 9, because the song writer
   holds them all anyway.
-- A task loads every model file it needs at the start of separation, before
-  any window runs, through the same download and check as the model check
-  page. A file that fails its check stops the task, so it never runs.
+- The page loads every model file a task needs before its first stage,
+  through the same download and check as the model check page, and passes the
+  checked files to the worker. The task loads no model file itself. A file
+  that fails its check stops the run before the task starts.
 - In a task, stage 7 stores no display lines, because they are laid out at
   play time ([D17](decisions.md#d17-display-lines-are-laid-out-at-play-time--agreed)).
   It runs the song file's timing check against the lyrics and the length of
   the extracted audio.
 - A failed task names its stage and one fixed reason, such as a refused
-  source, a model file that failed its check or a refused alignment, never
+  source or a refused alignment, never
   the error's text.
 
 ## Testing

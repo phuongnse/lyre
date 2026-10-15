@@ -117,8 +117,7 @@ M4.
 ## Making a song
 
 The main page of the web client has a Make a song section. It picks the
-files, the song details and the vocal role. Running its task is *(planned for
-M2)*. The Android app has no such section
+files, the song details and the vocal role, and runs the task. The Android app has no such section
 ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed)).
 The section runs a
 [task](domain/concepts.md#processing) from a source and its lyrics to a song
@@ -150,8 +149,9 @@ the section may refine them, and update this section when they do.
   ([D30](decisions.md#d30-the-aligner-file-is-fp32--agreed),
   [the choice](reference/models.md#the-choice)).
   It checks them with the same progress bar and byte line as the model check
-  page. A file that fails its check stops the task, and the message names
-  the file. Kept files download nothing on later runs.
+  page. A file that fails its check stops the task before any stage, and the
+  message names the file. Kept files download nothing on later runs. The page
+  passes the checked files to the task, which loads no model itself.
 - The measurement chose the fp32 file
   ([results](reference/models.md#measurement-results)).
 - The task runs in a Web Worker
@@ -168,7 +168,8 @@ the section may refine them, and update this section when they do.
   ([D3](decisions.md#d3-processing-runs-on-the-device-that-asks-for-it--agreed),
   D27).
 - A **Cancel** button ends the worker at once and removes the task's working
-  area. No song is left behind. Closing or reloading the page also ends the
+  area. No song is left behind. It is on only once the task has started, not
+  during the model downloads, which cannot be stopped partway. Closing or reloading the page also ends the
   task, and the next start removes its area.
 - When another tab holds the `lyre-task` lock, the page says "Another tab is
   making a song." and does not start.
@@ -180,12 +181,18 @@ the section may refine them, and update this section when they do.
 - After a cancel or a failure, the picked files, the song details and the
   vocal role stay, so the owner can start again at once. A task always starts
   again from the beginning.
+- Until the Player and library hand-off is built *(planned for M2)*, a
+  finished task shows "Done" and the song is dropped.
 - A finished song opens in the Player and is kept in the
   [library](#library), under the library's rules. These include the
   persistent storage request and the check that this device can play it.
 - A **Download the song file** link is offered as well, named after the
   source file with `.lyre` in place of its extension. It stays while songs
   are unencrypted version-0 files.
+- Two query parameters exist only for the journeys, as on the check pages.
+  `?model=test` makes the task use the test separator and the test aligner.
+  `?backend=wasm` makes the task run its models on WebAssembly. Without it, a
+  task runs its models on WebGPU only.
 - The section's code loads only when the owner first uses it, so it stays out
   of the main page's initial load, as the check pages' code does.
 

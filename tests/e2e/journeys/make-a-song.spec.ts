@@ -14,6 +14,9 @@ const text = (name: string, value: string): Choice => ({ name, mimeType: 'text/p
 
 const validLyrics = text('lyrics.txt', 'Mưa rơi\n')
 
+// The lyrics the fixture song's test aligner can place.
+const fixtureLyrics = fileURLToPath(new URL('../../fixtures/song/lyrics.txt', import.meta.url))
+
 // Fails the journey on console errors, such as a CSP or Trusted Types violation.
 function watchProblems(page: Page): string[] {
   const problems: string[] = []
@@ -41,9 +44,9 @@ async function reportPlayable(page: Page): Promise<void> {
   })
 }
 
-// Opens the main page, presses Make a song and waits for the section.
-async function openSection(page: Page): Promise<void> {
-  await page.goto('/')
+// Opens the main page at `url`, presses Make a song and waits for the section.
+async function openSection(page: Page, url = '/'): Promise<void> {
+  await page.goto(url)
   await page.getByRole('button', { name: 'Make a song', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Make a song', exact: true })).toBeVisible()
 }
@@ -54,6 +57,9 @@ async function pick(page: Page, button: string, file: Choice): Promise<void> {
   await page.getByRole('button', { name: button, exact: true }).click()
   await (await chooser).setFiles(file)
 }
+
+// The test models, with the task on WebAssembly.
+const TEST_PAGE = '/#/?model=test&backend=wasm'
 
 const makeTheSong = (page: Page) => page.getByRole('button', { name: 'Make the song', exact: true })
 const field = (page: Page, name: string) => page.getByLabel(name, { exact: true })
@@ -182,4 +188,108 @@ test("the main page's initial scripts hold neither the section's code nor any ch
   await expect(page.getByRole('heading', { name: 'Make a song', exact: true })).toBeVisible()
   const opened = await Promise.all(scripts.slice(loaded))
   expect(opened.some((body) => definesSection.test(body))).toBe(true)
+})
+
+// The names of the working areas under tasks/ in the origin private file system.
+async function workingAreas(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory()
+    let tasks: FileSystemDirectoryHandle
+    try {
+      tasks = await root.getDirectoryHandle('tasks')
+    } catch {
+      return []
+    }
+    const names: string[] = []
+    // The e2e tsconfig's DOM types lack the folder's async iterators.
+    for await (const name of (tasks as unknown as { keys(): AsyncIterable<string> }).keys()) names.push(name)
+    return names
+  })
+}
+
+// Picks song.webm, which plays for real in the task's worker, and the lyrics, chooses a role and presses Make the song.
+async function start(page: Page): Promise<void> {
+  await pick(page, 'Choose a source', source('song.webm'))
+  await expect(page.getByText('Source: song.webm')).toBeVisible()
+  await pick(page, 'Choose the lyrics', fixtureLyrics)
+  await expect(page.getByText('Lyrics: lyrics.txt')).toBeVisible()
+  await page.getByRole('radio', { name: 'Female', exact: true }).click()
+  await makeTheSong(page).click()
+}
+
+// Holds ONNX Runtime's WebAssembly file back, so the task stays in separation until it is cancelled.
+async function holdSeparation(page: Page): Promise<void> {
+  await page.context().route('**/ort/*.wasm', () => {})
+}
+
+const stageLine = /Stage \d of 7/
+
+test('the first run downloads each test model file once, and a run after a reload downloads none', async ({
+  page,
+}) => {
+  const problems = watchProblems(page)
+  const requests: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/test-models/')) requests.push(request.url())
+  })
+  await holdSeparation(page)
+  await openSection(page, TEST_PAGE)
+  await start(page)
+  await expect(page.getByText(stageLine)).toBeVisible()
+  expect(requests).toHaveLength(3)
+  expect(new Set(requests).size).toBe(3)
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByText('Cancelled')).toBeVisible()
+
+  await page.reload()
+  await openSection(page, TEST_PAGE)
+  await start(page)
+  await expect(page.getByText(stageLine)).toBeVisible()
+  expect(requests).toHaveLength(3)
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByText('Cancelled')).toBeVisible()
+  expect(problems).toEqual([])
+})
+
+test('a test separator file with one byte changed stops the run before any stage, and names the file', async ({
+  page,
+}) => {
+  await page.route('**/test-models/mel-roformer.onnx', async (route) => {
+    const response = await route.fetch()
+    const body = await response.body()
+    body[10] ^= 0x01
+    await route.fulfill({ response, body })
+  })
+  await openSection(page, TEST_PAGE)
+  await start(page)
+  await expect(
+    page.getByText('The model file test-mel-roformer failed its check. It was deleted and not used.'),
+  ).toBeVisible()
+  await expect(page.getByText(stageLine)).toHaveCount(0)
+  await expect(makeTheSong(page)).toBeEnabled()
+})
+
+test('while the task runs, the page shows the current stage and a progress bar, and Cancel removes the working area', async ({
+  page,
+}) => {
+  const problems = watchProblems(page)
+  await holdSeparation(page)
+  await openSection(page, TEST_PAGE)
+  await start(page)
+  await expect(page.getByText('Stage 3 of 7: Separate the vocals')).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: 'Stage progress' })).toBeVisible()
+  await expect.poll(() => workingAreas(page)).toHaveLength(1)
+  await expect(makeTheSong(page)).toBeDisabled()
+
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByText('Cancelled')).toBeVisible()
+  await expect.poll(() => workingAreas(page)).toEqual([])
+  await expect(page.getByRole('list', { name: 'Library' }).getByRole('listitem')).toHaveCount(0)
+  // The picked files, the details and the role stay as they were.
+  await expect(page.getByText('Source: song.webm')).toBeVisible()
+  await expect(page.getByText('Lyrics: lyrics.txt')).toBeVisible()
+  await expect(field(page, 'Title')).toHaveValue('song')
+  await expect(page.getByRole('radio', { name: 'Female', exact: true })).toBeChecked()
+  await expect(makeTheSong(page)).toBeEnabled()
+  expect(problems).toEqual([])
 })

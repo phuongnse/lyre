@@ -107,8 +107,6 @@ export const messages = {
     'test-stage-failed': 'a test stage failed.',
     'another-task-running': 'another task is running.',
     'source-refused': 'the source could not be used.',
-    'model-check-failed': 'a model file failed its check.',
-    'model-unavailable': 'a model file could not be downloaded.',
     'separation-failed': 'the vocals could not be separated.',
     'alignment-failed': 'the lyrics could not be aligned.',
     'timing-refused': 'the timing did not fit the lyrics.',

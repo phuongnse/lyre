@@ -1,8 +1,16 @@
 import { Injectable, inject, signal } from '@angular/core'
 import { WORKING_AREAS } from '../app/working-areas'
+import { Backend } from '../separation/backend'
 import { trustedScriptUrl } from '../worker-url'
-import { ProgressReport, TaskFailure, TaskReport } from './task'
+import { SongTaskInput } from './song-task'
+import { ProgressReport, TaskFailure, TaskReport, TaskStart } from './task'
 import { TASK_LOCK } from './working-area'
+
+// The song a task makes, and the backend its models run on.
+export interface SongRun {
+  input: SongTaskInput
+  backend?: Backend
+}
 
 export type TaskState =
   | { status: 'idle' }
@@ -10,6 +18,18 @@ export type TaskState =
   | { status: 'done' }
   | { status: 'cancelled' }
   | { status: 'failed'; stage?: string; reason: TaskFailure }
+
+// How far the current stage is, from 0 to 100.
+export function stagePercent(state: TaskState): number {
+  if (state.status === 'done') return 100
+  return state.status === 'running' ? (state.report?.fraction ?? 0) * 100 : 0
+}
+
+// The seconds left in the current stage, once it has the figure.
+export function secondsLeft(state: TaskState): number | undefined {
+  const left = state.status === 'running' ? state.report?.timeLeftMs : undefined
+  return left === undefined ? undefined : Math.max(1, Math.ceil(left / 1000))
+}
 
 function startWorker(): globalThis.Worker {
   // Named Worker, so Angular's builder still finds the call below and bundles task.worker.ts.
@@ -31,12 +51,14 @@ export class TaskRunner {
   private cancelTask?: () => Promise<void>
   readonly state = this.current.asReadonly()
 
-  start(): void {
+  // Without `song`, the task runs the test stages. With it, the task makes
+  // that song, on `backend`, WebGPU when none is given.
+  start(song?: SongRun): void {
     if (this.current().status === 'running') return
     this.current.set({ status: 'running' })
     navigator.locks
       .request(TASK_LOCK, { ifAvailable: true }, (lock) =>
-        lock === null ? this.current.set({ status: 'failed', reason: 'another-task-running' }) : this.run(),
+        lock === null ? this.current.set({ status: 'failed', reason: 'another-task-running' }) : this.run(song),
       )
       .catch(() => this.current.set({ status: 'failed', reason: 'unexpected' }))
   }
@@ -48,7 +70,7 @@ export class TaskRunner {
   }
 
   // Resolves when the task has ended and its working area is removed, which releases the lock.
-  private run(): Promise<void> {
+  private run(song?: SongRun): Promise<void> {
     const taskId = crypto.randomUUID()
     const worker = startWorker()
     return new Promise((resolve) => {
@@ -72,7 +94,11 @@ export class TaskRunner {
         else void end({ status: 'failed', stage: data.stage, reason: data.reason })
       }
       worker.onerror = () => void end({ status: 'failed', reason: 'unexpected' })
-      worker.postMessage({ type: 'start', taskId })
+      const start: TaskStart =
+        song === undefined
+          ? { type: 'start', taskId }
+          : { type: 'start', taskId, baseUri: document.baseURI, song: song.input, backend: song.backend }
+      worker.postMessage(start)
     })
   }
 }
