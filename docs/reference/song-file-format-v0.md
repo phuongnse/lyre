@@ -333,7 +333,8 @@ changing how a player reads it:
 - **The header and the index can be authenticated as their own unit**, before
   any chunk is read.
 
-The scheme itself belongs to the M3 reference doc (see
+The scheme is [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
+Its byte layout belongs to the M3 reference doc (see
 [devices and access](../architecture.md#devices-and-access-planned-for-m3)).
 Encryption decides who can open a song file. It does not stop copying once a
 song is open.

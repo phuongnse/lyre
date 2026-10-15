@@ -109,19 +109,22 @@ page's measurement method.
 
 A `.lyre` file holds one song:
 
-- a fixed header: a magic number, the format version and the song's ID;
+- a fixed header: a magic number, the format version and the song's ID,
+  plus a fresh random 256-bit salt on each write from M3;
 - the media in chunks: the video if there is one, the karaoke track and the
   original track;
 - the lyrics exactly as supplied, the timing, the song's details and its
-  thumbnail.
+  thumbnail;
+- from M3, the content key wrapped for the owner's recovery key.
 
 Display lines are not stored. The core lays them out at play time (D17).
 
-From M3 every chunk is encrypted and authenticated with the song's content
-key, so a player can seek by decrypting only the chunks it needs, and a
-changed or truncated file is rejected. Format version 0, used in M1 and M2, is
-unencrypted, for development only, and is no longer accepted from M3. No
-version-0 file is ever published.
+From M3 every chunk is encrypted and authenticated with AES-256-GCM.
+HKDF-SHA256 derives the file's encryption keys from the song's content key
+and the per-write salt. A player can seek by decrypting only the chunks it
+needs, and a changed or truncated file is rejected. Format version 0, used
+in M1 and M2, is unencrypted, for development only, and is no longer accepted
+from M3. No version-0 file is ever published.
 
 The byte layout, limits and media codecs are specified in
 [song file format, version 0](reference/song-file-format-v0.md).
@@ -131,28 +134,33 @@ The byte layout, limits and media codecs are specified in
 - **Device key.** Created the first time Lyre runs on a device (D8):
   - Android: an EC P-256 key pair in Android Keystore, hardware backed,
     not exportable. Lyre checks its attestation.
-  - Web: a device-bound passkey with the PRF extension. The PRF output,
-    available only after the user unlocks the device, derives the device's
-    key pair inside the core for the session.
+  - Web: a device-bound passkey with the PRF extension. The PRF output is
+    available only after the user unlocks the device. The core derives the
+    device key once per session: PRF → HKDF-SHA256 → P-256 private key.
     - The browser hands the PRF output to JavaScript. This is the
       only time a secret passes through JavaScript. The client passes it
       straight to the core, then overwrites the buffer with zeros. It never
       keeps the output in state, storage or logs. Clearing is best effort,
       because the JavaScript engine may keep copies.
-- **Device code.** The device's public key, encoded as text and a QR code,
-  with a short fingerprint for checking it by voice or by eye.
+- **Device code.** The compressed P-256 public key in Bech32m with the `lyre`
+  prefix and a version, as text and a QR code. A fingerprint from SHA-256 of
+  the public key shows 20 digits in groups of 4, for checking by voice or eye.
 - **Wrapping.** A song's content key is wrapped for a device with HPKE
-  (RFC 9180), using a KEM both platforms can run with their hardware-held
-  keys. DHKEM(P-256) is the candidate.
-- **Access file.** One access file holds one song's content key wrapped for
-  one device. The song file does not change when it is shared (D6).
-- **Recovery key.** Generated on the owner's request and kept offline, for
-  example printed as words or a QR code. Every song the owner makes gets an
-  access entry for it too, so a new device can be given access to all of them
-  (D7).
+  (RFC 9180) base mode: DHKEM(P-256, HKDF-SHA256), HKDF-SHA256 and AES-256-GCM.
+  The song ID, device code and owner or recipient role are bound into the
+  HPKE info.
+- **Access file.** A `.lyrekey` file is for one device and holds the wrapped
+  content keys of one or more songs, each marked as the owner's or a
+  recipient's. Entries are matched to song files by song ID, never by file
+  name or folder. The song file does not change when it is shared (D6).
+- **Recovery key.** Created before the first song, shown once as 24 BIP39
+  English words and a QR code, and kept offline. The device keeps only the
+  public part. Its wrap is stored inside each song file whenever the file is
+  written, so a new device can be given access to all the owner's songs (D7).
 
-The detailed scheme, its threat model and its test vectors are written in a
-reference doc and reviewed before M3 implements them.
+The scheme is [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
+The byte layouts and test vectors go to reference docs reviewed before M3
+implements them.
 
 ## Processing
 

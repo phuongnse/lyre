@@ -7,6 +7,8 @@ recording a newer one that replaces it.
 
 ## D1. Name and file extension — Agreed
 
+Extended by [D31](#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed): an access file uses the extension `.lyrekey`.
+
 - The product is **Lyre**.
 - A Lyre song file uses the extension `.lyre`.
 
@@ -655,3 +657,58 @@ Replaces the "Which file" and "The rule" points of [D29](#d29-the-aligner-is-lyr
 
 *Why:* the timing is the same, and the far slower alignment of int8 costs
 every song, while the larger download happens once.
+
+## D31. Song files are encrypted, shared and recovered with one scheme — Agreed
+
+Settles the scheme that [D6](#d6-a-song-opens-only-on-the-devices-it-was-shared-with--agreed),
+[D7](#d7-the-owner-can-recover-their-keys--agreed),
+[D8](#d8-device-keys-are-bound-to-the-device-not-the-apps-storage--agreed) and
+[D13](#d13-only-the-owner-shares-a-song--agreed) left open, and extends
+[D1](#d1-name-and-file-extension--agreed) with the access file extension.
+
+- **Content key:** one random 256-bit content key per song, kept when the
+  song file is rewritten.
+- **Chunk encryption:** AES-256-GCM. Each write of a song file stores a fresh
+  random 256-bit salt in its header. The file's encryption keys come from
+  the content key and that salt through HKDF-SHA256. A rewritten song keeps
+  its content key, so earlier access files still open it. A chunk's nonce
+  comes from its index position. The per-write salt keeps key and nonce
+  pairs unique.
+- **Header and index:** authenticated as their own unit, with a key or nonce
+  never shared with a chunk. The song ID, the version, each chunk's position
+  and the total chunk count are bound in. Chunks cannot be swapped,
+  reordered or dropped.
+- **Wrapping:** HPKE (RFC 9180) base mode, DHKEM(P-256, HKDF-SHA256),
+  HKDF-SHA256, AES-256-GCM. HPKE means hybrid public key encryption. The
+  song ID, the device code and the owner or recipient role are bound into
+  the HPKE info.
+- **Web device key:** the passkey's PRF output for a fixed Lyre salt →
+  HKDF-SHA256 with a Lyre label → 48 bytes reduced mod n, rejecting zero →
+  P-256 private key, inside the core, once per session. Here n is the P-256
+  group order.
+- **Device code:** the compressed P-256 public key in Bech32m with the
+  `lyre` prefix and a version, as text and a QR code.
+- **Fingerprint:** from SHA-256 of the public key, shown as 20 digits in
+  groups of 4.
+- **Recovery key:** a random 256-bit seed shown once as 24 BIP39 English
+  words and a QR code. The core derives a P-256 key pair from the seed with
+  HKDF-SHA256 and its own label. The device keeps only the public part, so
+  every song is wrapped for it without the secret.
+- **Recovery wrap:** inside the song file, written whenever the song file
+  is written. The file does not change when it is shared (D6).
+- **Before the first song:** Lyre requires the owner to create the recovery
+  key before making the first song.
+- **Owner or recipient:** an access file records it inside the authenticated
+  wrap, and a recipient's Lyre offers no share (D13). This is product
+  behaviour, not a cryptographic guarantee.
+- **Access file:** extension `.lyrekey`. One access file is for one device
+  and holds the wrapped content keys of one or more songs. Lyre matches each
+  entry to its song file by song ID, never by file name or folder. Adding a
+  folder of song files and access files to the library needs no manual
+  pairing.
+- **Byte layouts:** byte layouts, labels and test vectors go in the
+  reference docs that follow.
+
+*Why:* P-256 is what Android Keystore holds in hardware (D27). Standard
+reviewed building blocks keep the core small. The per-write salt lets a
+song be rewritten without breaking its shares.

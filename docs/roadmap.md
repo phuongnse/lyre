@@ -205,9 +205,12 @@ is added, because D8 forbids a key kept in browser storage.
 Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
-- **M3:** the reference doc for the encrypted format, access files and
-  recovery, reviewed before implementation. What the web client tells a user
-  whose passkey was refused because it can sync.
+- **M3:** the scheme is settled by
+  [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
+  The reference docs for the encrypted format's byte layout and for access
+  files and recovery still need to be written and reviewed before
+  implementation. What the web client tells a user whose passkey was refused
+  because it can sync.
 - **M4:** Android playback and device keys
   ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed));
   the lowest Android version, and emulator tests in CI.

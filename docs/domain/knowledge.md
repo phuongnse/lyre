@@ -286,6 +286,44 @@ What it does (D6):
 - A changed or truncated song file fails its authentication and is rejected
   as a whole.
 
+### Threat model
+
+These are the protections and limits of the M3 scheme in
+[D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
+
+- **Someone with only the song file** cannot read the media, lyrics, details
+  or thumbnail ([D6](../decisions.md#d6-a-song-opens-only-on-the-devices-it-was-shared-with--agreed)).
+  They can read the header and index: version, song ID, salt, and chunk types
+  and sizes. These show roughly the length and whether there is video.
+- **Someone with another device's access file and device code too** still
+  cannot open the song. The device code is public. Unwrapping needs that
+  device's private key.
+- **Someone who changes the song file** cannot make Lyre play it in part.
+  A changed, truncated, reordered or swapped file, or a header from another
+  song, is rejected as a whole before anything plays.
+- **Someone who changes an access file** cannot bypass authentication.
+  Changing the owner or recipient mark, or moving an entry to another song,
+  fails authentication. But anyone who already holds a content key can write
+  a new access file. HPKE base mode does not prove who wrapped it.
+  [D13](../decisions.md#d13-only-the-owner-shares-a-song--agreed) is product
+  behaviour, not a cryptographic guarantee.
+- **Someone who reads an access file** can see which song IDs its device can
+  open. Those IDs do not let them unwrap the content keys.
+- **Someone who swaps a device code on the way** can make the owner share
+  with the wrong device. Comparing the fingerprint catches the swap. The
+  device code alone does not let them open an existing share.
+- **A recipient who keeps the content key** can open every later rewrite of
+  that song too. The owner cannot revoke this access
+  ([D9](../decisions.md#d9-lyre-has-no-server--agreed)).
+- **Someone with the recovery key** can open every song the owner made
+  ([D7](../decisions.md#d7-the-owner-can-recover-their-keys--agreed)). Keep it
+  offline. The public part kept on the device cannot unwrap those songs.
+- **Code running in the web page at unlock**, such as a malicious extension
+  or injected script, can see the PRF output. It can derive the device's
+  private key for good, beyond that session. A device-bound passkey does not
+  protect against this exposure
+  ([D8](../decisions.md#d8-device-keys-are-bound-to-the-device-not-the-apps-storage--agreed)).
+
 ### What the protection does not do
 
 - **It does not stop a recipient.** A recipient's device decrypts the song to
