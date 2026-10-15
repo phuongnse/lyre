@@ -6,13 +6,13 @@
       "provider": "anthropic",
       "oauth_token_secret": "CLAUDE_CODE_OAUTH_TOKEN",
       "fallback": [
-        "claude-api"
+        "claude-fallback"
       ]
     },
-    "claude-api": {
+    "claude-fallback": {
       "runtime": "claude-code",
       "provider": "anthropic",
-      "api_key_secret": "ANTHROPIC_API_KEY"
+      "oauth_token_secret": "CLAUDE_FALLBACK_OAUTH_TOKEN"
     },
     "astra": {
       "runtime": "codex",

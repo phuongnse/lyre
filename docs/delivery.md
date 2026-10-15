@@ -42,11 +42,11 @@ models, are not copied here. Look them up where they live.
   `conflicts.auto_resolve` on, each time `main` moves NexKit starts a fix round
   for every open NexKit pull request that now conflicts with it. A conflict
   that needs a choice ends the round as `blocked`, with a question.
-- **A Claude stage moves to an API key at the subscription's usage limit.**
-  A stage on Claude starts on the Claude subscription. When the subscription
-  hits its usage limit, the stage starts again on an Anthropic API key, which
-  is billed per token. Only when both are at their limit does NexKit pause the
-  run and resume it after the reset. The run's comment shows the reset time.
+- **A Claude stage moves to a second subscription at the usage limit.** A
+  stage on Claude starts on the main Claude subscription. When it hits its
+  usage limit, the stage starts again on a second Claude subscription. Only
+  when both are at their limit does NexKit pause the run and resume it after
+  the earliest reset. The run's comment shows the reset time.
   No person repeats the command.
 - **A stage on a GPT model does not pause.** GPT models run through Azure AI
   Foundry, which reports no usage limit to NexKit. When Azure refuses a
