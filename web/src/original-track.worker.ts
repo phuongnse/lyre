@@ -4,9 +4,10 @@ import { wavPlanes } from './measurement/wav'
 import { PackageReply, PackageRequest, SegmentTimes } from './original-track-messages'
 import { PackagedTrack, packageOriginal } from './original-track'
 import { Resampler } from './resampler'
-import { SongRefused, writeSong } from './song-writer'
+import { PieceSink, SONG_FILE, SongRefused, writeSong } from './song-writer'
 import { readSource } from './source'
 import { decodeAudio, SEPARATION_FORMAT } from './source-audio'
+import { opfsWorkingAreas, TASK_LOCK } from './task/working-area'
 import { makeThumbnail } from './thumbnail'
 import { checkVideoEnd, packageVideo, videoRefusal } from './video-track'
 
@@ -108,16 +109,19 @@ async function makeSong(request: Extract<PackageRequest, { type: 'make-song' }>)
   if (video !== null) checkVideoEnd(video, songDurationMs)
   const thumbnail = await makeThumbnail(request.file)
 
-  return writeSong({
-    songId: request.songId,
-    details: request.details,
-    lyrics,
-    timesMs,
-    original,
-    karaoke,
-    video,
-    thumbnail,
-  })
+  return writeInArea((out) =>
+    writeSong({
+      songId: request.songId,
+      details: request.details,
+      lyrics,
+      timesMs,
+      original,
+      karaoke,
+      video,
+      thumbnail,
+      out,
+    }),
+  )
 }
 
 // The last extension of a file name, such as ".webm".
@@ -145,20 +149,47 @@ async function makeMeasuredSong(request: Extract<PackageRequest, { type: 'make-m
   const songDurationMs = karaokeTimes[karaokeTimes.length - 1]!.endMs
   const video = details.videoType === undefined ? null : await packageVideo(request.file, details.videoType)
   if (video !== null) checkVideoEnd(video, songDurationMs)
-  return writeSong({
-    songId: request.songId,
-    details: {
-      title: details.title ?? request.file.name.replace(EXTENSION, ''),
-      artist: details.artist ?? '',
-      composer: details.composer ?? '',
-      vocalRole: 'female',
-    },
-    lyrics,
-    timesMs: request.timesMs,
-    original,
-    karaoke,
-    video,
-    thumbnail: null,
+  return writeInArea((out) =>
+    writeSong({
+      songId: request.songId,
+      details: {
+        title: details.title ?? request.file.name.replace(EXTENSION, ''),
+        artist: details.artist ?? '',
+        composer: details.composer ?? '',
+        vocalRole: 'female',
+      },
+      lyrics,
+      timesMs: request.timesMs,
+      original,
+      karaoke,
+      video,
+      thumbnail: null,
+      out,
+    }),
+  )
+}
+
+// Writes a song file in pieces into a fresh working area, under the task
+// lock so the startup cleanup never removes it mid-write, and reads it back.
+// The area is removed at the end, also after an error.
+async function writeInArea(write: (out: PieceSink) => Promise<void>): Promise<Uint8Array> {
+  return navigator.locks.request(TASK_LOCK, async () => {
+    const areas = opfsWorkingAreas()
+    const taskId = crypto.randomUUID()
+    try {
+      const area = await areas.create(taskId)
+      const file = await area.open(SONG_FILE)
+      try {
+        await write(file)
+      } catch (error) {
+        await file.close().catch(() => {})
+        throw error
+      }
+      await file.close()
+      return new Uint8Array(await (await area.read(SONG_FILE)).arrayBuffer())
+    } finally {
+      await areas.remove(taskId).catch(() => {})
+    }
   })
 }
 

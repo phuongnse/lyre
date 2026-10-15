@@ -224,14 +224,19 @@ reference doc and reviewed before M3 implements them.
   stage 8, with a hand-written timing file in place of alignment. That worker
   first reads the timing file against the lyrics through the core, so a
   timing file that does not fit fails before any media work. Both then make
-  the tracks and the thumbnail, and pass them, the
-  lyrics' bytes unchanged, the timing, the song details and a random 16-byte
-  song ID to lyre-wasm's `SongWriter`. That calls the core's writer, which
-  runs every check the reader runs, so the web client never lays out song
-  file bytes itself. A refusal crosses to the page only as a fixed reason
-  code. The writer holds every track in WebAssembly memory, which is fine
-  for short songs. Writing a long video in pieces is left for
-  [the Make a song section](ui-conventions.md#making-a-song).
+  the tracks and the thumbnail. They give the core, through lyre-wasm's
+  `SongWriter`, the lyrics' bytes unchanged, the timing, the song details, a
+  random 16-byte song ID and each track's stored type, init bytes and
+  segment lengths and durations. The core's writer runs every check the
+  reader runs on that plan before it gives out a byte, so the web client
+  never lays out song file bytes itself. It then gives the header and index,
+  and each chunk in file order. One media segment at a time passes through
+  WebAssembly memory: the client hands the core a segment, and the core
+  checks its length against the plan and hands it back to write. The task
+  writes `song.lyre` into its own working area and reads it back to hand it
+  over. The source check page's worker writes into a fresh working area under
+  the `lyre-task` lock, reads the file back and removes the area. A refusal
+  crosses to the page only as a fixed reason code.
 - The web client runs a model with ONNX Runtime Web (MIT), at a pinned
   version, in a Web Worker. The check pages use WebGPU when the browser gives
   them a GPU adapter and the session opens on it, and otherwise WebAssembly
@@ -290,8 +295,9 @@ reference doc and reviewed before M3 implements them.
   still runs three test stages.
 - In a task, the decoded audio, the vocals and the karaoke track from
   separation, and the timing go through the working area. The packaged
-  tracks stay in memory from stage 8 to stage 9, because the song writer
-  holds them all anyway.
+  tracks stay in the worker's JavaScript memory from stage 8 to stage 9, and
+  only one media segment at a time is in WebAssembly memory. Making the
+  tracks in pieces is left for a later change.
 - The page loads every model file a task needs before its first stage,
   through the same download and check as the model check page, and passes the
   checked files to the worker. The task loads no model file itself. A file

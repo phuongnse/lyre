@@ -5,9 +5,18 @@
 // This file runs on the page and in the task's worker, so it uses only types
 // that both have.
 
+// A file open for writing in pieces. Each `write` appends to the file. Call
+// `close` once, also after an error, so the file is complete.
+export interface WorkingFile {
+  write(data: BufferSource): Promise<void>
+  close(): Promise<void>
+}
+
 export interface WorkingArea {
   // Writes `data` to the file `name`, replacing it.
   write(name: string, data: Blob | BufferSource): Promise<void>
+  // Opens the file `name` to write in pieces, replacing it.
+  open(name: string): Promise<WorkingFile>
   read(name: string): Promise<Blob>
 }
 
@@ -58,6 +67,14 @@ export function opfsWorkingAreas(): WorkingAreas {
             await stream.write(data)
           } finally {
             await stream.close()
+          }
+        },
+        async open(name) {
+          const file = await folder.getFileHandle(name, { create: true })
+          const stream = await file.createWritable()
+          return {
+            write: (data) => stream.write(data),
+            close: () => stream.close(),
           }
         },
         async read(name) {
