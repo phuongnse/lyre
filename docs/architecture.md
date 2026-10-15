@@ -159,8 +159,10 @@ The byte layout, limits and media codecs are specified in
   written, so a new device can be given access to all the owner's songs (D7).
 
 The scheme is [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
-The byte layouts and test vectors go to reference docs reviewed before M3
-implements them.
+The [devices and access reference](reference/device-access.md) specifies
+the device code, fingerprint, access file and recovery key.
+The song file's encrypted layout still needs its own reference doc before
+M3 implements it.
 
 ## Processing
 
