@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  output,
+  signal,
+  untracked,
+} from '@angular/core'
 import { MatButton } from '@angular/material/button'
 import { MatButtonToggle, MatButtonToggleGroup } from '@angular/material/button-toggle'
 import { MatFormField, MatLabel } from '@angular/material/form-field'
@@ -16,7 +26,7 @@ import { readRequirements, Requirement } from '../../task/requirements'
 import { secondsLeft, stagePercent, TaskRunner, TaskState } from '../../task/task-runner'
 import { messages } from '../messages'
 import { Models } from '../models'
-import { detailsFromTags } from '../song-details'
+import { detailsFromTags, songFileName } from '../song-details'
 import { cannotPlayMessage, sourceProblemMessage } from '../source-messages'
 
 type SourceState =
@@ -46,8 +56,10 @@ type Phase =
 // starts nothing if either fails. It then loads the model files, which the
 // page checks, and runs a task on them in a Web Worker. A failed task shows
 // one alert that names its stage. Cancel works once
-// the task has started. A finished task shows Done: keeping and opening the
-// song is not built yet. ?model=test uses the test separator and test aligner,
+// the task has started. A finished task shows Done, hands its song file to the
+// page through `made`, which opens it in the Player and keeps it in the
+// library, and offers it as a download named after the source. A new run, a
+// cancelled run and a failed run offer no download. ?model=test uses the test separator and test aligner,
 // and ?backend=wasm skips the requirements check and runs the task on
 // WebAssembly, both for the journeys. A
 // source this browser refuses counts as no source and leaves the details
@@ -173,6 +185,9 @@ type Phase =
       @if (task.status === 'failed') {
         <p role="alert">{{ failureText(task) }}</p>
       }
+      @if (download(); as link) {
+        <a matButton="filled" [href]="link.url" [download]="link.name">{{ messages.downloadSongFile }}</a>
+      }
       <!-- Outside the status line, so a screen reader does not announce each update. -->
       @if (secondsLeft(); as seconds) {
         <p>{{ messages.taskTimeLeft(seconds) }}</p>
@@ -207,6 +222,10 @@ export class MakeSong {
   protected readonly models = inject(Models)
   protected readonly runner = inject(TaskRunner)
   protected readonly phase = signal<Phase>({ status: 'idle' })
+  // The finished song as a download, named after the source of the run that made it.
+  protected readonly download = signal<{ url: string; name: string } | undefined>(undefined)
+  // The finished song file, handed to the page, which opens and keeps it.
+  readonly made = output<Blob>()
   private readonly query = inject(ActivatedRoute).snapshot.queryParamMap
   private readonly test = this.query.get('model') === 'test'
   private readonly forced: Backend | undefined = this.query.get('backend') === 'wasm' ? 'wasm' : undefined
@@ -225,6 +244,27 @@ export class MakeSong {
   // Count the sources and the lyrics picked, so only the latest pick shows.
   private sourceAttempts = 0
   private lyricsAttempts = 0
+  // The name of the source the current run was started with.
+  private runSource = ''
+  // The last song handed over, so one finished run is handed over once.
+  private handled: Blob | undefined
+
+  constructor() {
+    // Hands over the song of a run this section started. The runner outlives
+    // the section, so a run that ended before this section opened is not handed over.
+    effect(() => {
+      const task = this.runner.state()
+      if (this.phase().status !== 'task' || task.status !== 'done' || task.song === undefined) return
+      const song = task.song
+      if (song === this.handled) return
+      untracked(() => {
+        this.handled = song
+        this.setDownload({ url: URL.createObjectURL(song), name: songFileName(this.runSource) })
+        this.made.emit(song)
+      })
+    })
+    inject(DestroyRef).onDestroy(() => this.setDownload(undefined))
+  }
 
   // Reads the picked source. An accepted source fills the details fields from
   // its tags, replacing what they held. A refused source counts as no source
@@ -305,6 +345,7 @@ export class MakeSong {
     const lyrics = this.lyricsState()
     const vocalRole = this.vocalRole()
     if (source.status !== 'ready' || lyrics.status !== 'valid' || vocalRole === undefined || !this.canMake()) return
+    this.setDownload(undefined)
     // What the owner entered when they pressed the button.
     const details = { title: this.title(), artist: this.artist(), composer: this.composer() }
     this.phase.set({ status: 'checking' })
@@ -342,6 +383,7 @@ export class MakeSong {
     }
     // The lyrics' bytes go to the task as they are (D5).
     const bytes = new Uint8Array(await lyrics.file.arrayBuffer())
+    this.runSource = source.file.name
     this.runner.start({
       input: {
         source: source.file,
@@ -354,5 +396,12 @@ export class MakeSong {
       backend: this.forced,
     })
     this.phase.set({ status: 'task' })
+  }
+
+  // Replaces the download and revokes the earlier link's blob URL.
+  private setDownload(next: { url: string; name: string } | undefined): void {
+    const previous = this.download()
+    if (previous !== undefined) URL.revokeObjectURL(previous.url)
+    this.download.set(next)
   }
 }

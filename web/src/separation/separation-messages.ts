@@ -11,7 +11,7 @@ export type SeparationRequest = {
   forced?: Backend
 }
 
-// The broken-run rule a run failed (docs/architecture.md#processing-planned-for-m2).
+// The broken-run rule a run failed (docs/architecture.md#processing).
 export type BrokenRunRule = 'vocals-not-finite' | 'karaoke-not-finite' | 'vocals-peak'
 
 // What the worker answers: progress, then the lengths of the tracks or why the

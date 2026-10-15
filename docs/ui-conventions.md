@@ -155,7 +155,7 @@ the section may refine them, and update this section when they do.
 - The measurement chose the fp32 file
   ([results](reference/models.md#measurement-results)).
 - The task runs in a Web Worker
-  ([processing](architecture.md#processing-planned-for-m2)). The page shows
+  ([processing](architecture.md#processing)). The page shows
   the current stage's name, such as "Separating the vocals", and a progress
   bar. It shows a time left only once the stage has run 1 s and reported some
   progress. The stages are those in
@@ -193,8 +193,6 @@ the section may refine them, and update this section when they do.
 - After a cancel or a failure, the picked files, the song details and the
   vocal role stay, so the owner can start again at once. A task always starts
   again from the beginning.
-- Until the Player and library hand-off is built *(planned for M2)*, a
-  finished task shows "Done" and the song is dropped.
 - A finished song opens in the Player and is kept in the
   [library](#library), under the library's rules. These include the
   persistent storage request and the check that this device can play it.
@@ -350,7 +348,7 @@ Compose uses the same three values *(planned for M4)*.
   separation check page at `#/separation-check`.
 - The task check page runs a task of test stages, with its progress and a
   Cancel button. The Playwright journeys use it to check cancel and the
-  cleanup after a reload ([processing](architecture.md#processing-planned-for-m2)).
+  cleanup after a reload ([processing](architecture.md#processing)).
 - The source check page reads a picked source's details: its duration, its
   streams, its start offset, and its title, artist and composer, shown
   exactly as stored. A source without audio, or a file it cannot read, gets
@@ -416,7 +414,7 @@ Compose uses the same three values *(planned for M4)*.
   lyric-alignment test aligner. It has a **Force WebAssembly** checkbox, which
   starts ticked with `?backend=wasm`. The button opens a lyrics file picker, and
   picking a file times its syllables on 40 s of test audio in a Web Worker
-  ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
+  ([processing](architecture.md#processing)). While it runs, a
   line shows the backend and the windows done out of the total, such as
   "Aligning on WebAssembly: 1 of 2 windows done". When it ends, the line says
   "Aligned on WebAssembly: 2 of 2 windows done", and another gives the number
@@ -524,7 +522,7 @@ Compose uses the same three values *(planned for M4)*.
   this timing** button.
 - The separation check page separates a picked source's audio into vocals and
   a karaoke track in a Web Worker
-  ([processing](architecture.md#processing-planned-for-m2)). While it runs, a
+  ([processing](architecture.md#processing)). While it runs, a
   progress bar and the status line show the backend and the segments done out
   of the total. When it ends, the page shows the backend that ran and the
   lengths of the source, the vocals and the karaoke track. A run that fails

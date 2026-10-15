@@ -148,6 +148,11 @@ export class Player {
     if (file) await this.openSource(file, file)
   }
 
+  // Opens a song file made on this page, and keeps it in the library as an opened file is.
+  openMade(file: Blob): Promise<void> {
+    return this.openSource(file, file)
+  }
+
   // Opens `source`. When it is a chosen `file` that opens, keeps it in the library.
   protected async openSource(source: ByteSource, file?: Blob): Promise<void> {
     const attempt = ++this.attempts

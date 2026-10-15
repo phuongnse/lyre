@@ -35,7 +35,7 @@ export class AlignmentRunError extends Error {
 const SAMPLES_PER_MS = 16
 
 // Times every syllable of the lyrics from 16 kHz mono audio: stage 4 of
-// processing (docs/architecture.md#processing-planned-for-m2). The core plans
+// processing (docs/architecture.md#processing). The core plans
 // the windows and checks the model's output as frames. Then it joins them and
 // times the syllables, with the same audio to tell where the singing stops.
 // Last it checks the timing as a song file needs it. The caller has loaded the core. A refused step throws

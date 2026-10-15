@@ -136,6 +136,25 @@ test('a song file that opens is kept in the library with its song ID and details
   fixture.destroy()
 })
 
+test('a song file made on the page is kept in the library as the same Blob', async () => {
+  const store = new FakeLibraryStore()
+  TestBed.configureTestingModule({
+    providers: [
+      provideZonelessChangeDetection(),
+      { provide: SONG_FILE_OPENER, useValue: () => Promise.resolve(openedSong()) },
+      { provide: LIBRARY_STORE, useValue: store },
+    ],
+  })
+  const fixture = TestBed.createComponent(Player)
+  await fixture.whenStable()
+  const blob = new Blob(['song bytes'], { type: 'application/octet-stream' })
+  await fixture.componentInstance.openMade(blob)
+  await vi.waitFor(() => expect(store.songs.size).toBe(1))
+  expect(store.songs.get('00112233445566778899aabbccddeeff')?.file).toBe(blob)
+  // Stops the playback while the stand-ins are still in place.
+  fixture.destroy()
+})
+
 test('a file that fails to open is not kept', async () => {
   const store = new FakeLibraryStore()
   const element = await chooseFile(() => Promise.reject(new SongFileError('damaged')), store)

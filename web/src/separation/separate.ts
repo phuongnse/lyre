@@ -29,7 +29,7 @@ function concatenate(pieces: Float32Array[]): Float32Array {
 
 // Separates decoded 44.1 kHz stereo audio into vocals and a karaoke track
 // with a separator runner, segment by segment: stage 3 of processing
-// (docs/architecture.md#processing-planned-for-m2). `onProgress` gets the
+// (docs/architecture.md#processing). `onProgress` gets the
 // segments done out of the total, first with none done. The caller has loaded
 // the core and frees the tracks. A refused step or a failed broken-run check
 // throws the core's SeparationFault.

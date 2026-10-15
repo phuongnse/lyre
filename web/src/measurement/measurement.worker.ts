@@ -31,7 +31,7 @@ const bytesOf = async (blob: Blob) => new Uint8Array(await blob.arrayBuffer())
 // timing when the page gives its starts. It decodes the source once. Then, on
 // each backend in turn, it separates the source and times the lyrics on the
 // vocals with each candidate: stages 3 and 4 of processing
-// (docs/architecture.md#processing-planned-for-m2). Every session opens in
+// (docs/architecture.md#processing). Every session opens in
 // measurement mode, so a backend's figures always come from that backend. It
 // answers with figures, and with each separation's tracks as WAV files for the
 // page's players, never with the lyric text or an error's text. Each stage's

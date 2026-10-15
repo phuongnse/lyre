@@ -15,10 +15,10 @@ import { Player } from './player.component'
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <lyre-core-version />
-    <lyre-player />
+    <lyre-player #player />
     @if (makingSong()) {
       @defer (on immediate) {
-        <lyre-make-song />
+        <lyre-make-song (made)="player.openMade($event)" />
       }
     } @else {
       <button matButton="filled" type="button" (click)="makingSong.set(true)">{{ messages.makeASong }}</button>
