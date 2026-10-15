@@ -79,7 +79,10 @@ songs at the same time.
   Vietnamese diacritics.
 - A device that was not given access cannot play the song, even with the song
   file, the access file meant for another device and that device's code.
-- A changed or truncated song file is rejected, never played in part.
+- A changed or truncated song file never plays changed content: a truncated
+  file, or a change in the header, index, details, lyrics or timing, is
+  rejected before anything plays; a changed media segment stops playback
+  when it is reached.
 - The owner restores every song on a new device with the recovery key.
 - Processing that is cancelled, or stops because the page closed, leaves no
   half-made song and can start again.

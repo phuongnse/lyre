@@ -249,8 +249,8 @@ A zero result is an error, and no recovery key pair is accepted.
 The device retains only the public key, so later songs can be wrapped
 without keeping the seed or private key. The private key stays inside the
 core and never reaches UI state, logs or error messages.
-The recovery wrap's bytes belong to the encrypted
-song file format reference, which still needs to be written.
+The recovery wrap's bytes are specified in
+[song file format, version 1](song-file-format-v1.md#recovery-wrap).
 
 *Why use the entropy itself:* D31's seed is 256 bits, shown as words.
 The checksum catches mistakes without adding a second seed derivation.

@@ -334,8 +334,8 @@ changing how a player reads it:
   any chunk is read.
 
 The scheme is [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
-Its byte layout belongs to the M3 reference doc (see
-[devices and access](../architecture.md#devices-and-access-planned-for-m3)).
+Its encrypted byte layout is specified in
+[song file format, version 1](song-file-format-v1.md) *(planned for M3)*.
 Encryption decides who can open a song file. It does not stop copying once a
 song is open.
 

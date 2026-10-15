@@ -209,8 +209,8 @@ must settle:
   [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
   Device codes, access files and recovery are specified in
   [the devices and access reference](reference/device-access.md).
-  The encrypted format's byte layout still needs its own reference doc,
-  written and reviewed before implementation.
+  The encrypted format's byte layout is specified in
+  [song file format, version 1](reference/song-file-format-v1.md).
   What the web client tells a user whose passkey was refused
   because it can sync.
 - **M4:** Android playback and device keys
