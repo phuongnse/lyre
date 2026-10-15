@@ -33,8 +33,8 @@
 | --- | --- | --- | --- |
 | **M0** | Foundation | Done | The core, the web client and the Android app build; CI runs build, lint, unit and Playwright E2E for real; NexKit is installed with those checks. |
 | **M1** | Karaoke playback | Done | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
-| **M2** | Making songs on the device | Next | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page measures the aligner's int8 and fp32 files (D29) on real devices and confirms the separator. |
-| **M3** | Devices, encryption and sharing | Planned | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
+| **M2** | Making songs on the device | Done | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page measures the aligner's int8 and fp32 files (D29) on real devices and confirms the separator. |
+| **M3** | Devices, encryption and sharing | Next | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
 | **M4** | Android | Planned | The Android app plays songs and shows a device code to receive shared songs, with its device key in Android Keystore. Songs made in the web client play in the Android app. |
 | **M5** | Library and queue | Planned | Library, queue in order or shuffled, search by title, artist, composer and lyrics that ignores Vietnamese diacritics, thumbnails, lyric corrections. |
 | **M6** | Clip editor | Planned | The owner cuts several sections from one source, each with its own details and lyrics, and each becomes a song. |
@@ -102,6 +102,48 @@ M1 delivered, in this order:
 
 Done when all ten were merged and the owner accepted the Player.
 
+## M2 — Making songs on the device
+
+The second slice makes a song in the browser from a source and its lyrics.
+It was built in small steps. Each step had a check page, so it could be tried
+before the next one used it.
+
+M2 delivered, in this order:
+
+1. A task runner in a Web Worker, with progress, cancel and cleanup, and a
+   task check page.
+2. Reading a source and its details, with a source check page.
+3. Repackaging the original track and the video, and encoding the Opus
+   karaoke track
+   ([D24](decisions.md#d24-sources-are-repackaged-and-only-the-karaoke-track-is-encoded--agreed)).
+   A source with keyframes more than 20 s apart, or a group of frames over
+   64 MiB, is refused. A late start is shifted to 0.
+4. The thumbnail, and a version-0 song file written in the web client from a
+   hand-written timing.
+5. Model download, SHA-256 check and keeping, with a model check page.
+6. Separation with Mel-Band RoFormer and the check for a broken run
+   ([D28](decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)),
+   with a separation check page.
+7. Forced alignment in the core, in 30 s windows, with syllable ends at
+   silence
+   ([D29](decisions.md#d29-the-aligner-is-lyric-alignment--agreed)).
+8. The model tool, which makes the aligner's ONNX files.
+9. The model measurement page, with **Play with this timing** and **Copy
+   results**. Its first measurement chose the fp32 file of `lyric-alignment`
+   ([D30](decisions.md#d30-the-aligner-file-is-fp32--agreed)) and showed that
+   Mel-Band RoFormer met the time target. See the
+   [results](reference/models.md#measurement-results).
+10. The Make a song section: the check of the requirements of
+    [D25](decisions.md#d25-requirements-for-making-songs--agreed) (a WebGPU
+    adapter and 8 GB of memory), progress, **Cancel**, the one-tab lock, the
+    library and the download link.
+
+Done when all ten were merged.
+
+The message that names the codec in the Player, as in "This device cannot
+play H.265 video", was not built. It is planned for M4, with Android's
+Player.
+
 ## Early checks on real devices
 
 - The owner runs both checks on real devices, because the CI runners have no
@@ -112,7 +154,7 @@ Done when all ten were merged and the owner accepted the Player.
 - The passkey check page is served at `#/passkey-check` of the web client, for
   example <https://phuongnse.github.io/lyre/#/passkey-check>. The main page
   does not link to it.
-- The model measurement page is built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
+- The model measurement page was built first in M2 ([D20](decisions.md#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed)).
   It runs the separator (D28) and both files of the `lyric-alignment` aligner
   (D29).
   It runs on WebGPU, as making a song does
@@ -135,15 +177,6 @@ Done when all ten were merged and the owner accepted the Player.
 Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
-- **M2:** the measurement page came first. Its first measurement chose the
-  fp32 file of `lyric-alignment`
-  ([D30](decisions.md#d30-the-aligner-file-is-fp32--agreed)) and
-  Mel-Band RoFormer
-  ([D28](decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed))
-  met the time target. See the
-  [results](reference/models.md#measurement-results).
-  [D25](decisions.md#d25-requirements-for-making-songs--agreed) is Agreed: a
-  WebGPU adapter and 8 GB of memory.
 - **M3:** the passkey check results (D8); the reference doc for the encrypted
   format, access files and recovery, reviewed before implementation.
 - **M4:** Android playback and device keys

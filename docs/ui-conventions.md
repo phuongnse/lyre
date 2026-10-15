@@ -84,7 +84,7 @@ M4.
   its karaoke track or its original track. Nothing plays, and the song is not
   kept in the library
   ([D24](decisions.md#d24-sources-are-repackaged-and-only-the-karaoke-track-is-encoded--agreed)).
-  *(planned for M2)* The message names the codec and the kind of media
+  *(planned for M4)* The message names the codec and the kind of media
   instead, such as "This device cannot play H.265 video".
 - The web Player shows the lyrics in a Lyrics area over the bottom of the
   video, in two rows. See [Lyrics area](#lyrics-area). The core lays out the
@@ -362,9 +362,9 @@ Compose uses the same three values *(planned for M4)*.
   gives the audio a stored type, a **Package the original track** button
   packages it in a Web Worker, and shows the original track's stored type,
   its segment count and its total duration. A failure shows one message:
-  "This source's audio could not be packaged for a song." Until separation
-  exists, a **Choose a karaoke track** button picks a second audio file that
-  stands in for the karaoke track. Once one is picked, a **Make the
+  "This source's audio could not be packaged for a song." A **Choose a
+  karaoke track** button picks a second audio file that stands in for the
+  karaoke track, so the page makes the tracks without separation. Once one is picked, a **Make the
   tracks** button packages the original track, makes the karaoke track from
   it, and then packages the source's video, in a Web Worker. The page then
   lists each track's segments, with their start and end times, and shows the

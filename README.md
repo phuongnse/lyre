@@ -27,7 +27,7 @@ A development build of the web client runs at
 | [Architecture](docs/architecture.md) | The core, the clients, the song file, devices and access, testing |
 | [Song file format v0](docs/reference/song-file-format-v0.md) | The byte layout of development song files |
 | [lyre-cli](docs/reference/lyre-cli.md) | The developer tool that builds song files from fixtures: its manifest, the timing file and the fixture song |
-| [Models](docs/reference/models.md) | The pinned model files, what each model takes and gives, how M2 measures them, and the results |
+| [Models](docs/reference/models.md) | The pinned model files, what each model takes and gives, how the model measurement page measures them, and the results |
 | [UI conventions](docs/ui-conventions.md) | How both clients build their UI: Material 3 tokens, strings, accessibility, the Player |
 | [Concepts](docs/domain/concepts.md) | The Lyre vocabulary |
 | [Design knowledge](docs/domain/knowledge.md) | What makes a good karaoke song and the pitfalls to avoid |
