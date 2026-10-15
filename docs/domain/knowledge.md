@@ -293,14 +293,17 @@ These are the protections and limits of the M3 scheme in
 
 - **Someone with only the song file** cannot read the media, lyrics, details
   or thumbnail ([D6](../decisions.md#d6-a-song-opens-only-on-the-devices-it-was-shared-with--agreed)).
-  They can read the header and index: version, song ID, salt, and chunk types
-  and sizes. These show roughly the length and whether there is video.
+  They can read the header and index: version, song ID, salt, recovery wrap,
+  and chunk types and sizes. Only the recovery key opens the recovery wrap.
+  These show roughly the length and whether there is video.
 - **Someone with another device's access file and device code too** still
   cannot open the song. The device code is public. Unwrapping needs that
   device's private key.
-- **Someone who changes the song file** cannot make Lyre play it in part.
-  A changed, truncated, reordered or swapped file, or a header from another
-  song, is rejected as a whole before anything plays.
+- **Someone who changes the song file** cannot make Lyre play changed content.
+  A truncated file, a reordered or swapped file, a header from another song,
+  or a change in the header, index, details, lyrics or timing, is rejected as
+  a whole before anything plays. A changed media segment stops playback when
+  it is reached.
 - **Someone who changes an access file** cannot bypass authentication.
   Changing the owner or recipient mark, or moving an entry to another song,
   fails authentication. But anyone who already holds a content key can write
