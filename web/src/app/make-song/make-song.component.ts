@@ -13,7 +13,7 @@ import { VocalRole } from '../../original-track-messages'
 import { Backend } from '../../separation/backend'
 import { SourceError, readSource } from '../../source'
 import { readRequirements, Requirement } from '../../task/requirements'
-import { secondsLeft, stagePercent, TaskRunner } from '../../task/task-runner'
+import { secondsLeft, stagePercent, TaskRunner, TaskState } from '../../task/task-runner'
 import { messages } from '../messages'
 import { Models } from '../models'
 import { detailsFromTags } from '../song-details'
@@ -25,14 +25,16 @@ type SourceState =
 type LyricsState = { status: 'empty' } | { status: 'reading' } | { status: 'valid'; file: File } | { status: 'invalid' }
 
 // Where a press of Make the song is: checking the device, stopped by a
-// requirement it does not meet, loading the model files, stopped by one of
-// them, or running the task, whose own state the runner keeps.
+// requirement it does not meet, stopped by a task in another tab, loading the
+// model files, stopped by one of them, or running the task, whose own state
+// the runner keeps.
 type Phase =
   | { status: 'idle' }
   | { status: 'checking' }
   | { status: 'unmet'; unmet: Requirement[] }
   | { status: 'downloading' }
   | { status: 'download-failed'; id: string; checkFailed: boolean }
+  | { status: 'busy' }
   | { status: 'task' }
 
 // The Make a song section of the main page
@@ -40,9 +42,10 @@ type Phase =
 // lyrics, edits the song details and chooses a vocal role. The source is read
 // on the main thread as soon as it is picked, stage 1, and the lyrics are
 // checked through the core. Make the song first checks that the device meets
-// the requirements of D25, and starts nothing if it does not. It then loads
-// the model files, which the page checks, and runs a task on them in a Web
-// Worker. Cancel works once
+// the requirements of D25, and then that no other tab holds the task lock. It
+// starts nothing if either fails. It then loads the model files, which the
+// page checks, and runs a task on them in a Web Worker. A failed task shows
+// one alert that names its stage. Cancel works once
 // the task has started. A finished task shows Done: keeping and opening the
 // song is not built yet. ?model=test uses the test separator and test aligner,
 // and ?backend=wasm skips the requirements check and runs the task on
@@ -131,6 +134,9 @@ type Phase =
     @if (current.status === 'unmet') {
       <p role="alert">{{ messages.cannotMakeSongs }} {{ unmetText(current.unmet) }}</p>
     }
+    @if (current.status === 'busy') {
+      <p role="alert">{{ messages.anotherTabMakingSong }}</p>
+    }
     @if (current.status === 'downloading' || current.status === 'download-failed') {
       @if (bytes(); as bytes) {
         <mat-progress-bar
@@ -162,15 +168,11 @@ type Phase =
           @case ('cancelled') {
             {{ messages.taskCancelled }}
           }
-          @case ('failed') {
-            @if (task.stage) {
-              {{ messages.taskFailedIn(stageName(task.stage), messages.taskFailures[task.reason]) }}
-            } @else {
-              {{ messages.taskFailed(messages.taskFailures[task.reason]) }}
-            }
-          }
         }
       </p>
+      @if (task.status === 'failed') {
+        <p role="alert">{{ failureText(task) }}</p>
+      }
       <!-- Outside the status line, so a screen reader does not announce each update. -->
       @if (secondsLeft(); as seconds) {
         <p>{{ messages.taskTimeLeft(seconds) }}</p>
@@ -279,11 +281,23 @@ export class MakeSong {
     return (messages.stageNames as Record<string, string | undefined>)[stage] ?? stage
   }
 
+  // The one message for a failed task. It names the stage and, for a syllable
+  // the aligner cannot time, its place. It never holds lyric text or the core's own text.
+  protected failureText(task: Extract<TaskState, { status: 'failed' }>): string {
+    if (task.reason === 'another-task-running') return messages.anotherTabMakingSong
+    const stage = task.stage === undefined ? undefined : messages.songStageFailures[task.stage]
+    if (stage === undefined) return messages.songNotMade
+    const failed = messages.songFailed(stage)
+    return task.unknown === undefined
+      ? failed
+      : `${failed} ${messages.unknownSyllable(task.unknown.lyricLine + 1, task.unknown.syllable + 1)}`
+  }
+
   protected unmetText(unmet: Requirement[]): string {
     return unmet.map((requirement) => messages.unmetRequirements[requirement]).join(' ')
   }
 
-  // Checks the device, then loads the separator's file and the aligner's model
+  // Checks the device and the task lock, then loads the separator's file and the aligner's model
   // and vocabulary, then runs the task on them. A device that falls short, or
   // any file that fails, stops the run before a stage.
   protected async make(): Promise<void> {
@@ -293,14 +307,19 @@ export class MakeSong {
     if (source.status !== 'ready' || lyrics.status !== 'valid' || vocalRole === undefined || !this.canMake()) return
     // What the owner entered when they pressed the button.
     const details = { title: this.title(), artist: this.artist(), composer: this.composer() }
+    this.phase.set({ status: 'checking' })
     // Only a journey forces a backend, and it runs on machines without a GPU.
     if (this.forced === undefined) {
-      this.phase.set({ status: 'checking' })
       const unmet = await readRequirements()
       if (unmet.length > 0) {
         this.phase.set({ status: 'unmet', unmet })
         return
       }
+    }
+    // Before any download, so a start that is refused fetches nothing.
+    if (await this.runner.anotherTaskRunning()) {
+      this.phase.set({ status: 'busy' })
+      return
     }
     this.phase.set({ status: 'downloading' })
     const files = candidateFiles[this.test ? 'test-lyric-alignment' : 'lyric-alignment-fp32']

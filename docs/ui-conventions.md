@@ -177,10 +177,17 @@ the section may refine them, and update this section when they do.
   during the model downloads, which cannot be stopped partway. Closing or reloading the page also ends the
   task, and the next start removes its area.
 - When another tab holds the `lyre-task` lock, the page says "Another tab is
-  making a song." and does not start.
-- A failure shows one plain message that names the stage, such as "The song
-  could not be made: alignment failed." No song is kept or offered. A
-  syllable the aligner cannot time is named by its lyric line and position
+  making a song." and does not start. It checks the lock after the
+  requirements and before any download, so nothing is downloaded, no stage
+  runs and no working area is made. If another tab takes the lock during a
+  download, the task's own check shows the same message.
+- A failure shows one alert that names the stage: "The song could not be
+  made: alignment failed." The stage is named as reading the source,
+  extracting the audio, separation, alignment, laying out the lyrics,
+  packaging the media or writing the song file. A failure before any stage
+  shows "The song could not be made." No song is kept or offered. A syllable
+  the aligner cannot time is named by its lyric line and position, both
+  counted from 1, such as "Syllable 3 of lyric line 1 could not be timed."
   ([knowledge](domain/knowledge.md#processing)). The page never shows lyric
   text or the core's own text.
 - After a cancel or a failure, the picked files, the song details and the

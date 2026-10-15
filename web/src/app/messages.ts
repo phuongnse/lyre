@@ -90,6 +90,21 @@ export const messages = {
   taskCancelled: 'Cancelled',
   taskFailed: (reason: string) => `Failed: ${reason}`,
   taskFailedIn: (stage: string, reason: string) => `Failed in ${stage}: ${reason}`,
+  songFailed: (stage: string) => `The song could not be made: ${stage} failed.`,
+  songNotMade: 'The song could not be made.',
+  // Keyed by the stage's name in the task.
+  songStageFailures: {
+    'read-source': 'reading the source',
+    'extract-audio': 'extracting the audio',
+    separate: 'separation',
+    align: 'alignment',
+    'lay-out': 'laying out the lyrics',
+    'package-media': 'packaging the media',
+    'write-song': 'writing the song file',
+  } as Record<string, string | undefined>,
+  // Both numbers count from 1.
+  unknownSyllable: (line: number, syllable: number) => `Syllable ${syllable} of lyric line ${line} could not be timed.`,
+  anotherTabMakingSong: 'Another tab is making a song.',
   // Keyed by the stage's name in the task.
   stageNames: {
     'test-1': 'Test stage 1',

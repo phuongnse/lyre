@@ -164,4 +164,20 @@ describe('timeLeft', () => {
   ])('after %i ms at %f gives %s', (elapsedMs, fraction, expected) => {
     expect(timeLeft(elapsedMs, fraction)).toBe(expected)
   })
+  test('a failure carries the place of an unknown syllable only when the stage gave one', async () => {
+    const place = { lyricLine: 1, syllable: 2 }
+    const ran: string[] = []
+    const placed = await run([
+      stage('a', ran, () => {
+        throw new StageFailure('alignment-failed', place)
+      }),
+    ])
+    expect(placed.reports.at(-1)).toEqual({ type: 'failed', stage: 'a', reason: 'alignment-failed', unknown: place })
+    const plain = await run([
+      stage('a', ran, () => {
+        throw new StageFailure('alignment-failed')
+      }),
+    ])
+    expect(plain.reports.at(-1)).not.toHaveProperty('unknown')
+  })
 })

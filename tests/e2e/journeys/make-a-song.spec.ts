@@ -207,11 +207,11 @@ async function workingAreas(page: Page): Promise<string[]> {
   })
 }
 
-// Picks song.webm, which plays for real in the task's worker, and the lyrics, chooses a role and presses Make the song.
-async function start(page: Page): Promise<void> {
+// Picks song.webm, which plays for real in the task's worker, and the lyrics (the fixture's by default), chooses a role and presses Make the song.
+async function start(page: Page, lyrics: Choice = fixtureLyrics): Promise<void> {
   await pick(page, 'Choose a source', source('song.webm'))
   await expect(page.getByText('Source: song.webm')).toBeVisible()
-  await pick(page, 'Choose the lyrics', fixtureLyrics)
+  await pick(page, 'Choose the lyrics', lyrics)
   await expect(page.getByText('Lyrics: lyrics.txt')).toBeVisible()
   await page.getByRole('radio', { name: 'Female', exact: true }).click()
   await makeTheSong(page).click()
@@ -290,6 +290,55 @@ test('while the task runs, the page shows the current stage and a progress bar, 
   await expect(page.getByText('Lyrics: lyrics.txt')).toBeVisible()
   await expect(field(page, 'Title')).toHaveValue('song')
   await expect(page.getByRole('radio', { name: 'Female', exact: true })).toBeChecked()
+  await expect(makeTheSong(page)).toBeEnabled()
+  expect(problems).toEqual([])
+})
+
+test('lyrics the aligner cannot time show one message, keep no song and leave the fields as they were', async ({
+  page,
+}) => {
+  const problems = watchProblems(page)
+  await openSection(page, TEST_PAGE)
+  await start(page, text('lyrics.txt', 'Mưa rơi ♪\n'))
+  await expect(page.getByRole('alert')).toHaveText(
+    'The song could not be made: alignment failed. Syllable 3 of lyric line 1 could not be timed.',
+  )
+  await expect(page.getByRole('alert')).toHaveCount(1)
+  await expect.poll(() => workingAreas(page)).toEqual([])
+  await expect(page.getByRole('list', { name: 'Library' }).getByRole('listitem')).toHaveCount(0)
+  // The picked files, the details and the role stay as they were.
+  await expect(page.getByText('Source: song.webm')).toBeVisible()
+  await expect(page.getByText('Lyrics: lyrics.txt')).toBeVisible()
+  await expect(field(page, 'Title')).toHaveValue('song')
+  await expect(page.getByRole('radio', { name: 'Female', exact: true })).toBeChecked()
+  await expect(makeTheSong(page)).toBeEnabled()
+  expect(problems).toEqual([])
+})
+
+test('while another tab holds the task lock, Make the song says so and starts nothing', async ({ page }) => {
+  const problems = watchProblems(page)
+  const requests: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/test-models/')) requests.push(request.url())
+  })
+  const other = await page.context().newPage()
+  await other.goto('/')
+  await other.evaluate(
+    () =>
+      new Promise<void>((held) => {
+        void navigator.locks.request('lyre-task', () => {
+          held()
+          return new Promise(() => {})
+        })
+      }),
+  )
+  await openSection(page, TEST_PAGE)
+  await start(page)
+  await expect(page.getByRole('alert')).toHaveText('Another tab is making a song.')
+  await expect(page.getByRole('alert')).toHaveCount(1)
+  await expect(page.getByText(stageLine)).toHaveCount(0)
+  expect(await workingAreas(page)).toEqual([])
+  expect(requests).toEqual([])
   await expect(makeTheSong(page)).toBeEnabled()
   expect(problems).toEqual([])
 })

@@ -87,11 +87,16 @@ function free(error: unknown): void {
 }
 
 // Stops the task with `reason` when the error is `known`, and otherwise
-// lets it through as unexpected. The error's own text goes nowhere.
+// lets it through as unexpected. The error's own text goes nowhere. An
+// alignment fault that names a syllable passes its place on.
 function refused(reason: StageFailure['reason'], known: boolean, error: unknown): never {
   if (!known) throw error
+  const unknown =
+    error instanceof AlignmentFault && error.lyricLine !== undefined && error.syllable !== undefined
+      ? { lyricLine: error.lyricLine, syllable: error.syllable }
+      : undefined
   free(error)
-  throw new StageFailure(reason)
+  throw new StageFailure(reason, unknown)
 }
 
 export function songStages(input: SongTaskInput, media: SongMedia, models: SongModels): Stage[] {
