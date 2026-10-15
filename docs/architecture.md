@@ -172,8 +172,8 @@ reference doc and reviewed before M3 implements them.
   tabs. The startup cleanup waits for it, so it never removes the area of a
   task still running in another tab.
 - On the web, stage 1, reading the source, runs on the main thread as soon as
-  a source is picked, for now on the source check page. A task runs it again
-  in its worker. It reads only the
+  a source is picked, on the source check page and in the Make a song section
+  of the main page. A task runs it again in its worker. It reads only the
   container and decodes nothing. Mediabunny reads MP4, WebM and MP3. It reads
   a WebM's tags, but not the segment title where ffmpeg writes a WebM title.
   The core works out the stored type D24 gives the primary video track and

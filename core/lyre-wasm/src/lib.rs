@@ -545,6 +545,12 @@ impl From<TimingFileError> for TimingFileFault {
     }
 }
 
+/// Whether `lyrics` are valid lyrics. The lyrics are only read, never changed (D5).
+#[wasm_bindgen(js_name = isValidLyrics)]
+pub fn is_valid_lyrics(lyrics: &[u8]) -> bool {
+    Lyrics::parse(lyrics).is_ok()
+}
+
 /// Reads the hand-written timing file `text` against `lyrics`, both as
 /// bytes. It returns one time per syllable of the lyrics, in lyric order.
 #[wasm_bindgen(js_name = parseTimingFile)]
@@ -1760,6 +1766,16 @@ mod tests {
         let fault = parse_timing_file(b"0 100 a\n", b"a b").expect_err("refused");
         assert_eq!(fault.line(), Some(2));
         assert_eq!(fault.kind(), TimingFileErrorKind::MissingSyllable);
+    }
+
+    #[test]
+    fn valid_lyrics_are_accepted_and_anything_else_refused() {
+        let fixture = include_bytes!("../../../tests/fixtures/song/lyrics.txt");
+        assert!(is_valid_lyrics(fixture));
+        assert!(!is_valid_lyrics(b""));
+        assert!(!is_valid_lyrics(b"123\n"));
+        assert!(!is_valid_lyrics(b"\xff\xfe"));
+        assert!(!is_valid_lyrics(b"a\0b"));
     }
 
     #[test]
