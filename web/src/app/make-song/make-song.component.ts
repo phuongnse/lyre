@@ -1,13 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core'
 import { MatButton } from '@angular/material/button'
 import { MatButtonToggle, MatButtonToggleGroup } from '@angular/material/button-toggle'
 import { MatFormField, MatLabel } from '@angular/material/form-field'
 import { MatInput } from '@angular/material/input'
+import { MatProgressBar } from '@angular/material/progress-bar'
+import { ActivatedRoute } from '@angular/router'
 import { loadCore } from '../../core'
 import { lyricsAreValid } from '../../lyrics-file'
+import { candidateFiles, separatorFile } from '../../measurement/candidates'
+import { ModelCheckFailed } from '../../models/model-download'
 import { VocalRole } from '../../original-track-messages'
+import { Backend } from '../../separation/backend'
 import { SourceError, readSource } from '../../source'
+import { secondsLeft, stagePercent, TaskRunner } from '../../task/task-runner'
 import { messages } from '../messages'
+import { Models } from '../models'
 import { detailsFromTags } from '../song-details'
 import { cannotPlayMessage, sourceProblemMessage } from '../source-messages'
 
@@ -16,21 +23,36 @@ type SourceState =
 
 type LyricsState = { status: 'empty' } | { status: 'reading' } | { status: 'valid'; file: File } | { status: 'invalid' }
 
+// Where a press of Make the song is: loading the model files, stopped by one
+// of them, or running the task, whose own state the runner keeps.
+type Phase =
+  | { status: 'idle' }
+  | { status: 'downloading' }
+  | { status: 'download-failed'; id: string; checkFailed: boolean }
+  | { status: 'task' }
+
 // The Make a song section of the main page
 // (docs/ui-conventions.md#making-a-song). The owner picks a source and the
 // lyrics, edits the song details and chooses a vocal role. The source is read
 // on the main thread as soon as it is picked, stage 1, and the lyrics are
-// checked through the core. No task runs yet. A source this browser refuses
-// counts as no source and leaves the details fields as they are. The lyrics
-// are kept as the File the owner picked, never as text, and never shown (D5).
+// checked through the core. Make the song then loads the model files, which
+// the page checks, and runs a task on them in a Web Worker. Cancel works once
+// the task has started. A finished task shows Done: keeping and opening the
+// song is not built yet. ?model=test uses the test separator and test aligner,
+// and ?backend=wasm runs the task on WebAssembly, both for the journeys. A
+// source this browser refuses counts as no source and leaves the details
+// fields as they are. The lyrics are kept as the File the owner picked, never
+// as text, and never shown (D5).
 // The main page loads this component's code only when the section first opens.
 @Component({
   selector: 'lyre-make-song',
-  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, MatFormField, MatLabel, MatInput],
+  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, MatFormField, MatLabel, MatInput, MatProgressBar],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let source = sourceState();
     @let lyrics = lyricsState();
+    @let current = phase();
+    @let task = runner.state();
     <h2>{{ messages.makeASong }}</h2>
     <button matButton="filled" type="button" [disabled]="source.status === 'reading'" (click)="sourceInput.click()">
       {{ messages.chooseSource }}
@@ -88,7 +110,65 @@ type LyricsState = { status: 'empty' } | { status: 'reading' } | { status: 'vali
       <mat-button-toggle value="female">{{ messages.female }}</mat-button-toggle>
       <mat-button-toggle value="male">{{ messages.male }}</mat-button-toggle>
     </mat-button-toggle-group>
-    <button matButton="filled" type="button" [disabled]="!canMake()">{{ messages.makeTheSong }}</button>
+    <button matButton="filled" type="button" [disabled]="!canMake()" (click)="make()">
+      {{ messages.makeTheSong }}
+    </button>
+    <button
+      matButton
+      type="button"
+      [disabled]="current.status !== 'task' || task.status !== 'running'"
+      (click)="runner.cancel()"
+    >
+      {{ messages.cancelTask }}
+    </button>
+    @if (current.status === 'downloading' || current.status === 'download-failed') {
+      @if (bytes(); as bytes) {
+        <mat-progress-bar
+          mode="determinate"
+          [value]="percent()"
+          [attr.aria-label]="messages.modelProgress"
+          [attr.aria-valuetext]="bytes"
+        />
+        <p>{{ bytes }}</p>
+      }
+    }
+    @if (current.status === 'download-failed') {
+      <p role="alert">
+        {{ current.checkFailed ? messages.modelCheckFailed(current.id) : messages.modelDownloadFailed(current.id) }}
+      </p>
+    }
+    @if (current.status === 'task') {
+      <mat-progress-bar mode="determinate" [value]="stagePercent()" [attr.aria-label]="messages.taskProgress" />
+      <p role="status">
+        @switch (task.status) {
+          @case ('running') {
+            @if (task.report; as report) {
+              {{ messages.taskStage(report.index + 1, report.count, stageName(report.stage)) }}
+            }
+          }
+          @case ('done') {
+            {{ messages.taskDone }}
+          }
+          @case ('cancelled') {
+            {{ messages.taskCancelled }}
+          }
+          @case ('failed') {
+            @if (task.stage) {
+              {{ messages.taskFailedIn(stageName(task.stage), messages.taskFailures[task.reason]) }}
+            } @else {
+              {{ messages.taskFailed(messages.taskFailures[task.reason]) }}
+            }
+          }
+        }
+      </p>
+      <!-- Outside the status line, so a screen reader does not announce each update. -->
+      @if (secondsLeft(); as seconds) {
+        <p>{{ messages.taskTimeLeft(seconds) }}</p>
+      }
+    }
+    @if (models.mayBeCleared()) {
+      <p>{{ messages.modelsMayBeCleared }}</p>
+    }
   `,
 })
 export class MakeSong {
@@ -104,11 +184,31 @@ export class MakeSong {
   // A song needs an accepted source, valid lyrics, a title and a vocal role.
   protected readonly canMake = computed(
     () =>
+      this.phase().status !== 'downloading' &&
+      this.runner.state().status !== 'running' &&
       this.sourceState().status === 'ready' &&
       this.lyricsState().status === 'valid' &&
       this.title() !== '' &&
       this.vocalRole() !== undefined,
   )
+  protected readonly models = inject(Models)
+  protected readonly runner = inject(TaskRunner)
+  protected readonly phase = signal<Phase>({ status: 'idle' })
+  private readonly query = inject(ActivatedRoute).snapshot.queryParamMap
+  private readonly test = this.query.get('model') === 'test'
+  private readonly forced: Backend | undefined = this.query.get('backend') === 'wasm' ? 'wasm' : undefined
+  // The bytes downloaded so far, which stay shown after the download ends.
+  protected readonly bytes = computed(() => {
+    const progress = this.models.progress()
+    return progress && messages.modelDownloading(progress.id, progress.loadedBytes, progress.totalBytes)
+  })
+  protected readonly percent = computed(() => {
+    const progress = this.models.progress()
+    if (!progress) return 0
+    return progress.totalBytes === 0 ? 100 : (progress.loadedBytes / progress.totalBytes) * 100
+  })
+  protected readonly stagePercent = computed(() => stagePercent(this.runner.state()))
+  protected readonly secondsLeft = computed(() => secondsLeft(this.runner.state()))
   // Count the sources and the lyrics picked, so only the latest pick shows.
   private sourceAttempts = 0
   private lyricsAttempts = 0
@@ -162,5 +262,53 @@ export class MakeSong {
     }
     if (attempt !== this.lyricsAttempts) return
     this.lyricsState.set(valid ? { status: 'valid', file } : { status: 'invalid' })
+  }
+
+  protected stageName(stage: string): string {
+    return (messages.stageNames as Record<string, string | undefined>)[stage] ?? stage
+  }
+
+  // Loads the separator's file and the aligner's model and vocabulary, then
+  // runs the task on them. Any file that fails stops the run before a stage.
+  protected async make(): Promise<void> {
+    const source = this.sourceState()
+    const lyrics = this.lyricsState()
+    const vocalRole = this.vocalRole()
+    if (source.status !== 'ready' || lyrics.status !== 'valid' || vocalRole === undefined || !this.canMake()) return
+    // What the owner entered when they pressed the button.
+    const details = { title: this.title(), artist: this.artist(), composer: this.composer() }
+    this.phase.set({ status: 'downloading' })
+    const files = candidateFiles[this.test ? 'test-lyric-alignment' : 'lyric-alignment-fp32']
+    let id = ''
+    const load = async (next: string) => {
+      id = next
+      return this.models.load(next)
+    }
+    let loaded: { separator: Blob; model: Blob; vocabulary: Blob }
+    try {
+      loaded = {
+        separator: await load(separatorFile(this.test)),
+        model: await load(files.graph),
+        vocabulary: await load(files.vocabulary),
+      }
+    } catch (error) {
+      // Any other failure, such as storage the browser blocks, also keeps nothing.
+      this.phase.set({ status: 'download-failed', id, checkFailed: error instanceof ModelCheckFailed })
+      return
+    }
+    // The lyrics' bytes go to the task as they are (D5).
+    const bytes = new Uint8Array(await lyrics.file.arrayBuffer())
+    this.runner.start({
+      input: {
+        source: source.file,
+        lyrics: bytes,
+        details,
+        vocalRole,
+        separator: loaded.separator,
+        aligner: { kind: files.kind, model: loaded.model, vocabulary: loaded.vocabulary },
+      },
+      backend: this.forced,
+    })
+    this.phase.set({ status: 'task' })
   }
 }

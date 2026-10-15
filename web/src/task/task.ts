@@ -1,3 +1,5 @@
+import { Backend } from '../separation/backend'
+import type { SongTaskInput } from './song-task'
 import { WorkingArea, WorkingAreas } from './working-area'
 
 // A task: one run of processing for one song (docs/domain/concepts.md). It
@@ -9,8 +11,6 @@ export type TaskFailure =
   | 'test-stage-failed'
   | 'another-task-running'
   | 'source-refused'
-  | 'model-check-failed'
-  | 'model-unavailable'
   | 'separation-failed'
   | 'alignment-failed'
   | 'timing-refused'
@@ -52,6 +52,18 @@ export type ProgressReport = {
 // The done report carries the song file only when a stage handed one over.
 export type TaskReport =
   ProgressReport | { type: 'done'; song?: Uint8Array } | { type: 'failed'; stage: string; reason: TaskFailure }
+
+// What the page sends to start a task. Without `song`, the task runs the test
+// stages, as the task check page does. With `song`, it makes a song file from
+// it, and `baseUri` is the page's base URI to load the core and ONNX Runtime
+// from. The task runs its models on `backend`, WebGPU when none is given.
+export type TaskStart = {
+  type: 'start'
+  taskId: string
+  baseUri?: string
+  song?: SongTaskInput
+  backend?: Backend
+}
 
 // How long a stage runs before its time left is measured. Before that, or
 // before any progress, an estimate would be a guess.

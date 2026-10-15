@@ -38,15 +38,19 @@ beforeAll(() => {
   initSync({ module: readFileSync(new URL('../lyre-wasm/lyre_wasm_bg.wasm', import.meta.url)) })
 })
 
-// Fetches each test model file from tests/fixtures/models/, with one byte
-// changed in the file named `damaged`.
-function fakeFetch(damaged?: string): typeof fetch {
-  return (async (input: RequestInfo | URL) => {
-    const name = String(input).split('/').at(-1)!
-    const bytes = fixture(`models/${name}`)
-    if (name === damaged) bytes[0] ^= 0xff
-    return new Response(bytes)
-  }) as typeof fetch
+// Fetches each test model file from tests/fixtures/models/.
+const fakeFetch = (): typeof fetch =>
+  (async (input: RequestInfo | URL) =>
+    new Response(fixture(`models/${String(input).split('/').at(-1)!}`))) as typeof fetch
+
+// The three model files of a task, as the page gives them: loaded and checked.
+async function checkedFiles(aligner: (typeof aligners)[keyof typeof aligners]) {
+  const options = { files: new FakeModelFiles(), fetch: fakeFetch(), baseUri: 'http://lyre.test/' }
+  return {
+    separator: await loadModel('test-mel-roformer', options),
+    model: await loadModel(aligner.model, options),
+    vocabulary: await loadModel(aligner.vocabulary, options),
+  }
 }
 
 // Runs the committed test separator file, as the web client does, on
@@ -81,10 +85,8 @@ function alignerStandIn(kind: AlignerKind, file: Uint8Array): ModelRunner {
   return async (input) => new Float32Array((input.length / 320 - 1) * tokens).fill(value)
 }
 
-function fakeModels(o: { aligner: keyof typeof aligners; damaged?: string; segments: { count: number } }): SongModels {
-  const files = new FakeModelFiles()
+function fakeModels(o: { aligner: keyof typeof aligners; segments: { count: number } }): SongModels {
   return {
-    load: (id) => loadModel(id, { files, fetch: fakeFetch(o.damaged), baseUri: 'http://lyre.test/' }),
     openSeparator: (graph) => openTestSeparator(graph, o.segments),
     async openAligner(kind) {
       return { run: alignerStandIn(kind, fixture(aligners[o.aligner].file)), release: async () => {} }
@@ -139,28 +141,30 @@ function fakeMedia(): SongMedia & { karaokeFrames: number } {
   }
 }
 
-async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners; damaged?: string }): Promise<{
+async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners }): Promise<{
   reports: TaskReport[]
   areas: FakeWorkingAreas
   segments: { count: number }
   media: ReturnType<typeof fakeMedia>
+  models: SongModels
 }> {
   const aligner = aligners[o.aligner ?? 'lyric-alignment']
+  const { separator, model, vocabulary } = await checkedFiles(aligner)
   const input: SongTaskInput = {
     source: new Blob([new Uint8Array(16)]),
     lyrics: o.lyrics ?? fixture('song/lyrics.txt'),
     details: { title: 'Test song', artist: 'Test artist', composer: '' },
     vocalRole: 'female',
-    separator: 'test-mel-roformer',
-    aligner: { kind: aligner.kind, model: aligner.model, vocabulary: aligner.vocabulary },
+    separator,
+    aligner: { kind: aligner.kind, model, vocabulary },
   }
   const segments = { count: 0 }
   const media = fakeMedia()
-  const models = fakeModels({ aligner: o.aligner ?? 'lyric-alignment', damaged: o.damaged, segments })
+  const models = fakeModels({ aligner: o.aligner ?? 'lyric-alignment', segments })
   const reports: TaskReport[] = []
   const areas = new FakeWorkingAreas()
   await runTask({ taskId, stages: songStages(input, media, models), areas, report: (report) => reports.push(report) })
-  return { reports, areas, segments, media }
+  return { reports, areas, segments, media, models }
 }
 
 // The bytes of the song file's Lyrics chunk, read through the core.
@@ -185,7 +189,10 @@ describe('a song task', () => {
       `with the test separator and the ${aligner} test aligner, gives a song file with the lyrics byte for byte`,
       async () => {
         const lyrics = fixture('song/lyrics.txt')
-        const { reports, areas, media, segments } = await run({ lyrics, aligner })
+        const { reports, areas, media, segments, models } = await run({ lyrics, aligner })
+
+        // The task is given checked files and has no way to load a model file.
+        expect('load' in models).toBe(false)
 
         const done = reports.at(-1)
         expect(done?.type).toBe('done')
@@ -242,18 +249,6 @@ describe('a song task', () => {
     async () => {
       const { reports, areas } = await run({ lyrics: new TextEncoder().encode('Mưa rơi ♪ nhẹ\n') })
       expect(reports.at(-1)).toEqual({ type: 'failed', stage: 'align', reason: 'alignment-failed' })
-      expect(reports.some((report) => report.type === 'done')).toBe(false)
-      expect(areas.areas.has(taskId)).toBe(false)
-    },
-    TIMEOUT_MS,
-  )
-
-  test(
-    'fails before separation when a model file fails its check, and hands over no song',
-    async () => {
-      const { reports, areas, segments } = await run({ damaged: 'mel-roformer.onnx' })
-      expect(reports.at(-1)).toEqual({ type: 'failed', stage: 'separate', reason: 'model-check-failed' })
-      expect(segments.count).toBe(0)
       expect(reports.some((report) => report.type === 'done')).toBe(false)
       expect(areas.areas.has(taskId)).toBe(false)
     },
