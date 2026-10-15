@@ -158,13 +158,13 @@ What was learned:
   decoded on that timeline. The end needs no keyframe. The cost is that a
   section may start up to one keyframe gap early, at most 20 s. A source
   whose keyframes are more than 20 s apart, or with one group of frames over
-  64 MiB, is refused *(planned for M2)*. It cannot be cut into the song
-  file's [media segments](../reference/song-file-format-v0.md#limits)
-  without re-encoding.
+  64 MiB, is refused. It cannot be cut into the song file's
+  [media segments](../reference/song-file-format-v0.md#limits) without
+  re-encoding.
 - **Sources can start at a nonzero time.** Some containers start their
   timeline after zero. Player time then differs from source time, which moves
   section cut points and timing unless it is corrected once, at the start.
-  Repackaging *(planned for M2)* corrects it by rewriting the container
+  Repackaging corrects it by rewriting the container
   timestamps. It shifts every track by the same amount, so that the earliest
   track starts at 0. A track that started a few milliseconds later, such as
   audio after its video, keeps that gap and so keeps its sync. The song file

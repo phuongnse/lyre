@@ -114,9 +114,8 @@ Chunks come in this order, and no other type or order is accepted:
   no video.
 - **The thumbnail is optional.** The web client makes it from the source: the
   frame at the middle of a video, or the cover art of an audio source, fitted
-  within 640×360. An audio source without cover art has none. Writing it into
-  the song file is planned for M2. Songs built by hand for tests may have
-  none.
+  within 640×360. An audio source without cover art has none. The web client writes it
+  into the song file. Songs built by hand for tests may have none.
 - **Both audio tracks are cut at about the same times.** The original track
   has the same number of segments as the karaoke track. Each original
   segment's start and end (`start_ms + duration_ms`) are within 50 ms of those
@@ -276,7 +275,7 @@ browser appends each chunk to a `SourceBuffer` as it reads it.
   before it reads a segment. When the device cannot play a type, the web
   Player shows the plain message of D24 and plays nothing. The message names
   the track, as in "This device cannot play this song's video." Naming the
-  codec, as in "This device cannot play H.265 video", is *(planned for M2)*.
+  codec, as in "This device cannot play H.265 video", is *(planned for M4)*.
 
 *Why VP9 and Opus in the tests:* Playwright's Chromium has no H.264 or AAC
 decoder. So the fixture songs and the web journeys use VP9 video and Opus
