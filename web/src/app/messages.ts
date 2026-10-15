@@ -1,5 +1,6 @@
 import type { MediaCodec } from 'mediabunny'
 import type { RunProblem } from '../measurement/measurement-messages'
+import type { Requirement } from '../task/requirements'
 
 // Every user-visible string lives here (docs/ui-conventions.md#strings).
 // The text is still English. The Vietnamese text comes in a later issue.
@@ -170,6 +171,12 @@ export const messages = {
   pickedLyrics: (name: string) => `Lyrics: ${name}`,
   makeASong: 'Make a song',
   makeTheSong: 'Make the song',
+  cannotMakeSongs: 'This device cannot make songs.',
+  // Keyed by Requirement.
+  unmetRequirements: {
+    webgpu: 'WebGPU is not available.',
+    memory: 'It has less than 8 GB of memory.',
+  } satisfies Record<Requirement, string>,
   chooseTiming: 'Choose a timing file',
   vocalRole: 'Vocal role',
   female: 'Female',

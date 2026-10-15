@@ -227,7 +227,7 @@ What was learned:
   headers, the page has no `SharedArrayBuffer`. The WebAssembly backend of
   ONNX Runtime Web then runs on one thread, much slower than WebGPU. That is
   why making a song needs WebGPU
-  ([D25](../decisions.md#d25-requirements-for-making-songs--proposed)). The
+  ([D25](../decisions.md#d25-requirements-for-making-songs--agreed)). The
   [model measurement page](../roadmap.md#early-checks-on-real-devices)
   measures WebGPU only. Its `?backend=wasm` measures one-thread WebAssembly
   instead, for the CI journeys.

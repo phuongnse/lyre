@@ -142,9 +142,8 @@ must settle:
   ([D28](decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed))
   met the time target. See the
   [results](reference/models.md#measurement-results).
-  [D25](decisions.md#d25-requirements-for-making-songs--proposed) states 8 GB
-  of memory from the first results. A device near the minimum is still to be
-  measured, and the owner then marks D25 Agreed.
+  [D25](decisions.md#d25-requirements-for-making-songs--agreed) is Agreed: a
+  WebGPU adapter and 8 GB of memory.
 - **M3:** the passkey check results (D8); the reference doc for the encrypted
   format, access files and recovery, reviewed before implementation.
 - **M4:** Android playback and device keys

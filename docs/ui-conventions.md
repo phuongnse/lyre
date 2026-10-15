@@ -160,13 +160,18 @@ the section may refine them, and update this section when they do.
   bar. It shows a time left only once the stage has run 1 s and reported some
   progress. The stages are those in
   [knowledge](domain/knowledge.md#processing).
-- Before starting, the page checks the requirements of
-  [D25](decisions.md#d25-requirements-for-making-songs--proposed). Below
-  them, it says "This device cannot make songs." with the requirement it
-  does not meet, such as no WebGPU or too little memory, and **Make the
-  song** does not start. A task never runs its models on WebAssembly
+- When the owner presses **Make the song**, the page first checks the
+  requirements of
+  [D25](decisions.md#d25-requirements-for-making-songs--agreed). Below
+  them, it says "This device cannot make songs." followed by each unmet
+  requirement: "WebGPU is not available." when the browser gives no GPU
+  adapter, and "It has less than 8 GB of memory." when
+  `navigator.deviceMemory` is below 8. A browser that does not report
+  `deviceMemory` passes the memory check. Nothing is downloaded and no task
+  starts. A task never runs its models on WebAssembly
   ([D3](decisions.md#d3-processing-runs-on-the-device-that-asks-for-it--agreed),
-  D27).
+  D27). A model session that cannot open on WebGPU fails its stage with the
+  stage's message, such as "The song could not be made: separation failed."
 - A **Cancel** button ends the worker at once and removes the task's working
   area. No song is left behind. It is on only once the task has started, not
   during the model downloads, which cannot be stopped partway. Closing or reloading the page also ends the
@@ -191,8 +196,8 @@ the section may refine them, and update this section when they do.
   are unencrypted version-0 files.
 - Two query parameters exist only for the journeys, as on the check pages.
   `?model=test` makes the task use the test separator and the test aligner.
-  `?backend=wasm` makes the task run its models on WebAssembly. Without it, a
-  task runs its models on WebGPU only.
+  `?backend=wasm` skips the requirements check and makes the task run its
+  models on WebAssembly. Without it, a task runs its models on WebGPU only.
 - The section's code loads only when the owner first uses it, so it stays out
   of the main page's initial load, as the check pages' code does.
 

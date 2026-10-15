@@ -13,6 +13,7 @@ import { VocalRole } from '../original-track-messages'
 import { PackagedTrack, PackageError } from '../original-track'
 import { Resampler } from '../resampler'
 import { separate, SeparatorRunner } from '../separation/separate'
+import { SessionFault } from '../session-backend'
 import { SongRefused, writeSong } from '../song-writer'
 import { SourceDetails } from '../source'
 import { AudioFormat, SEPARATION_FORMAT } from '../source-audio'
@@ -145,7 +146,9 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
       async run({ area, progress }) {
         const audio = await floatsOf(await area.read(AUDIO))
         const frames = audio.length / 2
-        const separator = await models.openSeparator(await bytesOf(input.separator))
+        const separator = await models
+          .openSeparator(await bytesOf(input.separator))
+          .catch((error: unknown) => refused('separation-failed', error instanceof SessionFault, error))
         try {
           const separated = await separate(
             separator.run,
@@ -170,7 +173,9 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
       async run({ area, progress }) {
         const vocals = await floatsOf(await area.read(VOCALS))
         const vocabulary = await bytesOf(input.aligner.vocabulary)
-        const session = await models.openAligner(kind, await bytesOf(input.aligner.model))
+        const session = await models
+          .openAligner(kind, await bytesOf(input.aligner.model))
+          .catch((error: unknown) => refused('alignment-failed', error instanceof SessionFault, error))
         try {
           // The lyric bytes go to the core as they are (D5).
           const timing = await alignSong(vocals, lyrics, kind, vocabulary, session.run, (p) =>

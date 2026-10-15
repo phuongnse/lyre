@@ -414,7 +414,7 @@ separator file's format and size.
   [model tool](reference/model-tool.md#make_alignerpy), in fp32 and int8. The
   owner publishes it in `phuongnse/lyric-alignment-onnx`, with its
   attribution and CC-BY-NC-4.0.
-- **Separator target:** on each [target device](#d25-requirements-for-making-songs--proposed), a 4-minute song separates on
+- **Separator target:** on each [target device](#d25-requirements-for-making-songs--agreed), a 4-minute song separates on
   WebGPU in no more time than the song lasts, without running out of memory.
   The karaoke track passes the
   [sum check](reference/models.md#separator-target), and the owner hears no
@@ -496,7 +496,7 @@ containers, the stored types and the limits.
 *Why:* re-encoding video on a phone or in a browser is the slowest step by
 far, and it loses quality. Repackaging takes seconds.
 
-## D25. Requirements for making songs — Proposed
+## D25. Requirements for making songs — Agreed
 
 Changed by [D27](#d27-the-android-app-plays-and-receives-songs--agreed), which removed the Android app rows.
 
@@ -508,16 +508,14 @@ requirements is a *target device*, as
 use the term. Lyre is built and tested so that making a song runs well on
 every target device.
 
-- **Browser:** a current browser with WebGPU, on any OS, on a desktop or a
-  phone.
-- **Memory:** a minimum amount, 8 GB. A song used about 5 GB on top of what
-  the system already used ([results](reference/models.md#measurement-results)).
-- **Settled by measurement:** the first results come from one device far
-  above the minimum, so they cannot settle it. The
-  [model measurement page](roadmap.md#early-checks-on-real-devices) still
-  measures devices near the minimum. Those results confirm the values,
-  including how the web client reads memory where the browser does not report
-  it. The owner then marks this decision Agreed.
+The owner marked this decision Agreed with these values, without a
+measurement on a device near the minimum.
+
+- **Browser:** a current browser that gives a WebGPU adapter, on any OS, on a
+  desktop or a phone.
+- **Memory:** at least 8 GB, as the browser reports it. A browser that does
+  not report memory passes. A song used about 5 GB on top of what the system
+  already used ([results](reference/models.md#measurement-results)).
 - **Below the requirements:** the web client says before starting that this
   device cannot make songs, and does not start
   ([D3](#d3-processing-runs-on-the-device-that-asks-for-it--agreed), D27).
@@ -536,7 +534,7 @@ Partly replaced by [D29](#d29-the-aligner-is-lyric-alignment--agreed): the candi
 Replaces the choice rule of [D20](#d20-non-commercial-models-are-allowed-and-m2-compares-two-aligners--agreed).
 
 - **Candidates:** the aligner files that run on every
-  [target device](#d25-requirements-for-making-songs--proposed).
+  [target device](#d25-requirements-for-making-songs--agreed).
 - **The choice:** the owner watches each candidate's timing on the measured
   songs in the Player and chooses the one that looks better. The reason is
   recorded with the results in the docs.
@@ -552,7 +550,7 @@ what a singer will see.
 
 Replaces the "same product" point of
 [D2](#d2-two-clients-web-and-native-android--agreed), the Android rows of
-[D25](#d25-requirements-for-making-songs--proposed), and the Android model
+[D25](#d25-requirements-for-making-songs--agreed), and the Android model
 runtime and WebAssembly fallback of
 [D10](#d10-technology-stack--agreed).
 
@@ -625,7 +623,7 @@ and the Omnilingual source point of [D21](#d21-pinned-model-files-and-the-separa
   attribution in the [models reference](reference/models.md#lyric-alignment).
 - **Which file:** the measurement chooses between the int8 file, about 360 MB,
   and the fp32 file, about 1.28 GB. Only files that run on every
-  [target device](#d25-requirements-for-making-songs--proposed) are candidates.
+  [target device](#d25-requirements-for-making-songs--agreed) are candidates.
 - **The rule:** int8 is used unless its timing looks worse than fp32's in the
   Player.
 - **One file or none:** if only one file runs on every target device, that file

@@ -211,7 +211,7 @@ The page checks the separator target of
 [D21](../decisions.md#d21-pinned-model-files-and-the-separator-target--agreed),
 the listening split of [D22](../decisions.md#d22-the-separator-target-splits-lead-and-backing-vocals--agreed)
 and [D28](../decisions.md#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed)
-on each [target device](../decisions.md#d25-requirements-for-making-songs--proposed), with a song of about 4 minutes:
+on each [target device](../decisions.md#d25-requirements-for-making-songs--agreed), with a song of about 4 minutes:
 
 - **Time:** the separate stage on WebGPU takes no longer than the song lasts.
   The download and the load time do not count.
@@ -262,7 +262,7 @@ measured on WebGPU only. They follow the [method](#measurement-method) above.
 
 | Device | OS | Browser | GPU | Memory | Target device |
 | --- | --- | --- | --- | --- | --- |
-| Desktop | Windows | Microsoft Edge 155.0.4283.45 | nvidia, lovelace, description not reported | 32 GB. The OS showed about 10 GB in use before the measurement and about 15 GB while it ran. The browser reports neither figure. | Yes, far above the 8 GB minimum of [D25](../decisions.md#d25-requirements-for-making-songs--proposed) |
+| Desktop | Windows | Microsoft Edge 155.0.4283.45 | nvidia, lovelace, description not reported | 32 GB. The OS showed about 10 GB in use before the measurement and about 15 GB while it ran. The browser reports neither figure. | Yes, far above the 8 GB minimum of [D25](../decisions.md#d25-requirements-for-making-songs--agreed) |
 
 The browser reported the operating system as "Windows 19.0.0". The table gives
 the name the owner knows it by.

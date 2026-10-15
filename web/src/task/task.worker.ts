@@ -1,6 +1,7 @@
 import init from '../lyre-wasm/lyre_wasm.js'
 import { Backend } from '../separation/backend'
-import { realSongMedia, realSongModels } from './song-media'
+import { realSongMedia } from './song-media'
+import { realSongModels } from './song-models'
 import { songStages, SongTaskInput } from './song-task'
 import { runTask, Stage, TaskReport, TaskStart } from './task'
 import { testStages } from './test-stages'

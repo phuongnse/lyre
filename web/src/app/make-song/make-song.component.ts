@@ -12,6 +12,7 @@ import { ModelCheckFailed } from '../../models/model-download'
 import { VocalRole } from '../../original-track-messages'
 import { Backend } from '../../separation/backend'
 import { SourceError, readSource } from '../../source'
+import { readRequirements, Requirement } from '../../task/requirements'
 import { secondsLeft, stagePercent, TaskRunner } from '../../task/task-runner'
 import { messages } from '../messages'
 import { Models } from '../models'
@@ -23,10 +24,13 @@ type SourceState =
 
 type LyricsState = { status: 'empty' } | { status: 'reading' } | { status: 'valid'; file: File } | { status: 'invalid' }
 
-// Where a press of Make the song is: loading the model files, stopped by one
-// of them, or running the task, whose own state the runner keeps.
+// Where a press of Make the song is: checking the device, stopped by a
+// requirement it does not meet, loading the model files, stopped by one of
+// them, or running the task, whose own state the runner keeps.
 type Phase =
   | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'unmet'; unmet: Requirement[] }
   | { status: 'downloading' }
   | { status: 'download-failed'; id: string; checkFailed: boolean }
   | { status: 'task' }
@@ -35,11 +39,14 @@ type Phase =
 // (docs/ui-conventions.md#making-a-song). The owner picks a source and the
 // lyrics, edits the song details and chooses a vocal role. The source is read
 // on the main thread as soon as it is picked, stage 1, and the lyrics are
-// checked through the core. Make the song then loads the model files, which
-// the page checks, and runs a task on them in a Web Worker. Cancel works once
+// checked through the core. Make the song first checks that the device meets
+// the requirements of D25, and starts nothing if it does not. It then loads
+// the model files, which the page checks, and runs a task on them in a Web
+// Worker. Cancel works once
 // the task has started. A finished task shows Done: keeping and opening the
 // song is not built yet. ?model=test uses the test separator and test aligner,
-// and ?backend=wasm runs the task on WebAssembly, both for the journeys. A
+// and ?backend=wasm skips the requirements check and runs the task on
+// WebAssembly, both for the journeys. A
 // source this browser refuses counts as no source and leaves the details
 // fields as they are. The lyrics are kept as the File the owner picked, never
 // as text, and never shown (D5).
@@ -121,6 +128,9 @@ type Phase =
     >
       {{ messages.cancelTask }}
     </button>
+    @if (current.status === 'unmet') {
+      <p role="alert">{{ messages.cannotMakeSongs }} {{ unmetText(current.unmet) }}</p>
+    }
     @if (current.status === 'downloading' || current.status === 'download-failed') {
       @if (bytes(); as bytes) {
         <mat-progress-bar
@@ -184,6 +194,7 @@ export class MakeSong {
   // A song needs an accepted source, valid lyrics, a title and a vocal role.
   protected readonly canMake = computed(
     () =>
+      this.phase().status !== 'checking' &&
       this.phase().status !== 'downloading' &&
       this.runner.state().status !== 'running' &&
       this.sourceState().status === 'ready' &&
@@ -268,8 +279,13 @@ export class MakeSong {
     return (messages.stageNames as Record<string, string | undefined>)[stage] ?? stage
   }
 
-  // Loads the separator's file and the aligner's model and vocabulary, then
-  // runs the task on them. Any file that fails stops the run before a stage.
+  protected unmetText(unmet: Requirement[]): string {
+    return unmet.map((requirement) => messages.unmetRequirements[requirement]).join(' ')
+  }
+
+  // Checks the device, then loads the separator's file and the aligner's model
+  // and vocabulary, then runs the task on them. A device that falls short, or
+  // any file that fails, stops the run before a stage.
   protected async make(): Promise<void> {
     const source = this.sourceState()
     const lyrics = this.lyricsState()
@@ -277,6 +293,15 @@ export class MakeSong {
     if (source.status !== 'ready' || lyrics.status !== 'valid' || vocalRole === undefined || !this.canMake()) return
     // What the owner entered when they pressed the button.
     const details = { title: this.title(), artist: this.artist(), composer: this.composer() }
+    // Only a journey forces a backend, and it runs on machines without a GPU.
+    if (this.forced === undefined) {
+      this.phase.set({ status: 'checking' })
+      const unmet = await readRequirements()
+      if (unmet.length > 0) {
+        this.phase.set({ status: 'unmet', unmet })
+        return
+      }
+    }
     this.phase.set({ status: 'downloading' })
     const files = candidateFiles[this.test ? 'test-lyric-alignment' : 'lyric-alignment-fp32']
     let id = ''

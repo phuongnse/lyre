@@ -1,18 +1,21 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { env, InferenceSession } from 'onnxruntime-web/webgpu'
-import { beforeAll, describe, expect, test } from 'vitest'
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { ModelRunner } from '../alignment/align-song'
 import { KARAOKE_TYPE } from '../karaoke-track'
 import { AlignerKind, ChunkKind, initSync, readVocabulary, SongReader } from '../lyre-wasm/lyre_wasm.js'
 import { FakeModelFiles } from '../models/fake-model-files'
 import { loadModel } from '../models/model-download'
+import { SessionCreator } from '../onnx-session'
 import { PackagedTrack } from '../original-track'
 import { SeparatorRunner } from '../separation/separate'
 import { separatorRunner } from '../separation/separator-session'
+import { SessionFault } from '../session-backend'
 import { openSongFile } from '../song-file'
 import { AudioFormat } from '../source-audio'
 import { FakeWorkingAreas } from './fake-working-areas'
+import { realSongModels } from './song-models'
 import { SongMedia, SongModels, songStages, SongTaskInput } from './song-task'
 import { runTask, TaskReport } from './task'
 
@@ -141,7 +144,7 @@ function fakeMedia(): SongMedia & { karaokeFrames: number } {
   }
 }
 
-async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners }): Promise<{
+async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners; models?: SongModels }): Promise<{
   reports: TaskReport[]
   areas: FakeWorkingAreas
   segments: { count: number }
@@ -160,7 +163,7 @@ async function run(o: { lyrics?: Uint8Array; aligner?: keyof typeof aligners }):
   }
   const segments = { count: 0 }
   const media = fakeMedia()
-  const models = fakeModels({ aligner: o.aligner ?? 'lyric-alignment', segments })
+  const models = o.models ?? fakeModels({ aligner: o.aligner ?? 'lyric-alignment', segments })
   const reports: TaskReport[] = []
   const areas = new FakeWorkingAreas()
   await runTask({ taskId, stages: songStages(input, media, models), areas, report: (report) => reports.push(report) })
@@ -253,5 +256,66 @@ describe('a song task', () => {
       expect(areas.areas.has(taskId)).toBe(false)
     },
     TIMEOUT_MS,
+  )
+})
+
+// A session creator that records each backend it is asked for and never opens
+// one, as a device whose GPU or CPU cannot run the model.
+function refusingCreator(): { create: SessionCreator; tried: string[] } {
+  const tried: string[] = []
+  return {
+    tried,
+    create: async (_graph, backend) => {
+      tried.push(backend)
+      throw new Error('no kernel')
+    },
+  }
+}
+
+describe('a song task whose model session cannot open', () => {
+  // Gives the browser a GPU adapter, which is the one thing a task looks for.
+  const withAdapter = () => vi.stubGlobal('navigator', { gpu: { requestAdapter: async () => ({}) } })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  test.each(['webgpu', 'wasm'] as const)(
+    'fails the separate stage on %s only, and never tries the other backend',
+    async (backend) => {
+      withAdapter()
+      const { create, tried } = refusingCreator()
+      const models = realSongModels('http://lyre.test/', backend, create)
+      const { reports, areas } = await run({ models })
+
+      expect(reports.at(-1)).toEqual({ type: 'failed', stage: 'separate', reason: 'separation-failed' })
+      expect(tried).toEqual([backend])
+      expect(areas.areas.has(taskId)).toBe(false)
+    },
+    TIMEOUT_MS,
+  )
+
+  test('fails the separate stage on WebGPU without trying anything when the browser gives no adapter', async () => {
+    vi.stubGlobal('navigator', {})
+    const { create, tried } = refusingCreator()
+    const models = realSongModels('http://lyre.test/', 'webgpu', create)
+    const { reports } = await run({ models })
+
+    expect(reports.at(-1)).toEqual({ type: 'failed', stage: 'separate', reason: 'separation-failed' })
+    expect(tried).toEqual([])
+  })
+
+  test.each(['webgpu', 'wasm'] as const)(
+    'gives the aligner a SessionFault on %s only, and never tries the other backend',
+    async (backend) => {
+      withAdapter()
+      const { create, tried } = refusingCreator()
+      const models = realSongModels('http://lyre.test/', backend, create)
+
+      await expect(models.openAligner(AlignerKind.LyricAlignment, new Uint8Array(1))).rejects.toBeInstanceOf(
+        SessionFault,
+      )
+      expect(tried).toEqual([backend])
+    },
   )
 })
