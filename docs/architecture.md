@@ -237,10 +237,12 @@ reference doc and reviewed before M3 implements them.
   them a GPU adapter and the session opens on it, and otherwise WebAssembly
   on one thread. A task runs only on WebGPU, unless the page asks for
   WebAssembly with `?backend=wasm` for the journeys: it opens each session on
-  that backend and never falls back. The Make a song section does not yet
-  start one below the requirements of
-  [D25](decisions.md#d25-requirements-for-making-songs--proposed)
-  *(planned for M2)*. The model check page's measurement never falls back: it opens each
+  that backend and never falls back. A session that cannot open on WebGPU
+  fails its stage. The Make a song section checks the requirements of
+  [D25](decisions.md#d25-requirements-for-making-songs--agreed) when the owner
+  presses Make the song, and starts no task below them. The check runs in
+  the web client, not the core, because it reads browser APIs. The model
+  check page's measurement never falls back: it opens each
   session on the backend it measures, or reports why it could not. The
   worker gets only model bytes that already passed their check.
   ONNX Runtime's WebAssembly file is served from the site itself, at `ort/`,

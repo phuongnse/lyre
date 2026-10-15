@@ -1,5 +1,5 @@
 import { InferenceSession, Tensor } from 'onnxruntime-web/webgpu'
-import { openSession } from '../onnx-session'
+import { openSession, SessionCreator } from '../onnx-session'
 import { Backend } from './backend'
 import { SeparatorRunner } from './separate'
 
@@ -11,7 +11,7 @@ export const SPEC_SHAPE = [1, 4, 1025, 801]
 // in measurement mode too. The file has no external data.
 export function openSeparator(
   graph: Uint8Array,
-  options: { baseUri: string; forced?: Backend; measuring?: boolean },
+  options: { baseUri: string; forced?: Backend; measuring?: boolean; create?: SessionCreator },
 ): Promise<{ backend: Backend; session: InferenceSession }> {
   return openSession(graph, options)
 }

@@ -1,4 +1,5 @@
 import { env, InferenceSession } from 'onnxruntime-web/webgpu'
+import { adapterFound } from './gpu'
 import { Backend, chooseBackend } from './separation/backend'
 import { openOnBackend } from './session-backend'
 
@@ -6,26 +7,20 @@ import { openOnBackend } from './session-backend'
 // copies it to ort/, so it comes from the site's own origin.
 const ORT_WASM = 'ort/ort-wasm-simd-threaded.asyncify.wasm'
 
-// The part of WebGPU this file uses. The TypeScript libraries do not declare it.
-type Gpu = { requestAdapter(): Promise<unknown> }
-
-async function adapterFound(): Promise<boolean> {
-  const gpu = (navigator as { gpu?: Gpu }).gpu
-  try {
-    return (await gpu?.requestAdapter()) != null
-  } catch {
-    return false
-  }
-}
-
 type ExternalData = { path: string; data: Uint8Array }[]
 
-function open(graph: Uint8Array, backend: Backend, externalData?: ExternalData): Promise<InferenceSession> {
-  return InferenceSession.create(graph, {
+// Opens a session on a backend. Tests give their own.
+export type SessionCreator = (
+  graph: Uint8Array,
+  backend: Backend,
+  externalData?: ExternalData,
+) => Promise<InferenceSession>
+
+const open: SessionCreator = (graph, backend, externalData) =>
+  InferenceSession.create(graph, {
     executionProviders: [backend],
     ...(externalData && { externalData }),
   })
-}
 
 // Opens an ONNX Runtime session from a model's checked graph bytes, and the
 // checked bytes of any files the graph names as its external data. It opens
@@ -36,7 +31,13 @@ function open(graph: Uint8Array, backend: Backend, externalData?: ExternalData):
 // at all: a session that cannot open throws a SessionFault naming why.
 export async function openSession(
   graph: Uint8Array,
-  options: { baseUri: string; forced?: Backend; measuring?: boolean; externalData?: ExternalData },
+  options: {
+    baseUri: string
+    forced?: Backend
+    measuring?: boolean
+    externalData?: ExternalData
+    create?: SessionCreator
+  },
 ): Promise<{ backend: Backend; session: InferenceSession }> {
   env.wasm.numThreads = 1
   env.wasm.proxy = false
@@ -46,5 +47,7 @@ export async function openSession(
   if (measuring && forced === undefined) throw new Error('A measurement names its backend.')
   // A measurement has its backend forced, so it never looks for an adapter here.
   const backend = forced ?? chooseBackend(undefined, await adapterFound())
-  return openOnBackend(backend, measuring, adapterFound, (on) => open(graph, on, options.externalData))
+  return openOnBackend(backend, measuring, adapterFound, (on) =>
+    (options.create ?? open)(graph, on, options.externalData),
+  )
 }
