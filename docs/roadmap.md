@@ -149,8 +149,8 @@ Player.
 - The owner runs both checks on real devices, because the CI runners have no
   GPU, passkeys or phones.
 - The passkey check page is built in M1. It reports whether a device-bound
-  passkey with the PRF extension works in each target browser and OS (D8). Its
-  results are recorded in the docs before M3 is broken down.
+  passkey with the PRF extension works in each target browser and OS (D8).
+  Its results are in [passkey check results](#passkey-check-results).
 - The passkey check page is served at `#/passkey-check` of the web client, for
   example <https://phuongnse.github.io/lyre/#/passkey-check>. The main page
   does not link to it.
@@ -172,13 +172,42 @@ Player.
   The choice and its reason are recorded in the
   [measurement results](reference/models.md#measurement-results).
 
+### Passkey check results
+
+The owner ran the page on one Windows 11 machine, in Edge and Chrome.
+No other OS or browser was run.
+
+| OS and version | Browser and version | Result | Backup eligible | Backed up |
+| --- | --- | --- | --- | --- |
+| Windows 11 26H2 | Edge 155 | Works | no | no |
+| Windows 11 26H2 | Chrome 155, passkey saved to Google Password Manager (Chrome's default) | Refused because the passkey can sync | yes | yes |
+| Windows 11 26H2 | Chrome 155, passkey saved to Windows Hello | Works | no | no |
+
+- **Device code:** Windows 11 with Edge 155, and with Chrome 155 when the
+  passkey is saved to Windows Hello.
+- **No device code:** Chrome saves a passkey to Google Password Manager by
+  default. That passkey can sync, so Lyre refuses it
+  ([D8](decisions.md#d8-device-keys-are-bound-to-the-device-not-the-apps-storage--agreed)).
+  A user who keeps the default gets no device code.
+- **Not checked:** every other OS and browser, including Android phones,
+  Apple devices (macOS and iOS), Linux and Firefox. The web client is meant
+  to work on a phone too ([product goals](product-brief.md#product-goals)).
+  There, D8's backup-flag and PRF checks of the passkey decide whether a
+  device code is offered on the device itself. No run showed PRF missing on
+  a device-bound passkey.
+
+**Risks for the owner:** Chrome's default leaves many Chrome users without
+a device code. Phones and Apple devices are unproven before M3. No fallback
+is added, because D8 forbids a key kept in browser storage.
+
 ## Later milestones
 
 Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
-- **M3:** the passkey check results (D8); the reference doc for the encrypted
-  format, access files and recovery, reviewed before implementation.
+- **M3:** the reference doc for the encrypted format, access files and
+  recovery, reviewed before implementation. What the web client tells a user
+  whose passkey was refused because it can sync.
 - **M4:** Android playback and device keys
   ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed));
   the lowest Android version, and emulator tests in CI.
