@@ -4,6 +4,7 @@ use lyre_core::access::{self, AccessFileError};
 use lyre_core::aligner;
 use lyre_core::alignment::{self, AlignmentError, Emissions};
 use lyre_core::alignment_windows::{self, WindowError};
+use lyre_core::content_key::ContentKey;
 use lyre_core::countdown;
 use lyre_core::device::{self, DeviceKeyError};
 use lyre_core::display_lines::{self, DisplayLine, MeasuredSyllable};
@@ -12,6 +13,7 @@ use lyre_core::lyrics::Lyrics;
 use lyre_core::lyrics_rows;
 use lyre_core::mel_roformer::{self, BrokenRun, SeparationError};
 use lyre_core::model;
+use lyre_core::recovery::RecoveryPublicKey;
 use lyre_core::song_file::{
     self, Chunk, ChunkType, Header, Index, IndexEntry, Next, PieceWriter, SegmentPlan, SongDetails,
     SongFileError, SongPlan, SyllableTime, Timing, TrackPlan, v1,
@@ -714,6 +716,11 @@ pub enum SongWriteErrorKind {
     PastEnd,
     /// The song ID, a track or the thumbnail breaks a rule of the format.
     Media,
+    /// The device code given to `encryptFor` is not a valid device code.
+    DeviceCode,
+    /// The recovery public key given to `encryptFor` is not a valid 33-byte
+    /// compressed P-256 key.
+    RecoveryKey,
 }
 
 /// Why the song file writer refused a song. It holds no core message and
@@ -782,6 +789,12 @@ pub enum NextChunk {
 /// check on the plan and gives the header and index. The chunks follow in file
 /// order, and only one media segment at a time passes through the writer. The
 /// lyrics are kept exactly as supplied (D5).
+///
+/// Without [`SongWriter::encrypt_for`] the writer writes version 0. With it,
+/// the writer writes version 1: `start` makes a fresh content key in the core,
+/// seals the recovery wrap to the given recovery public key, and
+/// [`SongWriter::access_file`] gives the owner access file for the device
+/// code. The content key never leaves the core.
 #[wasm_bindgen]
 pub struct SongWriter {
     song_id: Vec<u8>,
@@ -795,7 +808,12 @@ pub struct SongWriter {
     video: Option<TrackPlan>,
     karaoke: TrackPlan,
     original: TrackPlan,
-    writer: Option<PieceWriter>,
+    /// The device and the recovery key to write version 1 for, or why
+    /// `encryptFor` refused them.
+    encryption: Option<Result<Encryption, SongWriteErrorKind>>,
+    writer: Option<Writer>,
+    /// The owner access file, once a version 1 write has started.
+    access_file: Option<Vec<u8>>,
     /// A chunk the core made, found by `next_chunk` and not yet taken.
     pending: Option<Vec<u8>>,
 }
@@ -827,9 +845,45 @@ impl SongWriter {
             video: None,
             karaoke: TrackPlan::default(),
             original: TrackPlan::default(),
+            encryption: None,
             writer: None,
+            access_file: None,
             pending: None,
         }
+    }
+
+    /// Makes the writer write version 1 for one device and one recovery
+    /// public key. Call it before `start`. The `device_code` is a device
+    /// code, and `recovery_public_key` is the 33-byte SEC1 compressed key.
+    /// A refused input gives `DeviceCode` or `RecoveryKey`, and `start`
+    /// then refuses too, so the song is never written unencrypted by
+    /// mistake. A call after `start` gives `Media`.
+    #[wasm_bindgen(js_name = encryptFor)]
+    pub fn encrypt_for(
+        &mut self,
+        device_code: &str,
+        recovery_public_key: &[u8],
+    ) -> Result<(), SongWriteFault> {
+        if self.writer.is_some() {
+            return Err(SongWriteErrorKind::Media.into());
+        }
+        let parsed = device::PublicKey::parse_device_code(device_code)
+            .map_err(|_| SongWriteErrorKind::DeviceCode)
+            .and_then(|device| {
+                RecoveryPublicKey::from_compressed(recovery_public_key)
+                    .map(|recovery| Encryption { device, recovery })
+                    .map_err(|_| SongWriteErrorKind::RecoveryKey)
+            });
+        let result = parsed.as_ref().map(|_| ()).map_err(|&kind| kind.into());
+        self.encryption = Some(parsed);
+        result
+    }
+
+    /// The owner access file for the device code given to `encryptFor`.
+    /// It is `undefined` before `start`, and for a version 0 write.
+    #[wasm_bindgen(js_name = accessFile)]
+    pub fn access_file(&self) -> Option<Vec<u8>> {
+        self.access_file.clone()
     }
 
     /// Sets the thumbnail's JPEG bytes.
@@ -868,6 +922,9 @@ impl SongWriter {
         if self.writer.is_some() {
             return Err(SongWriteErrorKind::Media.into());
         }
+        if let Some(Err(kind)) = self.encryption {
+            return Err(kind.into());
+        }
         let song_id: [u8; 16] = self
             .song_id
             .as_slice()
@@ -900,7 +957,21 @@ impl SongWriter {
             karaoke: self.karaoke.clone(),
             original: self.original.clone(),
         };
-        let writer = PieceWriter::new(plan)?;
+        let writer = match &self.encryption {
+            Some(Ok(enc)) => {
+                let content_key = ContentKey::generate();
+                let writer =
+                    v1::PieceWriter::new(plan, &content_key, &enc.recovery, v1::Salt::generate())?;
+                self.access_file = Some(access::wrap(
+                    &content_key,
+                    &song_id,
+                    &enc.device,
+                    access::Role::Owner,
+                ));
+                Writer::V1(writer)
+            }
+            _ => Writer::V0(PieceWriter::new(plan)?),
+        };
         let head = writer.head().to_vec();
         self.writer = Some(writer);
         Ok(head)
@@ -943,6 +1014,41 @@ impl SongWriter {
             return Err(SongWriteErrorKind::Media.into());
         }
         Ok(writer.segment(bytes)?)
+    }
+}
+
+/// What `encryptFor` accepted.
+struct Encryption {
+    device: device::PublicKey,
+    recovery: RecoveryPublicKey,
+}
+
+/// The core's piece writer for the file version being written.
+enum Writer {
+    V0(PieceWriter),
+    V1(v1::PieceWriter),
+}
+
+impl Writer {
+    fn head(&self) -> &[u8] {
+        match self {
+            Writer::V0(writer) => writer.head(),
+            Writer::V1(writer) => writer.head(),
+        }
+    }
+
+    fn next_chunk(&mut self) -> Next {
+        match self {
+            Writer::V0(writer) => writer.next_chunk(),
+            Writer::V1(writer) => writer.next_chunk(),
+        }
+    }
+
+    fn segment(&mut self, bytes: Vec<u8>) -> Result<Vec<u8>, SongFileError> {
+        match self {
+            Writer::V0(writer) => writer.segment(bytes),
+            Writer::V1(writer) => writer.segment(bytes),
+        }
     }
 }
 
@@ -1649,8 +1755,7 @@ impl DeviceKey {
 mod tests {
     use std::path::Path;
 
-    use lyre_core::content_key::ContentKey;
-    use lyre_core::recovery::RecoveryKey;
+    use lyre_core::recovery::{RecoveryKey, RecoveryWrapError};
 
     use super::*;
 
@@ -2347,6 +2452,128 @@ mod tests {
             .expect("a valid song");
         let song = song_file::read(&file).expect("the song file reads back");
         assert_eq!(song.lyrics.as_bytes(), lyrics);
+    }
+
+    fn recovery_public_key(seed: u8) -> Vec<u8> {
+        RecoveryKey::from_seed(&[seed; 32])
+            .expect("a valid seed")
+            .public_key()
+            .to_compressed()
+            .to_vec()
+    }
+
+    /// An example writer set to write version 1 for device `prf` and the
+    /// recovery key of seed 5.
+    fn encrypted_writer(prf: u8) -> SongWriter {
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        writer
+            .encrypt_for(&device_keys(prf).1.device_code(), &recovery_public_key(5))
+            .expect("a valid device code and recovery key");
+        writer
+    }
+
+    #[test]
+    fn a_song_written_for_a_device_opens_with_its_key_and_access_file() {
+        let (_, handle) = device_keys(PRF[0]);
+        let mut writer = encrypted_writer(PRF[0]);
+        assert_eq!(writer.access_file(), None);
+        let file = write_in_pieces(&mut writer).expect("a valid song");
+        let access_file = writer.access_file().expect("an access file after start");
+
+        let (reader, media) = read_encrypted(&file, &handle, &access_file).expect("opens");
+        assert_eq!(
+            media,
+            vec![
+                b"ki".to_vec(),
+                b"ks".to_vec(),
+                b"oi".to_vec(),
+                b"os".to_vec()
+            ]
+        );
+        let words: Vec<String> = reader.syllables().into_iter().map(|s| s.text).collect();
+        assert_eq!(words, vec!["Mưa".to_owned(), "rơi".to_owned()]);
+
+        let (_, other) = device_keys(9);
+        assert_eq!(
+            kind_of(read_encrypted(&file, &other, &access_file)),
+            SongFileFaultKind::CannotOpen
+        );
+    }
+
+    #[test]
+    fn a_song_written_for_a_device_opens_with_its_recovery_key_only() {
+        let mut writer = encrypted_writer(PRF[0]);
+        let file = write_in_pieces(&mut writer).expect("a valid song");
+        let header = v1::Header::parse(&file).expect("a version 1 header");
+        let song_id = header.song_id();
+
+        let key = RecoveryKey::from_seed(&[5; 32]).expect("a valid seed");
+        let content_key = header
+            .recovery_wrap()
+            .open(&key, &song_id)
+            .expect("the recovery key it was written for");
+        let song = v1::read(&file, &content_key).expect("the song reads");
+        assert_eq!(song.lyrics.as_bytes(), "Mưa rơi\n".as_bytes());
+
+        let other = RecoveryKey::from_seed(&[6; 32]).expect("a valid seed");
+        assert!(matches!(
+            header.recovery_wrap().open(&other, &song_id),
+            Err(RecoveryWrapError::Open)
+        ));
+    }
+
+    #[test]
+    fn the_song_writer_refuses_an_invalid_device_code_or_recovery_key() {
+        let code = device_keys(PRF[0]).1.device_code();
+        let key = recovery_public_key(5);
+        let mut off_curve = vec![0x02];
+        off_curve.extend([0u8; 31]);
+        off_curve.push(1);
+        let cases: [(&str, &[u8], SongWriteErrorKind); 3] = [
+            ("nonsense", &key, SongWriteErrorKind::DeviceCode),
+            (&code, &off_curve, SongWriteErrorKind::RecoveryKey),
+            (&code, &[2; 32], SongWriteErrorKind::RecoveryKey),
+        ];
+        for (code, key, expected) in cases {
+            let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+            assert_eq!(
+                writer.encrypt_for(code, key).map_err(|fault| fault.kind()),
+                Err(expected)
+            );
+            assert_eq!(writer.start().map_err(|fault| fault.kind()), Err(expected));
+            assert_eq!(writer.access_file(), None);
+        }
+    }
+
+    #[test]
+    fn a_device_code_is_checked_before_the_recovery_key() {
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        assert_eq!(
+            writer
+                .encrypt_for("nonsense", &[2; 32])
+                .map_err(|fault| fault.kind()),
+            Err(SongWriteErrorKind::DeviceCode)
+        );
+    }
+
+    #[test]
+    fn encrypt_for_after_start_is_out_of_turn() {
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        writer.start().expect("a valid song");
+        let code = device_keys(PRF[0]).1.device_code();
+        assert_eq!(
+            writer
+                .encrypt_for(&code, &recovery_public_key(5))
+                .map_err(|fault| fault.kind()),
+            Err(SongWriteErrorKind::Media)
+        );
+    }
+
+    #[test]
+    fn a_song_written_without_encrypt_for_has_no_access_file() {
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        writer.start().expect("a valid song");
+        assert_eq!(writer.access_file(), None);
     }
 
     #[test]

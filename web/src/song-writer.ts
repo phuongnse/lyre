@@ -39,6 +39,13 @@ export class SongRefused extends Error {
 // core, which checks them all before the first piece. The lyrics' bytes go to
 // the core unchanged (D5). The caller has loaded the core. A refusal the page
 // names throws SongRefused.
+//
+// Without `encryptFor` it writes version 0 and returns nothing. With a device
+// code and the owner's 33-byte compressed recovery public key it writes
+// version 1 with a fresh content key made in the core, and returns the owner
+// access file for that device. The content key never leaves the core. An
+// invalid device code or recovery public key throws before any piece is
+// written.
 export async function writeSong(o: {
   songId: Uint8Array
   details: SongDetailsInput
@@ -49,11 +56,13 @@ export async function writeSong(o: {
   video: PackagedTrack | null
   thumbnail: Uint8Array | null
   out: PieceSink
-}): Promise<void> {
+  encryptFor?: { deviceCode: string; recoveryPublicKey: Uint8Array }
+}): Promise<Uint8Array<ArrayBuffer> | undefined> {
   const { title, artist, composer, vocalRole } = o.details
   const role = vocalRole === 'male' ? VocalRole.Male : VocalRole.Female
   const writer = new SongWriter(o.songId, title, artist, composer, role, o.lyrics, o.timesMs)
   try {
+    if (o.encryptFor) writer.encryptFor(o.encryptFor.deviceCode, o.encryptFor.recoveryPublicKey)
     if (o.thumbnail !== null) writer.setThumbnail(o.thumbnail)
     if (o.video !== null) addTrack(writer, TrackKind.Video, o.video)
     addTrack(writer, TrackKind.Karaoke, o.karaoke)
@@ -76,6 +85,7 @@ export async function writeSong(o: {
       if (segment === undefined) throw new Error('no segment')
       await o.out.write(plain(writer.segment(segment.bytes)))
     }
+    return o.encryptFor ? plain(writer.accessFile()!) : undefined
   } catch (error) {
     if (!(error instanceof SongWriteFault)) throw error
     const kind = error.kind

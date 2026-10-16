@@ -7,7 +7,11 @@ is
 
 The core writes and reads version 1 next to version 0, and its tests check
 the [known-answer example](#known-answer-example). The web Player reads
-version 1. Writing it in the clients is planned for M3 *(planned for M3)*.
+version 1. The web client's song writer, in lyre-wasm, writes version 1 for a
+device code and the owner's recovery public key. It makes a fresh content key
+in the core and gives the owner access file. Making a song still writes
+version 0 until it uses that writer *(planned for M3)*. The Android app does
+not write version 1 yet.
 
 Encryption decides who can open a song file. It does not stop copying once
 a song is open. See

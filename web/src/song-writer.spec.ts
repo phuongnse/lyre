@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { initSync, SongReader } from './lyre-wasm/lyre_wasm.js'
+import { DeviceKey, initSync, SongReader } from './lyre-wasm/lyre_wasm.js'
 import { PackagedTrack } from './original-track'
 import { openSongFile } from './song-file'
 import { PieceSink, SONG_FILE, SongRefused, writeSong } from './song-writer'
@@ -12,6 +12,12 @@ const ORIGINAL_TYPE = 'audio/mp4; codecs="mp4a.40.2"'
 const SEGMENT_BYTES = 1_048_576
 const SEGMENTS = 64
 const MiB = 1_048_576
+
+// A documented recovery public key (docs/reference/device-access.md#recovery-key).
+const RECOVERY_PUBLIC_KEY = Uint8Array.from(
+  '02585a2882fca9a0ee8cf896c3ac8e515402d3c85d91384bce2dce930ce3ce5307'.match(/../g)!,
+  (pair) => parseInt(pair, 16),
+)
 
 let memory: WebAssembly.Memory
 
@@ -93,6 +99,41 @@ describe('writing a song file in pieces', () => {
     const opened = await openSongFile(await area.read(SONG_FILE))
     expect(opened.details).toEqual({ title: 'Mưa', artist: '', composer: '', vocalRole: 'female' })
     opened.close()
+  })
+
+  test('written for a device code, gives a version 1 file that opens with that device key and the access file', async () => {
+    const key = new DeviceKey(new Uint8Array(32).fill(7))
+    const areas = new FakeWorkingAreas()
+    const area = await areas.create('task')
+    const file = await area.open(SONG_FILE)
+    const bytes = new Uint8Array([1, 2])
+    const accessFile = await writeSong({
+      ...song(track(KARAOKE_TYPE, 'ki', 1, bytes), track(ORIGINAL_TYPE, 'oi', 1, bytes), [0, 500, 500, 1_000]),
+      out: file,
+      encryptFor: { deviceCode: key.deviceCode, recoveryPublicKey: RECOVERY_PUBLIC_KEY },
+    })
+    await file.close()
+
+    const opened = await openSongFile(await area.read(SONG_FILE), {
+      files: [new Blob([accessFile!])],
+      key: async () => key,
+    })
+    expect(opened.details).toEqual({ title: 'Mưa', artist: '', composer: '', vocalRole: 'female' })
+    expect(opened.accessFile).toBeDefined()
+    opened.close()
+    key.free()
+  })
+
+  test('refuses an invalid device code before it gives any piece', async () => {
+    const bytes = new Uint8Array([1, 2])
+    const pieces: Uint8Array[] = []
+    const refusal = writeSong({
+      ...song(track(KARAOKE_TYPE, 'ki', 1, bytes), track(ORIGINAL_TYPE, 'oi', 1, bytes), [0, 500, 500, 1_000]),
+      out: { write: async (piece) => void pieces.push(piece) },
+      encryptFor: { deviceCode: 'nonsense', recoveryPublicKey: RECOVERY_PUBLIC_KEY },
+    })
+    await expect(refusal).rejects.toThrow('refused')
+    expect(pieces).toEqual([])
   })
 
   test('refuses a timing that ends after the song before it gives any piece', async () => {

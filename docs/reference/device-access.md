@@ -288,7 +288,7 @@ entry's content key or role is used.
 | Device code checksum | It must be a valid Bech32m checksum. A Bech32 checksum is not accepted. | Before decoding the key |
 | Device code version | It must be `1`. Unknown versions are rejected. | Before decoding the key |
 | Device code padding | The final padding bit must be zero. Decoding must produce exactly 33 bytes. | During conversion to bytes |
-| Compressed key in a device code or access header | It must start with `02` or `03`. Its x coordinate must be less than P-256's field prime `p` and yield a point on the curve. The point at infinity is invalid. | When parsing the key |
+| Compressed key in a device code, an access header or a recovery public key | A recovery public key must be exactly 33 bytes. It must start with `02` or `03`. Its x coordinate must be less than P-256's field prime `p` and yield a point on the curve. The point at infinity is invalid. | When parsing the key |
 | Access file header | Magic must match, version must be `1`, and reserved must be `0`. | When parsing the header |
 | Access file entry count | It must be from 1 through 16,384. | Before reading or allocating entries |
 | Access file size | It must equal `49 + 130 × entry_count`. Truncated, padded and oversized files are invalid. | Before reading entries |
