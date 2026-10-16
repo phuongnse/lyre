@@ -29,7 +29,7 @@ const modulePixels = 5
   selector: 'lyre-recovery-key',
   imports: [MatButton],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { '(window:storage)': 'onStorage()' },
+  host: { '(window:storage)': 'refresh()' },
   template: `
     <section aria-labelledby="recovery-key-heading">
       <h2 id="recovery-key-heading">{{ messages.recoveryKey }}</h2>
@@ -113,9 +113,10 @@ export class RecoveryKey {
     }
   }
 
-  // Another tab kept a key. This tab never replaces it: it drops the words it
-  // shows, and tells the owner when they were looking at them.
-  protected onStorage(): void {
+  // Another tab kept a key, or a restore did. This tab never replaces it: it
+  // drops the words it shows, and tells the owner when they were looking at
+  // them.
+  refresh(): void {
     const current = this.state()
     if (current.status === 'kept' || current.status === 'superseded' || readRecoveryPublicKey() === undefined) return
     this.state.set({ status: current.status === 'shown' ? 'superseded' : 'kept' })

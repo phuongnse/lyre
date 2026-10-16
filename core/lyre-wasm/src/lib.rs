@@ -1755,6 +1755,38 @@ impl From<ShareFaultKind> for ShareFault {
     }
 }
 
+/// Why songs could not be restored. It holds no core message.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestoreFaultKind {
+    /// The text is not the 24 words of a recovery key.
+    Words,
+    /// The song file does not open with this recovery key, whatever the cause:
+    /// another recovery key, a version-0 song or a file that is not a song.
+    NotRestored,
+}
+
+/// Why songs could not be restored.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RestoreFault {
+    kind: RestoreFaultKind,
+}
+
+#[wasm_bindgen]
+impl RestoreFault {
+    #[wasm_bindgen(getter)]
+    pub fn kind(&self) -> RestoreFaultKind {
+        self.kind
+    }
+}
+
+impl From<RestoreFaultKind> for RestoreFault {
+    fn from(kind: RestoreFaultKind) -> RestoreFault {
+        RestoreFault { kind }
+    }
+}
+
 /// A recipient access file for another device, with that device's
 /// fingerprint to compare.
 #[wasm_bindgen]
@@ -1879,6 +1911,44 @@ impl NewRecoveryKey {
     #[wasm_bindgen(getter, js_name = publicKey)]
     pub fn public_key(&self) -> Vec<u8> {
         self.key.public_key().to_compressed().to_vec()
+    }
+}
+
+/// A recovery key read from its words, as an opaque handle. It restores songs
+/// on a new device and gives its public key. The private key stays in the core
+/// and cannot be read. It has no `Debug`, so no log can print it.
+#[wasm_bindgen(js_name = RecoveryKey)]
+pub struct RecoveryKeyHandle {
+    key: recovery::RecoveryKey,
+}
+
+#[wasm_bindgen(js_class = RecoveryKey)]
+impl RecoveryKeyHandle {
+    /// Reads the 24 words, typed or from the QR code's text, then overwrites
+    /// `words` with zeros, whether or not they were valid. Any refused text
+    /// gives `Words`.
+    #[wasm_bindgen(js_name = fromWords)]
+    pub fn from_words(mut words: String) -> Result<RecoveryKeyHandle, RestoreFault> {
+        let key = recovery::RecoveryKey::from_words(&words);
+        words.zeroize();
+        match key {
+            Ok(key) => Ok(RecoveryKeyHandle { key }),
+            Err(_) => Err(RestoreFaultKind::Words.into()),
+        }
+    }
+
+    /// The recovery public key, 33 bytes SEC1 compressed.
+    #[wasm_bindgen(getter, js_name = publicKey)]
+    pub fn public_key(&self) -> Vec<u8> {
+        self.key.public_key().to_compressed().to_vec()
+    }
+
+    /// Opens the recovery wrap in a version-1 song file's `header` and gives
+    /// an owner access file for this device. Every failure gives
+    /// `NotRestored`.
+    pub fn restore(&self, header: &[u8], device_key: &DeviceKey) -> Result<Vec<u8>, RestoreFault> {
+        recovery::recover_access_with(&self.key, header, &device_key.key.public_key())
+            .map_err(|_| RestoreFaultKind::NotRestored.into())
     }
 }
 
@@ -2866,6 +2936,78 @@ mod tests {
         // The words of another recovery key do not.
         let stranger = NewRecoveryKey::new();
         assert!(recovery::recover_access(&stranger.words(), &file, &other_code).is_err());
+    }
+
+    #[test]
+    fn words_and_their_qr_content_read_the_same_recovery_key() {
+        let new = recovery::NewRecoveryKey::generate();
+        let typed =
+            RecoveryKeyHandle::from_words(new.words().as_str().to_owned()).expect("the words read");
+        let scanned = RecoveryKeyHandle::from_words(new.qr_content().as_str().to_owned())
+            .expect("the QR content reads");
+        assert_eq!(typed.public_key(), scanned.public_key());
+        assert_eq!(typed.public_key(), new.public_key().to_compressed());
+    }
+
+    #[test]
+    fn bad_words_are_a_words_fault() {
+        for text in ["", "abandon", "not the words of a recovery key at all"] {
+            let fault = RecoveryKeyHandle::from_words(text.to_owned())
+                .err()
+                .expect("refused");
+            assert_eq!(fault.kind(), RestoreFaultKind::Words);
+        }
+    }
+
+    #[test]
+    fn a_song_restores_into_an_owner_access_file_the_device_opens() {
+        let new = recovery::NewRecoveryKey::generate();
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        writer
+            .encrypt_for(
+                &device_keys(PRF[0]).1.device_code(),
+                &new.public_key().to_compressed(),
+            )
+            .expect("a valid device code and recovery key");
+        let file = write_in_pieces(&mut writer).expect("a valid song");
+        let key =
+            RecoveryKeyHandle::from_words(new.words().as_str().to_owned()).expect("the words read");
+
+        // Only the header is given, as the client reads it.
+        let (_, other) = device_keys(9);
+        let header_end = SongReader::header_length(&file).expect("a header") as usize;
+        let access_file = key
+            .restore(&file[..header_end], &other)
+            .expect("the words open the song");
+        let (reader, _) = read_encrypted(&file, &other, &access_file).expect("opens");
+        assert!(reader.is_owner());
+    }
+
+    #[test]
+    fn a_song_of_another_recovery_key_or_version_0_is_not_restored() {
+        let new = recovery::NewRecoveryKey::generate();
+        let mut writer = encrypted_writer(PRF[0]);
+        let file = write_in_pieces(&mut writer).expect("a valid song");
+        let header_end = SongReader::header_length(&file).expect("a header") as usize;
+        let key =
+            RecoveryKeyHandle::from_words(new.words().as_str().to_owned()).expect("the words read");
+        let (_, device) = device_keys(9);
+
+        let kind_of = |result: Result<Vec<u8>, RestoreFault>| match result {
+            Ok(_) => panic!("the song should not restore"),
+            Err(fault) => fault.kind(),
+        };
+        // Another recovery key, a version-0 song and a file that is not a song.
+        let other_key = kind_of(key.restore(&file[..header_end], &device));
+        assert_eq!(other_key, RestoreFaultKind::NotRestored);
+        assert_eq!(
+            kind_of(key.restore(&example(), &device)),
+            RestoreFaultKind::NotRestored
+        );
+        assert_eq!(
+            kind_of(key.restore(b"x", &device)),
+            RestoreFaultKind::NotRestored
+        );
     }
 
     #[test]

@@ -420,15 +420,16 @@ Compose uses the same three values *(planned for M4)*.
   ([devices and access](architecture.md#devices-and-access)). The page then
   wipes the buffer. Within one page load, later presses reuse the key and ask
   for no unlock. The Player and Make the song share this unlock: opening a
-  version-1 song or making one asks for no second unlock after a press, and a
-  press asks for none after a song opened or was made. The page asks the passkey with the fixed Lyre PRF salt, so a
+  version-1 song, making one or restoring songs asks for no second unlock
+  after a press, and a press asks for none after a song opened or was made. The page asks the passkey with the fixed Lyre PRF salt, so a
   reload shows the same device code.
 - The page keeps two non-secret entries in `localStorage`. The first is the
   passkey's credential ID, and only once that passkey has given a device key.
   The ID holds no key. If the passkey gives no PRF output, or turns out to be
   able to sync, the page removes the ID. The second is the recovery public key
   under `lyre-recovery-public-key`, which the
-  [Recovery key section](#recovery-key) writes. This section only reads it,
+  [Recovery key section](#recovery-key) writes, and a
+  [restore](#restoring-songs) may write. This section only reads it,
   to make songs ([Making a song](#making-a-song)).
 - Once the device is unlocked, the section shows the device code as text,
   labelled "Device code", the fingerprint, labelled "Fingerprint", and the QR
@@ -503,8 +504,8 @@ Compose uses the same three values *(planned for M4)*.
 - Making a song still refuses until a key is kept
   ([Making a song](#making-a-song)). Every song made after that is wrapped for
   it.
-- Scanning or typing the words to recover songs on a new device is
-  *(planned for M3)*.
+- A restore on a new device can also write the key
+  ([Restoring songs](#restoring-songs)).
 - The Playwright journeys create a key and check the 24 words and the QR
   image, that a confirmation and a reload remove them, and that a reload
   without a confirmation keeps nothing. They check that `localStorage` holds
@@ -513,6 +514,52 @@ Compose uses the same three values *(planned for M4)*.
   reach neither the page, its storage nor the console. A core test through the
   WebAssembly API checks that a song written for the new public key is
   recovered from the words.
+
+## Restoring songs
+
+- The main page has a **Restore songs** section, under Recovery key. On a new
+  device the owner types the 24 recovery words, or pastes the text of the
+  recovery key's QR code from any scanner app, as Share takes a device code.
+  Lyre has no camera scanner. The words go in a field named "Recovery words".
+  The core reads typed and pasted words the same way
+  ([reference](reference/device-access.md#words-and-qr-content)).
+- A **Choose song files** button picks one or more `.lyre` files, and a line
+  counts them. A **Restore the songs** button starts the restore and is
+  disabled while it runs.
+- The core reads the words first. Words it refuses get one alert, "These are
+  not the 24 words of a recovery key. Check each word and try again." No file
+  is read, nothing is restored, and the device is not asked to unlock.
+- Then the device unlocks, with the same unlock as the Player
+  ([Device code](#device-code)). If it cannot, one alert says "This device
+  could not be unlocked, so no song was restored."
+- For each file, the core opens the song's recovery wrap with the words and
+  makes an owner access file for this device. The page opens the song with
+  that file and keeps both in the [library](#library), like a song made on
+  this device. The song plays from the library and offers Share.
+- A list named "Restore results" gives one line for each file, in the order
+  chosen: "<name>: restored", or "<name>: not restored. This file does not
+  open with this recovery key." Every failure of one file gives the same
+  line: a song made with another recovery key, a version-0 song, a damaged
+  file and a file that is not a song file.
+- A file is kept in the library even when this browser cannot play its media.
+  The Player gives the reason when the owner plays it.
+- When a restore opens at least one song and the device keeps no recovery
+  public key, it writes the key's public part under `lyre-recovery-public-key`,
+  and the Recovery key section moves to its kept state. Songs made on this
+  device are then wrapped for the same recovery key. A restore never replaces a
+  key that is already kept. A restore that opens no song keeps none.
+- The page empties the words field as soon as the owner presses Restore. The
+  words go only to the core. They are never stored, shown again or logged, and
+  an error's own text is never shown. Clearing is best effort, because the
+  JavaScript engine may keep copies.
+- The Playwright journeys make a recovery key and two songs on one device. On
+  a new device they restore both with the words, and check that both are in
+  the library, play and offer Share, and that the new device keeps the same
+  public key. They check that changed words give one alert and keep nothing.
+  They check that a song made with a thrown-away key and a version-0 song are
+  listed as not restored while the owner's song is restored. They check that
+  the words, in any run of three, reach neither the page, its storage nor the
+  console.
 
 ## Check pages
 

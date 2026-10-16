@@ -155,7 +155,8 @@ The encrypted layout, keys and recovery wrap are specified in
       that passkey has given a device key. The second is the owner's recovery
       public key, as base64url of its 33-byte compressed form, under
       `lyre-recovery-public-key`. The web client's Recovery key section writes it
-      once the owner confirms they kept the words. Making a song only reads it.
+      once the owner confirms they kept the words. A restore on a new device may
+      also write it, when none is kept. Making a song only reads it.
 - **Device code.** The compressed P-256 public key in Bech32m with the `lyre`
   prefix and a version, as text and a QR code. A fingerprint from SHA-256 of
   the public key shows 20 digits in groups of 4, for checking by voice or eye.
@@ -179,8 +180,8 @@ The encrypted layout, keys and recovery wrap are specified in
   written, so a new device can be given access to all the owner's songs (D7).
   The core makes the key, gives its words and QR code once, reads words back
   and opens a song with them into an owner access file for a device code. The
-  web client shows the new key once and keeps its public part. The screens that
-  scan and use the recovery key in the clients are *(planned for M3)*.
+  web client shows the new key once and keeps its public part. The web client
+  restores songs from typed or pasted words.
 
 The scheme is [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The [devices and access reference](reference/device-access.md) specifies
