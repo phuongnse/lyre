@@ -19,12 +19,6 @@
       "provider": "azure-openai",
       "endpoint_secret": "AZURE_OPENAI_ENDPOINT",
       "api_key_secret": "GPT_ASTRA_KEY"
-    },
-    "sol": {
-      "runtime": "codex",
-      "provider": "azure-openai",
-      "endpoint_secret": "AZURE_OPENAI_ENDPOINT",
-      "api_key_secret": "GPT_SOL_KEY"
     }
   },
   "model": "claude-opus-5-5",
