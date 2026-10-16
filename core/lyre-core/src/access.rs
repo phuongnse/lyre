@@ -488,10 +488,11 @@ pub fn open_with_agreement(
         &entry[17 + ENC_LEN..],
     )
     .ok_or(AccessFileError::Open)?;
-    let bytes =
-        <[u8; KEY_LEN]>::try_from(plaintext.as_slice()).map_err(|_| AccessFileError::Open)?;
+    let bytes = Zeroizing::new(
+        <[u8; KEY_LEN]>::try_from(plaintext.as_slice()).map_err(|_| AccessFileError::Open)?,
+    );
     Ok(Access {
-        content_key: ContentKey::from_bytes(bytes),
+        content_key: ContentKey::from_bytes(*bytes),
         role,
     })
 }
