@@ -157,7 +157,9 @@ Open points, each settled by a later decision:
   [D28](#d28-the-separator-is-mel-band-roformer-by-kimberley-jensen--agreed),
   [D29](#d29-the-aligner-is-lyric-alignment--agreed) and
   [D30](#d30-the-aligner-file-is-fp32--agreed), confirmed by the M2 measurements;
-- the lowest Android version and the browsers Lyre supports.
+- the lowest Android version: settled by
+  [D32](#d32-the-lowest-android-version-is-android-12--agreed);
+- the browsers Lyre supports.
 
 ## D11. Delivery workflow — Agreed
 
@@ -712,3 +714,18 @@ Settles the scheme that [D6](#d6-a-song-opens-only-on-the-devices-it-was-shared-
 *Why:* P-256 is what Android Keystore holds in hardware (D27). Standard
 reviewed building blocks keep the core small. The per-write salt lets a
 song be rewritten without breaking its shares.
+
+## D32. The lowest Android version is Android 12 — Agreed
+
+Settles the lowest Android version, an open point of
+[D10](#d10-technology-stack--agreed).
+
+- **Lowest version:** Android 12 (API 31). The Android app sets `minSdk` to 31.
+- **Older phones:** a phone below Android 12 gets no Android app. It can use
+  the web client.
+- **Key agreement:** from API 31, Android Keystore does ECDH key agreement
+  with a key made for `KeyProperties.PURPOSE_AGREE_KEY`.
+
+*Why:* without key agreement inside Keystore, the private key would have to
+leave the hardware to open an access file. That breaks
+[D8](#d8-device-keys-are-bound-to-the-device-not-the-apps-storage--agreed).

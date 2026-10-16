@@ -104,7 +104,10 @@ page's measurement method.
   API never returns one to a client. The web device key is returned as an
   opaque handle that the client cannot read. A content key is also held as
   an opaque handle. Neither kind of key reaches web UI state, Compose
-  state, logs or error messages.
+  state, logs or error messages. The only secrets that pass through a client
+  are the web PRF output and the Android key agreement output. Each is handed
+  straight to the core and zeroed, and neither reaches UI state, logs or error
+  messages.
 
 ## Song file *(encrypted from M3)*
 
@@ -138,8 +141,13 @@ The encrypted layout, keys and recovery wrap are specified in
 ## Devices and access
 
 - **Device key.** Created the first time Lyre runs on a device (D8):
-  - Android *(planned for M4)*: an EC P-256 key pair in Android Keystore, hardware backed,
-    not exportable. Lyre checks its attestation.
+  - Android *(planned for M4)*: an EC P-256 key pair in Android Keystore, for
+    key agreement only, in StrongBox or the TEE and not exportable. The app
+    checks its attestation once, when it makes the key. It opens an access
+    file with a Keystore ECDH step on the entry's encapsulated key. The
+    32-byte output goes straight to the core, which finishes the HPKE open.
+    The app then zeroes its buffer. See the
+    [Android device key](reference/device-access.md#android-device-key-planned-for-m4).
   - Web: a device-bound passkey with the PRF extension. The PRF output is
     available only after the user unlocks the device. The core derives the
     device key once per session: PRF → HKDF-SHA256 → P-256 private key.
@@ -184,7 +192,8 @@ The encrypted layout, keys and recovery wrap are specified in
 
 The scheme is [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The [devices and access reference](reference/device-access.md) specifies
-the device code, fingerprint, access file and recovery key.
+the Android device key, the device code, fingerprint, access file and
+recovery key.
 The song file's encrypted layout and recovery wrap are specified in
 [song file format, version 1](reference/song-file-format-v1.md).
 

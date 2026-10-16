@@ -454,6 +454,11 @@ Compose uses the same three values *(planned for M4)*.
   - "This device could not be unlocked, so it has no device code." This is for
     a cancelled unlock, a missing passkey or any other failure. The page never
     shows the browser's own error text.
+- *(planned for M4)* The Android app shows the code, the fingerprint and the
+  QR code the same way. A failed attestation check shows "This device gets no
+  device code, because it cannot keep its key in secure hardware." Any other
+  failure to make the key shows "This device could not make its key, so it has
+  no device code."
 - A web page cannot delete a passkey. A passkey refused for having no PRF or
   for syncing stays on the device until the user deletes it in the device's
   passkey settings.
