@@ -10,11 +10,16 @@
 //! Every value is checked against the limits, and a file that breaks any
 //! rule is rejected as a whole. No error message quotes the lyrics or the
 //! song details.
+//!
+//! Version 1, the encrypted format, is in the [`v1`] module. It reuses this
+//! module's chunk rules, limits and parsers.
 
 use std::fmt;
 use std::ops::Range;
 
 use crate::lyrics::{Lyrics, LyricsError, MAX_LYRICS_BYTES};
+
+pub mod v1;
 
 /// The first 8 bytes of every song file.
 pub const MAGIC: [u8; 8] = [0x89, b'L', b'Y', b'R', b'E', 0x0D, 0x0A, 0x1A];
@@ -87,33 +92,7 @@ pub struct Header {
 impl Header {
     /// Parses the first 32 bytes of `bytes`. Bytes after them are ignored.
     pub fn parse(bytes: &[u8]) -> Result<Header, SongFileError> {
-        let short = SongFileError::HeaderTooShort { len: bytes.len() };
-        if bytes.len() < HEADER_LEN {
-            return Err(short);
-        }
-        let mut reader = Reader::new(bytes);
-        let magic = reader.take(MAGIC.len()).ok_or(short.clone())?;
-        if magic != MAGIC {
-            return Err(SongFileError::BadMagic);
-        }
-        let version = reader.u16().ok_or(short.clone())?;
-        if version != VERSION {
-            return Err(SongFileError::UnsupportedVersion { version });
-        }
-        let reserved = reader.u16().ok_or(short.clone())?;
-        if reserved != 0 {
-            return Err(SongFileError::HeaderReserved { value: reserved });
-        }
-        let entry_count = reader.u32().ok_or(short.clone())?;
-        if !(MIN_ENTRY_COUNT..=MAX_ENTRY_COUNT).contains(&entry_count) {
-            return Err(SongFileError::EntryCount {
-                count: u64::from(entry_count),
-            });
-        }
-        let song_id = reader
-            .take(16)
-            .and_then(|id| id.try_into().ok())
-            .ok_or(short)?;
+        let (entry_count, song_id) = parse_header_start(bytes, VERSION, HEADER_LEN)?;
         Ok(Header {
             song_id,
             entry_count,
@@ -135,6 +114,48 @@ impl Header {
         // `entry_count` is at most MAX_ENTRY_COUNT, so this cannot overflow.
         usize::try_from(self.entry_count).map_or(usize::MAX, |count| count * INDEX_ENTRY_LEN)
     }
+}
+
+/// Parses the start that the headers of every format version share: the
+/// magic, the `version` this reader reads, the reserved field, the entry count
+/// and the song ID. `header_len` is the size of the whole header, which
+/// `bytes` must hold. Returns the entry count and the song ID.
+fn parse_header_start(
+    bytes: &[u8],
+    version: u16,
+    header_len: usize,
+) -> Result<(u32, [u8; 16]), SongFileError> {
+    let short = SongFileError::HeaderTooShort {
+        len: bytes.len(),
+        needed: header_len,
+    };
+    if bytes.len() < header_len {
+        return Err(short);
+    }
+    let mut reader = Reader::new(bytes);
+    let magic = reader.take(MAGIC.len()).ok_or(short.clone())?;
+    if magic != MAGIC {
+        return Err(SongFileError::BadMagic);
+    }
+    let found = reader.u16().ok_or(short.clone())?;
+    if found != version {
+        return Err(SongFileError::UnsupportedVersion { version: found });
+    }
+    let reserved = reader.u16().ok_or(short.clone())?;
+    if reserved != 0 {
+        return Err(SongFileError::HeaderReserved { value: reserved });
+    }
+    let entry_count = reader.u32().ok_or(short.clone())?;
+    if !(MIN_ENTRY_COUNT..=MAX_ENTRY_COUNT).contains(&entry_count) {
+        return Err(SongFileError::EntryCount {
+            count: u64::from(entry_count),
+        });
+    }
+    let song_id = reader
+        .take(16)
+        .and_then(|id| id.try_into().ok())
+        .ok_or(short)?;
+    Ok((entry_count, song_id))
 }
 
 /// The type of a chunk, as stored in its index entry.
@@ -525,6 +546,30 @@ pub fn read(file: &[u8]) -> Result<Song, SongFileError> {
         })?;
     let index = Index::parse(&header, index_bytes, file.len() as u64)?;
 
+    assemble(
+        header.song_id(),
+        index.entries(),
+        index.duration_ms(),
+        |_, entry| {
+            let bytes = chunk_bytes(file, entry).ok_or(SongFileError::FileSize {
+                size: file.len() as u64,
+                end: entry.offset.saturating_add(u64::from(entry.length)),
+            })?;
+            read_chunk(entry, bytes)
+        },
+    )
+}
+
+/// Builds the song from its index `entries`, reading each chunk with `read`
+/// in index order. `read` gets the entry's position and the entry. Checks that
+/// the chunks that must be present are, and the timing against the lyrics and
+/// `duration_ms`.
+fn assemble(
+    song_id: [u8; 16],
+    entries: &[IndexEntry],
+    duration_ms: u32,
+    mut read: impl FnMut(usize, &IndexEntry) -> Result<Chunk, SongFileError>,
+) -> Result<Song, SongFileError> {
     let mut details = None;
     let mut thumbnail = None;
     let mut lyrics = None;
@@ -532,12 +577,8 @@ pub fn read(file: &[u8]) -> Result<Song, SongFileError> {
     let mut video: Option<Track> = None;
     let mut karaoke = Track::default();
     let mut original = Track::default();
-    for entry in index.entries() {
-        let bytes = chunk_bytes(file, entry).ok_or(SongFileError::FileSize {
-            size: file.len() as u64,
-            end: entry.offset.saturating_add(u64::from(entry.length)),
-        })?;
-        match read_chunk(entry, bytes)? {
+    for (position, entry) in entries.iter().enumerate() {
+        match read(position, entry)? {
             Chunk::SongDetails(chunk) => details = Some(chunk),
             Chunk::Thumbnail(chunk) => thumbnail = Some(chunk),
             Chunk::Lyrics(chunk) => lyrics = Some(chunk),
@@ -564,9 +605,9 @@ pub fn read(file: &[u8]) -> Result<Song, SongFileError> {
     };
     let lyrics = lyrics.ok_or(missing(ChunkType::Lyrics))?;
     let timing = timing.ok_or(missing(ChunkType::Timing))?;
-    check_timing(&timing, &lyrics, index.duration_ms())?;
+    check_timing(&timing, &lyrics, duration_ms)?;
     Ok(Song {
-        song_id: header.song_id(),
+        song_id,
         details: details.ok_or(missing(ChunkType::SongDetails))?,
         thumbnail,
         lyrics,
@@ -619,58 +660,35 @@ pub struct PieceWriter {
     chunks: Vec<Option<Vec<u8>>>,
     position: usize,
     file_size: u64,
+    framing: Framing,
 }
 
 impl PieceWriter {
     /// Plans the song file and checks it as the reader would. A plan that the
     /// reader would reject is refused before any piece is given out.
     pub fn new(plan: SongPlan) -> Result<PieceWriter, SongFileError> {
-        let details = encode_details(&plan.details)?;
-        let timing = encode_timing(&plan.timing)?;
-        // Each init chunk is checked as the reader would check it.
-        let video_init = plan
-            .video
-            .as_ref()
-            .map(|video| encode_init(ChunkType::VideoInit, &video.stored_type, &video.init))
-            .transpose()?;
-        let karaoke_init = encode_init(
-            ChunkType::KaraokeInit,
-            &plan.karaoke.stored_type,
-            &plan.karaoke.init,
-        )?;
-        let original_init = encode_init(
-            ChunkType::OriginalInit,
-            &plan.original.stored_type,
-            &plan.original.init,
-        )?;
-        let mut chunks: Vec<PlannedChunk> = vec![(ChunkType::SongDetails, Some(details), 0, 0)];
-        if let Some(thumbnail) = plan.thumbnail {
-            chunks.push((ChunkType::Thumbnail, Some(thumbnail), 0, 0));
-        }
-        let lyrics = plan.lyrics.as_bytes().to_vec();
-        chunks.push((ChunkType::Lyrics, Some(lyrics), 0, 0));
-        chunks.push((ChunkType::Timing, Some(timing), 0, 0));
-        if let (Some(video), Some(init)) = (&plan.video, video_init) {
-            push_track_plan(
-                &mut chunks,
-                video,
-                (ChunkType::VideoInit, init),
-                ChunkType::VideoSegment,
-            );
-        }
-        push_track_plan(
-            &mut chunks,
-            &plan.karaoke,
-            (ChunkType::KaraokeInit, karaoke_init),
-            ChunkType::KaraokeSegment,
-        );
-        push_track_plan(
-            &mut chunks,
-            &plan.original,
-            (ChunkType::OriginalInit, original_init),
-            ChunkType::OriginalSegment,
-        );
+        let mut writer = PieceWriter::plan(&plan, V0)?;
+        let entry_count =
+            u32::try_from(writer.entries.len()).map_err(|_| SongFileError::EntryCount {
+                count: writer.entries.len() as u64,
+            })?;
+        let index = encode_index(&writer.entries);
+        let mut head = Vec::with_capacity(HEADER_LEN + index.len());
+        head.extend_from_slice(&MAGIC);
+        head.extend_from_slice(&VERSION.to_le_bytes());
+        head.extend_from_slice(&0u16.to_le_bytes());
+        head.extend_from_slice(&entry_count.to_le_bytes());
+        head.extend_from_slice(&plan.song_id);
+        head.extend_from_slice(&index);
+        writer.head = head;
+        Ok(writer)
+    }
 
+    /// Plans the chunks and the index of `plan` in the `framing` of a format
+    /// version and runs every check the reader runs. The head is left empty
+    /// for the caller to make.
+    fn plan(plan: &SongPlan, framing: Framing) -> Result<PieceWriter, SongFileError> {
+        let chunks = plan_chunks(plan)?;
         let parts: Vec<_> = chunks
             .iter()
             .map(|&(chunk_type, ref bytes, len, time)| {
@@ -678,34 +696,18 @@ impl PieceWriter {
                 (chunk_type, len, time)
             })
             .collect();
-        let (entries, file_size) = layout(&parts)?;
-        let song_ms = validate(&entries, file_size)?;
+        let (entries, file_size) = layout_framed(&parts, framing)?;
+        let song_ms = validate_framed(&entries, file_size, framing)?;
         check_timing(&plan.timing, &plan.lyrics, song_ms)?;
 
         usize::try_from(file_size).map_err(|_| SongFileError::FileTooLarge { size: file_size })?;
-        let mut head = Vec::with_capacity(HEADER_LEN + INDEX_ENTRY_LEN * entries.len());
-        head.extend_from_slice(&MAGIC);
-        head.extend_from_slice(&VERSION.to_le_bytes());
-        head.extend_from_slice(&0u16.to_le_bytes());
-        let entry_count = u32::try_from(entries.len()).map_err(|_| SongFileError::EntryCount {
-            count: entries.len() as u64,
-        })?;
-        head.extend_from_slice(&entry_count.to_le_bytes());
-        head.extend_from_slice(&plan.song_id);
-        for entry in &entries {
-            head.extend_from_slice(&entry.chunk_type.code().to_le_bytes());
-            head.extend_from_slice(&0u16.to_le_bytes());
-            head.extend_from_slice(&entry.length.to_le_bytes());
-            head.extend_from_slice(&entry.offset.to_le_bytes());
-            head.extend_from_slice(&entry.start_ms.to_le_bytes());
-            head.extend_from_slice(&entry.duration_ms.to_le_bytes());
-        }
         Ok(PieceWriter {
-            head,
+            head: Vec::new(),
             entries,
             chunks: chunks.into_iter().map(|(_, bytes, _, _)| bytes).collect(),
             position: 0,
             file_size,
+            framing,
         })
     }
 
@@ -751,11 +753,11 @@ impl PieceWriter {
             .get(position)
             .filter(|entry| entry.chunk_type.is_segment())
             .ok_or(SongFileError::SegmentNotNext { position })?;
-        if usize::try_from(entry.length) != Ok(len) {
+        if entry.length.checked_sub(self.framing.chunk_tag_len) != u32::try_from(len).ok() {
             return Err(SongFileError::ChunkBytes {
                 chunk_type: entry.chunk_type.code(),
                 len,
-                expected: entry.length,
+                expected: entry.length - self.framing.chunk_tag_len,
             });
         }
         self.position += 1;
@@ -766,6 +768,60 @@ impl PieceWriter {
 /// A chunk to write: its type, the bytes if the writer makes them, the length
 /// if it does not, and its time.
 type PlannedChunk = (ChunkType, Option<Vec<u8>>, usize, u32);
+
+/// Encodes the chunks the writer makes and plans the media segments, in file
+/// order. Each init chunk is checked as the reader would check it.
+fn plan_chunks(plan: &SongPlan) -> Result<Vec<PlannedChunk>, SongFileError> {
+    let details = encode_details(&plan.details)?;
+    let timing = encode_timing(&plan.timing)?;
+    let video_init = plan
+        .video
+        .as_ref()
+        .map(|video| encode_init(ChunkType::VideoInit, &video.stored_type, &video.init))
+        .transpose()?;
+    let karaoke_init = encode_init(
+        ChunkType::KaraokeInit,
+        &plan.karaoke.stored_type,
+        &plan.karaoke.init,
+    )?;
+    let original_init = encode_init(
+        ChunkType::OriginalInit,
+        &plan.original.stored_type,
+        &plan.original.init,
+    )?;
+    let mut chunks: Vec<PlannedChunk> = vec![(ChunkType::SongDetails, Some(details), 0, 0)];
+    if let Some(thumbnail) = &plan.thumbnail {
+        chunks.push((ChunkType::Thumbnail, Some(thumbnail.clone()), 0, 0));
+    }
+    chunks.push((
+        ChunkType::Lyrics,
+        Some(plan.lyrics.as_bytes().to_vec()),
+        0,
+        0,
+    ));
+    chunks.push((ChunkType::Timing, Some(timing), 0, 0));
+    if let (Some(video), Some(init)) = (&plan.video, video_init) {
+        push_track_plan(
+            &mut chunks,
+            video,
+            (ChunkType::VideoInit, init),
+            ChunkType::VideoSegment,
+        );
+    }
+    push_track_plan(
+        &mut chunks,
+        &plan.karaoke,
+        (ChunkType::KaraokeInit, karaoke_init),
+        ChunkType::KaraokeSegment,
+    );
+    push_track_plan(
+        &mut chunks,
+        &plan.original,
+        (ChunkType::OriginalInit, original_init),
+        ChunkType::OriginalSegment,
+    );
+    Ok(chunks)
+}
 
 /// Adds a track's encoded init segment and its planned media segments to the
 /// chunks to write.
@@ -781,10 +837,59 @@ fn push_track_plan(
     }
 }
 
-/// Writes `song` as a song file. A song that the reader would reject is
-/// refused before any file bytes are written.
-pub fn write(song: &Song) -> Result<Vec<u8>, SongFileError> {
-    let plan = SongPlan {
+/// Encodes one index entry as it is stored: 24 bytes.
+fn encode_entry(entry: &IndexEntry, out: &mut Vec<u8>) {
+    out.extend_from_slice(&entry.chunk_type.code().to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes());
+    out.extend_from_slice(&entry.length.to_le_bytes());
+    out.extend_from_slice(&entry.offset.to_le_bytes());
+    out.extend_from_slice(&entry.start_ms.to_le_bytes());
+    out.extend_from_slice(&entry.duration_ms.to_le_bytes());
+}
+
+/// Encodes the index: its entries one after another.
+fn encode_index(entries: &[IndexEntry]) -> Vec<u8> {
+    let mut index = Vec::with_capacity(INDEX_ENTRY_LEN * entries.len());
+    for entry in entries {
+        encode_entry(entry, &mut index);
+    }
+    index
+}
+
+/// The media segments of a song, taken in the order a writer asks for them.
+struct Segments<'a> {
+    video: std::slice::Iter<'a, Segment>,
+    karaoke: std::slice::Iter<'a, Segment>,
+    original: std::slice::Iter<'a, Segment>,
+}
+
+impl<'a> Segments<'a> {
+    fn new(song: &'a Song) -> Segments<'a> {
+        Segments {
+            video: song
+                .video
+                .as_ref()
+                .map_or(&[][..], |video| &video.segments)
+                .iter(),
+            karaoke: song.karaoke.segments.iter(),
+            original: song.original.segments.iter(),
+        }
+    }
+
+    /// The bytes of the next segment of `chunk_type`, empty when there is none.
+    fn next(&mut self, chunk_type: ChunkType) -> &'a [u8] {
+        let segment = match chunk_type {
+            ChunkType::VideoSegment => self.video.next(),
+            ChunkType::KaraokeSegment => self.karaoke.next(),
+            _ => self.original.next(),
+        };
+        segment.map_or(&[][..], |segment| &segment.bytes)
+    }
+}
+
+/// The plan of `song`: the same parts, with each segment as its length.
+fn plan_song(song: &Song) -> Result<SongPlan, SongFileError> {
+    Ok(SongPlan {
         song_id: song.song_id,
         details: song.details.clone(),
         thumbnail: song.thumbnail.clone(),
@@ -797,28 +902,25 @@ pub fn write(song: &Song) -> Result<Vec<u8>, SongFileError> {
             .transpose()?,
         karaoke: plan_track(&song.karaoke, ChunkType::KaraokeSegment)?,
         original: plan_track(&song.original, ChunkType::OriginalSegment)?,
-    };
-    let mut writer = PieceWriter::new(plan)?;
+    })
+}
+
+/// Writes `song` as a song file. A song that the reader would reject is
+/// refused before any file bytes are written.
+pub fn write(song: &Song) -> Result<Vec<u8>, SongFileError> {
+    let mut writer = PieceWriter::new(plan_song(song)?)?;
     let capacity =
         usize::try_from(writer.file_size()).map_err(|_| SongFileError::FileTooLarge {
             size: writer.file_size(),
         })?;
     let mut file = Vec::with_capacity(capacity);
     file.extend_from_slice(writer.head());
-    // The segments of each track, in the order the writer asks for them.
-    let mut video = song.video.iter().flat_map(|video| &video.segments);
-    let mut karaoke = song.karaoke.segments.iter();
-    let mut original = song.original.segments.iter();
+    let mut segments = Segments::new(song);
     loop {
         match writer.next_chunk() {
             Next::Chunk(bytes) => file.extend_from_slice(&bytes),
             Next::Segment(chunk_type) => {
-                let segment = match chunk_type {
-                    ChunkType::VideoSegment => video.next(),
-                    ChunkType::KaraokeSegment => karaoke.next(),
-                    _ => original.next(),
-                };
-                let bytes = segment.map_or(&[][..], |segment| &segment.bytes);
+                let bytes = segments.next(chunk_type);
                 writer.take_segment(bytes.len())?;
                 file.extend_from_slice(bytes);
             }
@@ -878,11 +980,12 @@ impl fmt::Display for DetailField {
 /// details. Index positions count from 0.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SongFileError {
-    /// Fewer than 32 bytes were given for the header.
-    HeaderTooShort { len: usize },
+    /// Fewer bytes were given for the header than it needs: 32 in version 0
+    /// and 177 in version 1.
+    HeaderTooShort { len: usize, needed: usize },
     /// The file does not start with the song file magic.
     BadMagic,
-    /// The format version is not 0.
+    /// The format version is not the version this reader reads.
     UnsupportedVersion { version: u16 },
     /// The header's reserved field is not 0.
     HeaderReserved { value: u16 },
@@ -952,6 +1055,14 @@ pub enum SongFileError {
     /// An init segment chunk's container init bytes are outside 1 to 65,536
     /// bytes.
     InitLength { chunk_type: u16, len: usize },
+    /// The header and index tag did not authenticate. A wrong content key and
+    /// a change to the header, the index or the tag give this same error, so
+    /// it does not say which.
+    HeaderTag,
+    /// The chunk at index entry `position` did not authenticate.
+    ChunkTag { position: usize },
+    /// The index has no entry at `position`.
+    NoEntry { position: usize },
     /// The bytes given for a chunk are not its stored length.
     ChunkBytes {
         chunk_type: u16,
@@ -993,11 +1104,8 @@ pub enum SongFileError {
 impl fmt::Display for SongFileError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SongFileError::HeaderTooShort { len } => {
-                write!(
-                    f,
-                    "header needs {HEADER_LEN} bytes, but only {len} were given"
-                )
+            SongFileError::HeaderTooShort { len, needed } => {
+                write!(f, "header needs {needed} bytes, but only {len} were given")
             }
             SongFileError::BadMagic => write!(f, "not a song file: the magic is wrong"),
             SongFileError::UnsupportedVersion { version } => {
@@ -1121,6 +1229,18 @@ impl fmt::Display for SongFileError {
                 f,
                 "chunk of type {chunk_type} was given {len} bytes, not its stored {expected}"
             ),
+            SongFileError::HeaderTag => {
+                write!(f, "the header and index did not authenticate")
+            }
+            SongFileError::ChunkTag { position } => {
+                write!(
+                    f,
+                    "the chunk at index entry {position} did not authenticate"
+                )
+            }
+            SongFileError::NoEntry { position } => {
+                write!(f, "the index has no entry {position}")
+            }
             SongFileError::SegmentNotNext { position } => write!(
                 f,
                 "a media segment was given, but index entry {position} is not the next media segment"
@@ -1250,25 +1370,60 @@ fn decode_entry(position: usize, raw: &[u8]) -> Result<IndexEntry, SongFileError
     })
 }
 
+/// Where a format version puts the chunks: the sizes that differ between
+/// versions, so that one layout and one set of checks serve them all.
+#[derive(Debug, Clone, Copy)]
+struct Framing {
+    /// The size of the header, in bytes.
+    header_len: u64,
+    /// The size of the tag after the index, in bytes. 0 when there is none.
+    index_tag_len: u64,
+    /// The size of the tag each chunk adds to its stored length, in bytes.
+    chunk_tag_len: u32,
+}
+
+/// Version 0: a 32-byte header, and no tags.
+const V0: Framing = Framing {
+    header_len: HEADER_LEN as u64,
+    index_tag_len: 0,
+    chunk_tag_len: 0,
+};
+
+impl Framing {
+    /// Where the first chunk starts, in a file of `entry_count` index entries.
+    fn first_offset(self, entry_count: usize) -> u64 {
+        self.header_len + (INDEX_ENTRY_LEN * entry_count) as u64 + self.index_tag_len
+    }
+}
+
 /// Lays out chunks of the given (type, length, time) one after another after
 /// the header and the index. The time is a media segment's duration. For an
 /// init chunk it is the start of its track's first segment, and for any
 /// other chunk it is 0. Chunks that are not media segments still get a start
 /// and a duration of 0. Each later media segment starts where the previous
 /// segment of its track ends. Returns the index entries and the file size.
-fn layout(parts: &[(ChunkType, usize, u32)]) -> Result<(Vec<IndexEntry>, u64), SongFileError> {
+///
+/// Each entry's length is the part's length plus the chunk tag of the
+/// `framing` of a format version.
+fn layout_framed(
+    parts: &[(ChunkType, usize, u32)],
+    framing: Framing,
+) -> Result<(Vec<IndexEntry>, u64), SongFileError> {
     let count = parts.len() as u64;
     if !(u64::from(MIN_ENTRY_COUNT)..=u64::from(MAX_ENTRY_COUNT)).contains(&count) {
         return Err(SongFileError::EntryCount { count });
     }
-    let mut offset = (HEADER_LEN + INDEX_ENTRY_LEN * parts.len()) as u64;
+    let mut offset = framing.first_offset(parts.len());
     let mut start_ms = 0u64;
     let mut entries = Vec::with_capacity(parts.len());
     for &(chunk_type, len, value) in parts {
-        let length = u32::try_from(len).map_err(|_| SongFileError::ChunkLength {
-            chunk_type: chunk_type.code(),
-            length: len as u64,
-        })?;
+        let length = u32::try_from(len)
+            .ok()
+            .and_then(|len| len.checked_add(framing.chunk_tag_len))
+            .ok_or(SongFileError::ChunkLength {
+                chunk_type: chunk_type.code(),
+                length: len as u64 + u64::from(framing.chunk_tag_len),
+            })?;
         let entry = if chunk_type.is_segment() {
             // A start that does not fit follows a segment that is too long,
             // which `validate` rejects first.
@@ -1446,6 +1601,16 @@ fn track_ms(
 /// Checks every structural rule of the index against the file size. Both
 /// the reader and the writer use it. Returns the song's duration.
 fn validate(entries: &[IndexEntry], file_size: u64) -> Result<u32, SongFileError> {
+    validate_framed(entries, file_size, V0)
+}
+
+/// [`validate`] in the `framing` of a format version. Each entry's length is
+/// the chunk's plaintext length plus the chunk tag.
+fn validate_framed(
+    entries: &[IndexEntry],
+    file_size: u64,
+    framing: Framing,
+) -> Result<u32, SongFileError> {
     let count = entries.len() as u64;
     if !(u64::from(MIN_ENTRY_COUNT)..=u64::from(MAX_ENTRY_COUNT)).contains(&count) {
         return Err(SongFileError::EntryCount { count });
@@ -1455,9 +1620,20 @@ fn validate(entries: &[IndexEntry], file_size: u64) -> Result<u32, SongFileError
     }
     let tracks = check_order(entries)?;
 
-    let mut expected = (HEADER_LEN + INDEX_ENTRY_LEN * entries.len()) as u64;
+    let mut expected = framing.first_offset(entries.len());
     for (position, entry) in entries.iter().enumerate() {
-        check_length(entry.chunk_type, entry.length)?;
+        // A length under the tag size has no plaintext length, so it is out of
+        // the limits.
+        let fits = entry
+            .length
+            .checked_sub(framing.chunk_tag_len)
+            .is_some_and(|plain| check_length(entry.chunk_type, plain).is_ok());
+        if !fits {
+            return Err(SongFileError::ChunkLength {
+                chunk_type: entry.chunk_type.code(),
+                length: u64::from(entry.length),
+            });
+        }
         if entry.offset != expected {
             return Err(SongFileError::ChunkOffset {
                 position,
@@ -1721,10 +1897,11 @@ mod tests {
 
     const FORMAT_DOC: &str = include_str!("../../../docs/reference/song-file-format-v0.md");
 
-    /// The known-answer example, read from the format doc's hex dump so the
-    /// tests keep no second copy of its bytes.
-    fn example() -> Vec<u8> {
-        let (_, after) = FORMAT_DOC
+    /// The bytes of the hex dump that follows the `### Hex dump` heading in
+    /// `doc`, so the tests keep no second copy of a known-answer example.
+    /// `len` is the number of bytes the dump must hold.
+    pub(super) fn hex_dump(doc: &str, len: usize) -> Vec<u8> {
+        let (_, after) = doc
             .split_once("### Hex dump")
             .expect("the format doc has a hex dump");
         let (_, block) = after
@@ -1747,11 +1924,21 @@ mod tests {
                 }
             }
         }
-        assert_eq!(bytes.len(), 307);
+        assert_eq!(bytes.len(), len);
         bytes
     }
 
-    fn details(title: &str, artist: &str, composer: &str, vocal_role: VocalRole) -> SongDetails {
+    /// The version 0 known-answer example.
+    pub(super) fn example() -> Vec<u8> {
+        hex_dump(FORMAT_DOC, 307)
+    }
+
+    pub(super) fn details(
+        title: &str,
+        artist: &str,
+        composer: &str,
+        vocal_role: VocalRole,
+    ) -> SongDetails {
         SongDetails::new(
             title.to_owned(),
             artist.to_owned(),
@@ -1761,11 +1948,11 @@ mod tests {
         .expect("details are accepted")
     }
 
-    fn lyrics(text: &str) -> Lyrics {
+    pub(super) fn lyrics(text: &str) -> Lyrics {
         Lyrics::parse(text.as_bytes()).expect("lyrics are accepted")
     }
 
-    fn timing(times: &[(u32, u32)]) -> Timing {
+    pub(super) fn timing(times: &[(u32, u32)]) -> Timing {
         Timing::new(
             times
                 .iter()
@@ -1776,9 +1963,9 @@ mod tests {
     }
 
     /// The known-answer example's original track type.
-    const AAC_TYPE: &str = "audio/mp4; codecs=\"mp4a.40.2\"";
+    pub(super) const AAC_TYPE: &str = "audio/mp4; codecs=\"mp4a.40.2\"";
 
-    fn track(stored_type: &str, init: &[u8], segments: &[(u32, &[u8])]) -> Track {
+    pub(super) fn track(stored_type: &str, init: &[u8], segments: &[(u32, &[u8])]) -> Track {
         Track {
             start_ms: 0,
             stored_type: stored_type.to_owned(),
@@ -1794,7 +1981,7 @@ mod tests {
     }
 
     /// The song the known-answer example holds.
-    fn example_song() -> Song {
+    pub(super) fn example_song() -> Song {
         Song {
             song_id: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
             details: details("Mưa", "", "", VocalRole::Female),
@@ -1854,7 +2041,7 @@ mod tests {
 
     /// The example's parts with the first chunk of `chunk_type` set to `len`
     /// bytes. A thumbnail is added after the song details.
-    fn with_length(chunk_type: ChunkType, len: usize) -> Parts {
+    pub(super) fn with_length(chunk_type: ChunkType, len: usize) -> Parts {
         let mut parts = example_parts();
         if chunk_type == ChunkType::Thumbnail {
             parts.insert(1, (ChunkType::Thumbnail, len, 0));
@@ -1866,6 +2053,10 @@ mod tests {
             part.1 = len;
         }
         parts
+    }
+
+    fn layout(parts: &[(ChunkType, usize, u32)]) -> Result<(Vec<IndexEntry>, u64), SongFileError> {
+        layout_framed(parts, V0)
     }
 
     /// Lays out `parts` and checks the index against the file size.
@@ -2349,7 +2540,10 @@ mod tests {
         let file = example();
         assert_eq!(
             Header::parse(&file[..31]),
-            Err(SongFileError::HeaderTooShort { len: 31 })
+            Err(SongFileError::HeaderTooShort {
+                len: 31,
+                needed: 32
+            })
         );
         assert!(Header::parse(&file[..32]).is_ok());
     }

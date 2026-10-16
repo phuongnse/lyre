@@ -9,6 +9,7 @@ license = "MIT AND CC-BY-SA-4.0"
 sha2 = { version = "0.10", default-features = false }
 p256 = { version = "0.13", default-features = false, features = ["arithmetic"] }
 hkdf = "0.12"
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 hpke = { version = "0.12", default-features = false, features = ["p256", "alloc"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 zeroize = "1"
