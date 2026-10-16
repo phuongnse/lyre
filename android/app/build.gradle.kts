@@ -3,6 +3,15 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// The version in the `[workspace.package]` section of core/Cargo.toml. The device tests run on the emulator, where they cannot read it.
+val coreVersion: String =
+    rootDir
+        .resolve("../core/Cargo.toml")
+        .readText()
+        .let { Regex("""(?m)^\[workspace\.package]\n((?:(?!\[).*\n?)*)""").find(it)?.groupValues?.get(1) }
+        ?.let { Regex("""(?m)^version\s*=\s*"([^"]+)"""").find(it)?.groupValues?.get(1) }
+        ?: error("core/Cargo.toml has no workspace version.")
+
 android {
     namespace = "io.github.phuongnse.lyre"
     compileSdk =
@@ -20,8 +29,10 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         ndk {
-            abiFilters += "arm64-v8a"
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments["coreVersion"] = coreVersion
     }
 
     buildFeatures {
@@ -39,6 +50,10 @@ dependencies {
     // The JVM unit tests need the desktop JNA library, which loads the host build of the core.
     testImplementation(libs.jna)
     testImplementation(libs.junit)
+
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.junit)
 }
 
 tasks.withType<Test>().configureEach {

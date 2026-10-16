@@ -365,7 +365,7 @@ The song file's encrypted layout and recovery wrap are specified in
 | Web unit | Vitest | Components and client logic |
 | Web end to end | Playwright | The built web client in Chromium: journeys and denied access |
 | Android unit | JUnit on the JVM | App logic, and the core through its Kotlin bindings |
-| Android device | Instrumented tests on an emulator *(planned for M4)* | Keystore, playback and journeys |
+| Android device | Instrumented tests on an emulator, through `scripts/e2e.sh` | Keystore, playback and journeys |
 
 - Every acceptance criterion maps to at least one of these.
 - Tests never use real models by default. They use tiny test models or fixed

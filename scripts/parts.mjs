@@ -21,6 +21,7 @@ export const PARTS = [
     needs: ['web'],
   },
   { name: 'android', label: 'the Android app', paths: ['android/', 'core/'], needs: ['core'] },
+  { name: 'device', label: 'the Android device tests', paths: ['android/', 'core/'], needs: ['android'] },
   {
     name: 'models',
     label: 'the model tool',
