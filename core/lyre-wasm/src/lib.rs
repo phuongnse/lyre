@@ -13,7 +13,7 @@ use lyre_core::lyrics::Lyrics;
 use lyre_core::lyrics_rows;
 use lyre_core::mel_roformer::{self, BrokenRun, SeparationError};
 use lyre_core::model;
-use lyre_core::recovery::RecoveryPublicKey;
+use lyre_core::recovery::{self, RecoveryPublicKey};
 use lyre_core::song_file::{
     self, Chunk, ChunkType, Header, Index, IndexEntry, Next, PieceWriter, SegmentPlan, SongDetails,
     SongFileError, SongPlan, SyllableTime, Timing, TrackPlan, v1,
@@ -1768,8 +1768,8 @@ pub struct SharedAccess {
     pub access_file: Vec<u8>,
 }
 
-/// The QR code of a device code: the modules of a square symbol, without the
-/// quiet zone.
+/// The QR code of a device code or of a recovery key's words: the modules of a
+/// square symbol, without the quiet zone.
 #[wasm_bindgen]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceCodeQr {
@@ -1836,6 +1836,49 @@ impl DeviceKey {
     #[wasm_bindgen(getter, js_name = qrCode)]
     pub fn qr_code(&self) -> DeviceCodeQr {
         self.qr_code.clone()
+    }
+}
+
+/// A recovery key that was just made, as an opaque handle. It gives the words,
+/// the QR code and the public key. Nothing can turn the public key back into
+/// words, so the client shows the words once and then frees the handle. It has
+/// no `Debug`, so no log can print the words.
+#[wasm_bindgen(js_name = NewRecoveryKey)]
+pub struct NewRecoveryKey {
+    key: recovery::NewRecoveryKey,
+}
+
+#[wasm_bindgen(js_class = NewRecoveryKey)]
+impl NewRecoveryKey {
+    /// Makes a recovery key from the browser's randomness.
+    #[wasm_bindgen(constructor)]
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> NewRecoveryKey {
+        NewRecoveryKey {
+            key: recovery::NewRecoveryKey::generate(),
+        }
+    }
+
+    /// The 24 words, lowercase and separated by single spaces.
+    #[wasm_bindgen(getter)]
+    pub fn words(&self) -> String {
+        self.key.words().as_str().to_owned()
+    }
+
+    /// The QR code of the words in uppercase.
+    #[wasm_bindgen(getter, js_name = qrCode)]
+    pub fn qr_code(&self) -> DeviceCodeQr {
+        let qr = self.key.qr_code();
+        DeviceCodeQr {
+            size: qr.size as u32,
+            modules: qr.dark.iter().map(|&dark| u8::from(dark)).collect(),
+        }
+    }
+
+    /// The recovery public key, 33 bytes SEC1 compressed.
+    #[wasm_bindgen(getter, js_name = publicKey)]
+    pub fn public_key(&self) -> Vec<u8> {
+        self.key.public_key().to_compressed().to_vec()
     }
 }
 
@@ -2786,6 +2829,43 @@ mod tests {
         assert_eq!(qr.modules.len(), 33 * 33);
         assert!(qr.modules.iter().all(|&m| m <= 1));
         assert!(qr.modules.contains(&1));
+    }
+
+    #[test]
+    fn a_new_recovery_key_gives_24_words_a_qr_code_and_a_33_byte_public_key() {
+        let new = NewRecoveryKey::new();
+        assert_eq!(new.words().split(' ').count(), 24);
+        let qr = new.qr_code();
+        assert!((5..=8).contains(&((qr.size - 17) / 4)));
+        assert_eq!(qr.modules.len(), (qr.size * qr.size) as usize);
+        assert!(qr.modules.iter().all(|&m| m <= 1));
+        assert!(qr.modules.contains(&1));
+        let key = new.public_key();
+        assert_eq!(key.len(), 33);
+        RecoveryPublicKey::from_compressed(&key).expect("a valid recovery public key");
+    }
+
+    #[test]
+    fn a_song_made_for_a_new_recovery_key_is_recovered_from_its_words() {
+        let new = NewRecoveryKey::new();
+        let mut writer = example_writer("Mưa", "Mưa rơi\n".as_bytes(), &[0, 500, 500, 1000]);
+        writer
+            .encrypt_for(&device_keys(PRF[0]).1.device_code(), &new.public_key())
+            .expect("a valid device code and recovery key");
+        let file = write_in_pieces(&mut writer).expect("a valid song");
+
+        let (other_key, other) = device_keys(9);
+        let other_code = other.device_code();
+        let access_file = recovery::recover_access(&new.words(), &file, &other_code)
+            .expect("the words recover the song");
+        let song_id = v1::Header::parse(&file).expect("a header").song_id();
+        let opened = access::open(&access_file, &other_key, &song_id).expect("the device opens it");
+        let song = v1::read(&file, &opened.content_key).expect("the song reads");
+        assert_eq!(song.lyrics.as_bytes(), "Mưa rơi\n".as_bytes());
+
+        // The words of another recovery key do not.
+        let stranger = NewRecoveryKey::new();
+        assert!(recovery::recover_access(&stranger.words(), &file, &other_code).is_err());
     }
 
     #[test]

@@ -31,14 +31,15 @@ M4.
 - Put no hard-coded colours, font sizes, radii or spacing values in
   components. The exceptions are the white and black of the
   [lyric text style](#text-style), the black and white of the
-  [device code's QR code](#device-code), its em-based outline and shadow sizes, the
+  [device code's QR code](#device-code) and the
+  [recovery key's QR code](#recovery-key), its em-based outline and shadow sizes, the
   [vocal role colours](#vocal-role-colours), and the lyric font size with its
   16 px floor and its bold weight (see [Lyrics area](#lyrics-area)).
 - All tokens come from one seed colour, `#6B5778` (smoky purple). Three sets of
   colours do not come from the seed, and a seed change never changes them: the
   white and black of the
   [lyric text style](#text-style), the black and white of the
-  [QR code](#device-code) and the
+  [QR codes](#device-code) and the
   [vocal role colours](#vocal-role-colours).
 - The same seed generates the Kotlin `ColorScheme`, `Typography` and `Shapes`
   *(planned for M4)*. `dynamicColor` is off.
@@ -230,8 +231,8 @@ the section may refine them, and update this section when they do.
   download, the task's own check shows the same message.
 - Next the page checks that the device keeps the owner's recovery public key.
   The client keeps it in `localStorage` under `lyre-recovery-public-key`, as
-  base64url of its 33-byte compressed form. The recovery key screen writes it
-  *(planned for M3)*. Making a song only reads it. With no key, or an entry
+  base64url of its 33-byte compressed form. The
+  [Recovery key section](#recovery-key) writes it. Making a song only reads it. With no key, or an entry
   that is not base64url or not 33 bytes long, the page says "Create a recovery
   key before making your first song." and does not start. Nothing is
   downloaded and no passkey is created
@@ -426,9 +427,9 @@ Compose uses the same three values *(planned for M4)*.
   passkey's credential ID, and only once that passkey has given a device key.
   The ID holds no key. If the passkey gives no PRF output, or turns out to be
   able to sync, the page removes the ID. The second is the recovery public key
-  under `lyre-recovery-public-key`, which the recovery key screen writes
-  *(planned for M3)*. The page only reads it, to make songs
-  ([Making a song](#making-a-song)).
+  under `lyre-recovery-public-key`, which the
+  [Recovery key section](#recovery-key) writes. This section only reads it,
+  to make songs ([Making a song](#making-a-song)).
 - Once the device is unlocked, the section shows the device code as text,
   labelled "Device code", the fingerprint, labelled "Fingerprint", and the QR
   code as an image named "QR code of the device code". The core makes all
@@ -459,6 +460,52 @@ Compose uses the same three values *(planned for M4)*.
   the code, the same code after a reload, the two refusals, the copy action
   and that no encoding of the PRF output reaches the page, its storage or the
   console. They do not prove behaviour on real phones or Apple devices.
+
+## Recovery key
+
+- The main page has a **Recovery key** section, under This device. It
+  explains in a line what the key is for, and its **Create a recovery key**
+  button makes the key in the core
+  ([devices and access](architecture.md#devices-and-access)). Every state
+  shows the warning "If you lose every device and your recovery key, your
+  songs cannot be opened again."
+  ([what the protection does not do](domain/knowledge.md#what-the-protection-does-not-do)).
+- After the press, the section shows the 24 words as a numbered list named
+  "Recovery words", and the QR code as an image named "QR code of the recovery
+  key". A line asks the owner to write the words down, or print the QR code,
+  and keep them offline. An **I have kept my recovery key** button confirms.
+  The page does not quiz the owner on the words.
+- The QR code is drawn like the [device code's](#device-code): black on white
+  with a quiet zone of four modules, whatever the theme. It is an exception to
+  the [theming](#theming) rules. Its settings are in the
+  [reference](reference/device-access.md#words-and-qr-content).
+- The page keeps the public key only when the owner confirms. Then it writes
+  the 33-byte compressed key to `localStorage` under
+  `lyre-recovery-public-key`, as base64url, and removes the words and the QR
+  code for good. A reload, or a tab closed before the confirmation, keeps
+  nothing, and the next visit makes a fresh key. The words and the QR code are
+  never stored or logged.
+- Once a key is kept, the section says "This device keeps your recovery key's
+  public part. Every song you make can be recovered with your recovery key."
+  and offers no button. It offers no way to replace the key, because older
+  songs are wrapped only for the old one.
+- If the browser refuses the write, the section says "The recovery key could
+  not be kept on this device." and offers the create button again. An error
+  while making the key shows the same line. The page never shows the error's
+  own text.
+- Making a song still refuses until a key is kept
+  ([Making a song](#making-a-song)). Every song made after that is wrapped for
+  it.
+- Scanning or typing the words to recover songs on a new device is
+  *(planned for M3)*.
+- The Playwright journeys create a key and check the 24 words and the QR
+  image, that a confirmation and a reload remove them, and that a reload
+  without a confirmation keeps nothing. They check that `localStorage` holds
+  only the 44-character public key, that `sessionStorage`, cookies and
+  IndexedDB stay empty, and that the words, in any case or in any run of three,
+  reach neither the page, its storage nor the console. A core test through the
+  WebAssembly API checks that a song written for the new public key is
+  recovered from the words.
 
 ## Check pages
 

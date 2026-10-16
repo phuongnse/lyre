@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readRecoveryPublicKey, recoveryKeyStorageKey } from './recovery-key'
+import { keepRecoveryPublicKey, readRecoveryPublicKey, recoveryKeyStorageKey } from './recovery-key'
 
 // The recovery public key of the core's documented test vectors.
 const KEY_HEX = '02585a2882fca9a0ee8cf896c3ac8e515402d3c85d91384bce2dce930ce3ce5307'
@@ -59,5 +59,30 @@ describe('readRecoveryPublicKey', () => {
       },
     } as unknown as Storage
     expect(readRecoveryPublicKey(blocked)).toBeUndefined()
+  })
+})
+
+describe('keepRecoveryPublicKey', () => {
+  it('writes base64url that readRecoveryPublicKey reads back', () => {
+    const bytes = Uint8Array.from(KEY_HEX.match(/../g)!, (pair) => parseInt(pair, 16))
+    const written = new Map<string, string>()
+    const storage = {
+      setItem: (key: string, value: string) => void written.set(key, value),
+      getItem: (key: string) => written.get(key) ?? null,
+    } as unknown as Storage
+    expect(keepRecoveryPublicKey(bytes, storage)).toBe(true)
+    expect([...written.keys()]).toEqual([recoveryKeyStorageKey])
+    expect(written.get(recoveryKeyStorageKey)).toBe(toBase64Url(bytes))
+    expect(written.get(recoveryKeyStorageKey)).toMatch(/^[A-Za-z0-9_-]{44}$/)
+    expect(readRecoveryPublicKey(storage)).toEqual(bytes)
+  })
+
+  it('reports a failure when the storage is blocked', () => {
+    const blocked = {
+      setItem: () => {
+        throw new DOMException('blocked', 'QuotaExceededError')
+      },
+    } as unknown as Storage
+    expect(keepRecoveryPublicKey(new Uint8Array(33).fill(2), blocked)).toBe(false)
   })
 })

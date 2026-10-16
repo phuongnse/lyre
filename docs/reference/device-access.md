@@ -4,8 +4,9 @@ This doc fixes the bytes and text of what moves between devices besides the
 song file: device codes, fingerprints, access files and recovery keys.
 The web device key, the device code, its QR code, the fingerprint, the
 recovery key pair derivation, the recovery words and the core's access file
-wrap and open are built, and so is sharing in the web client. The recovery key
-screens are *(planned for M3)*.
+wrap and open are built, and so is sharing in the web client. The web client
+also makes the recovery key and shows it once. The screens that scan and use it
+are *(planned for M3)*.
 The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).
@@ -246,6 +247,20 @@ The decoded checksum must match the first eight bits of `SHA-256(seed)`.
 The QR content is exactly those 24 words in uppercase, separated by single
 spaces. It uses QR alphanumeric mode, without a URI scheme or extra text.
 Typed and scanned recovery keys use the same parser.
+
+The core builds the QR code, for both clients, with the same rules as the
+device code's:
+
+| Setting | Value |
+| --- | --- |
+| Segment | One alphanumeric segment of the uppercase words, 95 to 215 characters |
+| Error correction level | M, with no automatic raise to a higher level |
+| Version | The smallest that fits, 5 to 8 |
+| Size | 37 to 49 modules |
+| Quiet zone | 4 modules of blank border on every side, added by the client |
+
+A core test decodes the QR code and checks the content, the version and the
+level. The QR code is always drawn black on white, whatever the theme.
 
 ### Key pair
 
