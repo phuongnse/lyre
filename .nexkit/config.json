@@ -120,7 +120,7 @@
           "model": "claude-opus-5-5"
         },
         "implement": {
-          "model": "claude-sonnet-5-5"
+          "model": "claude-haiku-5-5"
         },
         "review": {
           "agent": "astra",
@@ -135,12 +135,12 @@
           "model": "claude-opus-5-5"
         },
         "implement": {
-          "agent": "sol",
-          "model": "gpt-6.1-sol",
+          "model": "claude-sonnet-5-5",
           "timeout_minutes": 60
         },
         "review": {
-          "model": "claude-fable-5-1"
+          "agent": "astra",
+          "model": "gpt-6-astra"
         }
       }
     }
