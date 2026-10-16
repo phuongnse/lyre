@@ -89,9 +89,10 @@ M4.
 - A version-0 song file, opened or kept, shows one plain message, "This song
   file is from an older version of Lyre and no longer plays.", and nothing
   plays or is kept. Access files chosen with it make no difference, and the
-  Player asks for no unlock. A song made on the page plays from memory, may
-  still be version 0, and is never kept
-  ([Making a song](#making-a-song)).
+  Player asks for no unlock. A song made on one of the check pages plays from
+  memory, may still be version 0, and is never kept. A song made in the
+  [Making a song](#making-a-song) section is version 1 and opens like any
+  other, with its access file.
 - A version-1 song file needs this page load's device unlock. The Player asks
   for it only when it opens such a file that has an access file chosen with
   it, and the [This device section](#device-code) shares the same unlock. The
@@ -132,7 +133,8 @@ M4.
   opened first. Each shows its title, and its artist and composer when they
   are known, exactly as the song file stores them. Choosing one plays it.
 - A version-1 song is kept with the access file that opened it. Choosing it
-  after a reload asks for the device unlock again, then plays it.
+  after a reload asks for the device unlock again, then plays it. A song made
+  in the [Making a song](#making-a-song) section is kept this way.
 - An entry kept without an access file, from version 0, is listed with "No
   longer plays" next to its title. Choosing it shows the old-version message.
   The entry stays until a way to remove it exists.
@@ -209,6 +211,25 @@ the section may refine them, and update this section when they do.
   requirements and before any download, so nothing is downloaded, no stage
   runs and no working area is made. If another tab takes the lock during a
   download, the task's own check shows the same message.
+- Next the page checks that the device keeps the owner's recovery public key.
+  The client keeps it in `localStorage` under `lyre-recovery-public-key`, as
+  base64url of its 33-byte compressed form. The recovery key screen writes it
+  *(planned for M3)*. Making a song only reads it. With no key, or an entry
+  that is not base64url or not 33 bytes long, the page says "Create a recovery
+  key before making your first song." and does not start. Nothing is
+  downloaded and no passkey is created
+  ([D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed)).
+- Then the page waits for this page load's device unlock, which the
+  [This device section](#device-code) and the Player share, and shows
+  "Waiting for this device to unlock…" with Make the song off. A device that
+  gets no device code, because the passkey has no PRF, can sync, was cancelled
+  or failed, sees "This device has no device code, so it cannot make songs."
+  Nothing is downloaded and no task starts. The checks run in this order:
+  requirements, task lock, recovery key, unlock, downloads
+  ([D6](decisions.md#d6-a-song-opens-only-on-the-devices-it-was-shared-with--agreed)).
+- The task writes version 1, encrypted for this device's device code and the
+  owner's recovery public key. It hands over the song file and the owner's
+  access file for this device. The content key never leaves the core.
 - A failure shows one alert that names the stage: "The song could not be
   made: alignment failed." The stage is named as reading the source,
   extracting the audio, separation, alignment, laying out the lyrics,
@@ -221,12 +242,13 @@ the section may refine them, and update this section when they do.
 - After a cancel or a failure, the picked files, the song details and the
   vocal role stay, so the owner can start again at once. A task always starts
   again from the beginning.
-- A finished song plays in the Player from memory. It is not kept in the
-  [library](#library) until making writes version-1 song files
-  *(planned for M3)*.
-- A **Download the song file** link is offered as well, named after the
-  source file with `.lyre` in place of its extension. It stays while songs
-  are unencrypted version-0 files.
+- A finished song opens in the Player with its access file, as if the owner
+  had opened both files. The [library](#library) keeps the song with that
+  access file.
+- Two download links are offered as well. **Download the song file** is named
+  after the source file with `.lyre` in place of its extension. **Download
+  the access file** is named the same way with `.lyrekey`. A new run, a
+  cancelled run and a failed run offer neither.
 - Two query parameters exist only for the journeys, as on the check pages.
   `?model=test` makes the task use the test separator and the test aligner.
   `?backend=wasm` skips the requirements check and makes the task run its
@@ -379,14 +401,17 @@ Compose uses the same three values *(planned for M4)*.
   to the core, which makes the device key
   ([devices and access](architecture.md#devices-and-access)). The page then
   wipes the buffer. Within one page load, later presses reuse the key and ask
-  for no unlock. The Player shares this unlock: opening a version-1 song asks
-  for no second unlock after a press, and a press asks for none after a song
-  opened. The page asks the passkey with the fixed Lyre PRF salt, so a
+  for no unlock. The Player and Make the song share this unlock: opening a
+  version-1 song or making one asks for no second unlock after a press, and a
+  press asks for none after a song opened or was made. The page asks the passkey with the fixed Lyre PRF salt, so a
   reload shows the same device code.
-- The page keeps one thing in `localStorage`: the passkey's credential ID, and
-  only once that passkey has given a device key. The ID is not secret and holds
-  no key. If the passkey gives no PRF output, or turns out to be able to sync,
-  the page removes the ID.
+- The page keeps two non-secret entries in `localStorage`. The first is the
+  passkey's credential ID, and only once that passkey has given a device key.
+  The ID holds no key. If the passkey gives no PRF output, or turns out to be
+  able to sync, the page removes the ID. The second is the recovery public key
+  under `lyre-recovery-public-key`, which the recovery key screen writes
+  *(planned for M3)*. The page only reads it, to make songs
+  ([Making a song](#making-a-song)).
 - Once the device is unlocked, the section shows the device code as text,
   labelled "Device code", the fingerprint, labelled "Fingerprint", and the QR
   code as an image named "QR code of the device code". The core makes all

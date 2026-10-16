@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { SourceDetails } from '../source'
-import { detailsFromTags, songDetailsFor, songFileName } from './song-details'
+import { accessFileName, detailsFromTags, songDetailsFor, songFileName } from './song-details'
 
 const source: SourceDetails = { duration: 2, startOffset: 0, hasVideo: true }
 // A decomposed "Hà" (NFD), two spaces, then a precomposed "Nội" (NFC).
@@ -28,6 +28,12 @@ test('the song file downloads under the source file name with .lyre in place of 
   expect(songFileName('song.webm')).toBe('song.lyre')
   expect(songFileName('my.song.mp3')).toBe('my.song.lyre')
   expect(songFileName('song')).toBe('song.lyre')
+})
+
+test('the access file downloads under the source file name with .lyrekey in place of its extension', () => {
+  expect(accessFileName('song.webm')).toBe('song.lyrekey')
+  expect(accessFileName('my.song.mp3')).toBe('my.song.lyrekey')
+  expect(accessFileName('song')).toBe('song.lyrekey')
 })
 
 test('the details fields start from the tags exactly, and the title falls back to the file name', () => {

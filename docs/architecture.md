@@ -125,9 +125,10 @@ HKDF-SHA256 derives the file's encryption keys from the song's content key
 and the per-write salt. A player can seek by decrypting only the chunks it
 needs, and a changed or truncated file is rejected. Format version 0, used
 in M1 and M2, is unencrypted, for development only. The web Player refuses
-opened and kept version-0 files. Songs made on the page are still version 0
-and play from memory, until making writes version 1 *(planned for M3)*. No
-version-0 file is ever published.
+opened and kept version-0 files. Songs made in the main page's Make a song
+section are version 1, encrypted for the device and the recovery key. Only the
+check pages still make version-0 files, which play from memory. No version-0
+file is ever published.
 
 The byte layout, limits and media codecs are specified in
 [song file format, version 0](reference/song-file-format-v0.md).
@@ -148,10 +149,13 @@ The encrypted layout, keys and recovery wrap are specified in
       straight to the core, then overwrites the buffer with zeros. It never
       keeps the output in state, storage or logs. Clearing is best effort,
       because the JavaScript engine may keep copies.
-    - The client keeps one thing in `localStorage`: the passkey's credential
-      ID. The ID is not secret and holds no key. The client needs it to ask
-      the same passkey again after a reload. It stores the ID only once that
-      passkey has given a device key.
+    - The client keeps two non-secret entries in `localStorage`. The first is
+      the passkey's credential ID, which holds no key. The client needs it to
+      ask the same passkey again after a reload. It stores the ID only once
+      that passkey has given a device key. The second is the owner's recovery
+      public key, as base64url of its 33-byte compressed form, under
+      `lyre-recovery-public-key`. The recovery key screen writes it
+      *(planned for M3)*. Making a song only reads it.
 - **Device code.** The compressed P-256 public key in Bech32m with the `lyre`
   prefix and a version, as text and a QR code. A fingerprint from SHA-256 of
   the public key shows 20 digits in groups of 4, for checking by voice or eye.
@@ -308,9 +312,11 @@ The song file's encrypted layout and recovery wrap are specified in
 - On the web, the main page's
   [Make a song](ui-conventions.md#making-a-song) section runs a task's real
   stages, from reading the source to writing the song file, with alignment in
-  place of the hand-written timing file. The finished song plays in the Player
-  from memory and is not kept in the library until making writes version 1
-  *(planned for M3)*. Each stage also runs from its check page.
+  place of the hand-written timing file. The task writes version 1, encrypted
+  for this device's device code and the owner's recovery public key. The
+  finished song opens in the Player with its owner access file and is kept in
+  the library with it. Both files can be downloaded. Each stage also runs from
+  its check page.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is

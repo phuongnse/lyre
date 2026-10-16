@@ -7,9 +7,15 @@ import { runTask, Stage, TaskReport, TaskStart } from './task'
 import { testStages } from './test-stages'
 import { opfsWorkingAreas } from './working-area'
 
-// The song file is handed over to the page, not copied, so the worker keeps none.
+// The song file and its access file are handed over to the page, not copied,
+// so the worker keeps none.
 const report = (message: TaskReport) =>
-  postMessage(message, message.type === 'done' && message.song !== undefined ? [message.song.buffer] : [])
+  postMessage(
+    message,
+    message.type === 'done' && message.song !== undefined && message.accessFile !== undefined
+      ? [message.song.buffer, message.accessFile.buffer]
+      : [],
+  )
 
 // Runs a task off the page's main thread, so the page stays responsive while
 // a stage keeps the CPU busy. The page cancels a task by ending this worker.

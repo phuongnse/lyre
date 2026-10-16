@@ -15,7 +15,7 @@ export interface SongRun {
 export type TaskState =
   | { status: 'idle' }
   | { status: 'running'; report?: ProgressReport }
-  | { status: 'done'; song?: Blob }
+  | { status: 'done'; song?: Blob; accessFile?: Blob }
   | { status: 'cancelled' }
   | { status: 'failed'; stage?: string; reason: TaskFailure; unknown?: UnknownSyllable }
 
@@ -98,13 +98,12 @@ export class TaskRunner {
         if (ended) return
         if (data.type === 'progress') this.current.set({ status: 'running', report: data })
         else if (data.type === 'done') {
+          const blobOf = (bytes: Uint8Array) =>
+            new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' })
           void end(
-            data.song === undefined
+            data.song === undefined || data.accessFile === undefined
               ? { status: 'done' }
-              : {
-                  status: 'done',
-                  song: new Blob([data.song as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }),
-                },
+              : { status: 'done', song: blobOf(data.song), accessFile: blobOf(data.accessFile) },
           )
         } else {
           const failed: TaskState = { status: 'failed', stage: data.stage, reason: data.reason }
