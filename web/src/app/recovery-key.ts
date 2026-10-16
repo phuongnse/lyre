@@ -1,9 +1,12 @@
-import { fromBase64Url } from './device-passkey'
+import { InjectionToken } from '@angular/core'
+import { loadCore } from '../core'
+import { NewRecoveryKey } from '../lyre-wasm/lyre_wasm.js'
+import { fromBase64Url, toBase64Url } from './device-passkey'
 
 // The owner's recovery public key, which a made song is encrypted for (D31 in
 // docs/decisions.md). The page keeps only this public key, as base64url of its
-// 33-byte compressed form. It is not secret. This file only reads it: the
-// recovery key screen writes it.
+// 33-byte compressed form. It is not secret. The Recovery key section writes
+// it once the owner confirms they kept the words, and song making reads it.
 
 // The storage key of the recovery public key.
 export const recoveryKeyStorageKey = 'lyre-recovery-public-key'
@@ -31,3 +34,72 @@ export function readRecoveryPublicKey(storage?: Storage): Uint8Array<ArrayBuffer
     return undefined
   }
 }
+
+// How keeping the public key ended: written, refused because a key is already
+// kept, or failed because the site's storage refuses the write or the browser
+// cannot serialise the tabs.
+export type KeepResult = 'kept' | 'exists' | 'failed'
+
+// The lock that serialises the check and the write across tabs.
+const KEEP_LOCK = 'lyre-recovery-key'
+
+// Keeps the recovery public key, as base64url without padding. It never
+// replaces a key that is already kept: songs made with that key still need it,
+// and two tabs opened before the confirmation each hold a different key. Two
+// tabs may confirm together, so the check and the write run under a Web Lock
+// that all tabs of the site share. Without Web Locks the key is not kept,
+// because a check and write that other tabs can interleave could overwrite a
+// key. The storage is looked up inside the try, because reading `localStorage`
+// throws when the site's storage is blocked.
+export async function keepRecoveryPublicKey(
+  key: Uint8Array,
+  storage?: Storage,
+  locks: LockManager | undefined = globalThis.navigator?.locks,
+): Promise<KeepResult> {
+  if (!locks) return 'failed'
+  try {
+    return await locks.request(KEEP_LOCK, (): KeepResult => {
+      storage ??= localStorage
+      if (readRecoveryPublicKey(storage) !== undefined) return 'exists'
+      storage.setItem(recoveryKeyStorageKey, toBase64Url(key))
+      return 'kept'
+    })
+  } catch {
+    return 'failed'
+  }
+}
+
+// A recovery key that was just made: the words to show once, the QR code of
+// them, and the public part to keep.
+export type NewRecovery = {
+  words: string[]
+  qr: { size: number; modules: Uint8Array }
+  publicKey: Uint8Array
+}
+
+// Makes a recovery key in the core and copies out what the page shows. The
+// handle is freed at once, because nothing can make its words again.
+export async function makeRecoveryKey(load: () => Promise<void> = loadCore): Promise<NewRecovery> {
+  await load()
+  const made = new NewRecoveryKey()
+  try {
+    const qr = made.qrCode
+    try {
+      return {
+        words: made.words.split(' '),
+        qr: { size: qr.size, modules: qr.modules },
+        publicKey: made.publicKey,
+      }
+    } finally {
+      qr.free()
+    }
+  } finally {
+    made.free()
+  }
+}
+
+// The page gets the maker by injection, so tests can replace it.
+export const RECOVERY_KEY_MAKER = new InjectionToken<() => Promise<NewRecovery>>('RECOVERY_KEY_MAKER', {
+  providedIn: 'root',
+  factory: () => makeRecoveryKey,
+})

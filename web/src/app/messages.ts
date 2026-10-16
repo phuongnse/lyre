@@ -94,6 +94,22 @@ export const messages = {
   deviceCodeNoPrf: 'This browser cannot give this device a device code, because its passkeys return no PRF output.',
   deviceCodeCanSync: 'This device gets no device code, because its passkey can sync to other devices.',
   deviceCodeFailed: 'This device could not be unlocked, so it has no device code.',
+  recoveryKey: 'Recovery key',
+  recoveryKeyAbout:
+    'The recovery key opens your songs if you lose this device. It is 24 words and a QR code that you keep offline.',
+  createRecoveryKey: 'Create a recovery key',
+  recoveryKeyCreating: 'Creating the recovery key…',
+  recoveryWords: 'Recovery words',
+  recoveryKeyQr: 'QR code of the recovery key',
+  recoveryKeyKeepOffline:
+    'Write the words down, or print the QR code, and keep them offline. This page shows them once.',
+  keptRecoveryKey: 'I have kept my recovery key',
+  recoveryKeyKept:
+    "This device keeps your recovery key's public part. Every song you make can be recovered with your recovery key.",
+  recoveryKeyOtherTab:
+    'Another tab already kept a recovery key on this device. The words shown here were dropped. Keep the recovery key from that tab.',
+  recoveryKeyFailed: 'The recovery key could not be kept on this device.',
+  recoveryKeyLoss: 'If you lose every device and your recovery key, your songs cannot be opened again.',
   devicePasskeyName: 'Lyre device key',
   taskCheckTitle: 'Task check',
   taskCheckAbout: 'Runs a task of three test stages, about 2 s each, in a Web Worker.',

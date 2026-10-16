@@ -204,6 +204,12 @@ impl NewRecoveryKey {
         text
     }
 
+    /// The words as a QR code: the uppercase words in one alphanumeric segment
+    /// at error correction level M, with no quiet zone.
+    pub fn qr_code(&self) -> crate::device::QrCode {
+        crate::device::qr_code_of(&self.qr_content())
+    }
+
     /// The public key, which the device keeps and the song writer wraps for.
     pub fn public_key(&self) -> RecoveryPublicKey {
         self.public_key.clone()
@@ -751,6 +757,20 @@ mod tests {
             v1::Salt::generate(),
         )
         .expect("the example song is written")
+    }
+
+    #[test]
+    fn the_qr_code_decodes_to_the_uppercase_words_at_level_m() {
+        let new = NewRecoveryKey::generate_with_rng(&mut FixedIkm(seed(), false));
+        let qr = new.qr_code();
+        assert_eq!(qr.dark.len(), qr.size * qr.size);
+        let (meta, text) = crate::device::tests::read_qr(&qr);
+        assert_eq!(text, new.qr_content().as_str());
+        assert_eq!(text, new.words().to_uppercase());
+        // rqrr numbers the levels as the format bits do: M is 0.
+        assert_eq!(meta.ecc_level, 0);
+        assert!((5..=8).contains(&meta.version.0), "{}", meta.version.0);
+        assert_eq!(qr.size, 17 + 4 * meta.version.0);
     }
 
     #[test]

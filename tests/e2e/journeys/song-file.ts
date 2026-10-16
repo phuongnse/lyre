@@ -74,7 +74,7 @@ export async function openV1Fixture(page: Page, manifest: Manifest = 'song.toml'
 }
 
 // A documented recovery public key (docs/reference/device-access.md#recovery-key), as
-// the recovery key screen will keep it: base64url of its 33-byte compressed form.
+// the Recovery key section keeps it: base64url of its 33-byte compressed form.
 const RECOVERY_KEY = Buffer.from(
   '02585a2882fca9a0ee8cf896c3ac8e515402d3c85d91384bce2dce930ce3ce5307',
   'hex',

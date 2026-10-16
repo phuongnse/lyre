@@ -26,7 +26,7 @@ export type DeviceUnlock = { outcome: DeviceOutcome; key?: DeviceKey }
 // The storage key of the passkey's credential ID, as base64url.
 export const credentialStorageKey = 'lyre-device-passkey'
 
-function toBase64Url(bytes: Uint8Array): string {
+export function toBase64Url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
     .replaceAll('+', '-')
     .replaceAll('/', '_')

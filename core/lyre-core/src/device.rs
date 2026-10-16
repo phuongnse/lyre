@@ -144,6 +144,27 @@ pub struct QrCode {
     pub dark: Vec<bool>,
 }
 
+/// Makes the QR code of an uppercase text: one alphanumeric segment at error
+/// correction level M, in the smallest version that fits. Boosting the level is
+/// off, so the level stays M. The device code and the recovery key share it.
+pub(crate) fn qr_code_of(text: &str) -> QrCode {
+    let segments = [QrSegment::make_alphanumeric(text)];
+    let code = qrcodegen::QrCode::encode_segments_advanced(
+        &segments,
+        QrCodeEcc::Medium,
+        Version::MIN,
+        Version::MAX,
+        None,
+        false,
+    )
+    .expect("the text fits in a QR code");
+    let size = code.size() as usize;
+    let dark = (0..size * size)
+        .map(|i| code.get_module((i % size) as i32, (i / size) as i32))
+        .collect();
+    QrCode { size, dark }
+}
+
 /// A device's public key: 33 bytes, SEC1 compressed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicKey([u8; COMPRESSED_LEN]);
@@ -188,24 +209,7 @@ impl PublicKey {
     /// segment at error correction level M. Its 65 characters always make
     /// version 4, a 33 × 33 symbol.
     pub fn qr_code(&self) -> QrCode {
-        let segments = [QrSegment::make_alphanumeric(
-            &self.device_code().to_uppercase(),
-        )];
-        // Boosting the level is off, so the level stays M.
-        let code = qrcodegen::QrCode::encode_segments_advanced(
-            &segments,
-            QrCodeEcc::Medium,
-            Version::MIN,
-            Version::MAX,
-            None,
-            false,
-        )
-        .expect("a device code fits in a QR code");
-        let size = code.size() as usize;
-        let dark = (0..size * size)
-            .map(|i| code.get_module((i % size) as i32, (i / size) as i32))
-            .collect();
-        QrCode { size, dark }
+        qr_code_of(&self.device_code().to_uppercase())
     }
 
     /// Reads a device code, typed or scanned. Whitespace around it is
@@ -280,7 +284,7 @@ fn from_five_bit(groups: &[u8]) -> Option<[u8; COMPRESSED_LEN]> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const DOC: &str = include_str!("../../../docs/reference/device-access.md");
@@ -377,7 +381,7 @@ mod tests {
 
     /// Draws the modules black on white with a quiet zone of four modules,
     /// four pixels to a module, and reads the first QR code in the picture.
-    fn read_qr(qr: &QrCode) -> (rqrr::MetaData, String) {
+    pub(crate) fn read_qr(qr: &QrCode) -> (rqrr::MetaData, String) {
         const QUIET: usize = 4;
         const SCALE: usize = 4;
         let side = (qr.size + 2 * QUIET) * SCALE;
