@@ -486,3 +486,40 @@ test('a valid device code shows its fingerprint, the compare line and a .lyrekey
   expect(link.getAttribute('href')).toBe('blob:song')
   fixture.destroy()
 })
+
+const typeCode = (element: HTMLElement, code: string) => {
+  const input = element.querySelector('input.mat-mdc-input-element') as HTMLInputElement
+  input.value = code
+  input.dispatchEvent(new Event('input'))
+}
+
+test('a share still pending when the code is edited shows nothing when it finishes', async () => {
+  let finish: (shared: SharedAccess) => void = () => undefined
+  const share = () => new Promise<SharedAccess>((resolve) => (finish = resolve))
+  const { fixture, element } = await shareWith(share, 'lyre1old')
+  typeCode(element, 'lyre1new')
+  finish({ fingerprint: 'AB12 CD34', accessFile: new Blob(['access']) })
+  await fixture.whenStable()
+  expect(element.textContent).not.toContain('Fingerprint')
+  expect(element.querySelector('a[download]')).toBeNull()
+  fixture.destroy()
+})
+
+test('an older share that finishes late does not overwrite a newer invalid-code error', async () => {
+  let finishOld: (shared: SharedAccess) => void = () => undefined
+  const share = vi
+    .fn<(deviceCode: string) => Promise<SharedAccess>>()
+    .mockImplementationOnce(() => new Promise<SharedAccess>((resolve) => (finishOld = resolve)))
+    .mockRejectedValueOnce(new ShareError('invalid-code'))
+  const { fixture, element } = await shareWith(share, 'lyre1old')
+  typeCode(element, 'lyre1new')
+  makeButton(element)?.click()
+  await fixture.whenStable()
+  expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe('This is not a valid device code.')
+  finishOld({ fingerprint: 'AB12 CD34', accessFile: new Blob(['access']) })
+  await fixture.whenStable()
+  expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe('This is not a valid device code.')
+  expect(element.textContent).not.toContain('Fingerprint')
+  expect(element.querySelector('a[download]')).toBeNull()
+  fixture.destroy()
+})

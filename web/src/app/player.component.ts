@@ -110,13 +110,7 @@ type AudioTrackChoice = 'karaoke' | 'original'
               <p>{{ messages.shareCannotUndo }}</p>
               <mat-form-field>
                 <mat-label>{{ messages.shareDeviceCode }}</mat-label>
-                <input
-                  matInput
-                  #codeInput
-                  autocomplete="off"
-                  spellcheck="false"
-                  (input)="shareState.set({ status: 'idle' })"
-                />
+                <input matInput #codeInput autocomplete="off" spellcheck="false" (input)="editCode()" />
               </mat-form-field>
               <button matButton="filled" type="button" (click)="share(current.song, codeInput.value)">
                 {{ messages.makeAccessFile }}
@@ -181,6 +175,8 @@ export class Player {
   private readonly deviceKey = inject(DEVICE_KEY)
   // Counts the songs asked for, so only the latest one opens.
   private attempts = 0
+  // Counts the shares asked for, so only the latest one shows its result.
+  private shareAttempts = 0
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video')
   private playback?: Playback
 
@@ -279,10 +275,11 @@ export class Player {
   protected async share(song: OpenedSong, deviceCode: string): Promise<void> {
     if (!song.share) return
     this.setShare({ status: 'idle' })
+    const attempt = ++this.shareAttempts
     try {
       const shared = await song.share(deviceCode.trim())
       const current = this.state()
-      if (current.status !== 'ready' || current.song !== song) return
+      if (attempt !== this.shareAttempts || current.status !== 'ready' || current.song !== song) return
       const name = `${song.details.title.trim() || 'song'}.lyrekey`
       this.setShare({
         status: 'done',
@@ -292,9 +289,15 @@ export class Player {
       })
     } catch (error) {
       const current = this.state()
-      if (current.status !== 'ready' || current.song !== song) return
+      if (attempt !== this.shareAttempts || current.status !== 'ready' || current.song !== song) return
       this.setShare({ status: error instanceof ShareError && error.problem === 'invalid-code' ? 'invalid' : 'failed' })
     }
+  }
+
+  // A changed code drops the last result, and any share still pending.
+  protected editCode(): void {
+    this.shareAttempts++
+    this.setShare({ status: 'idle' })
   }
 
   protected togglePlay(): void {
@@ -327,6 +330,7 @@ export class Player {
     this.playing.set(false)
     this.track.set('karaoke')
     this.sharing.set(false)
+    this.shareAttempts++
     this.setShare({ status: 'idle' })
     if (next) this.state.set(next)
   }
