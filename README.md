@@ -58,6 +58,8 @@ their own licences. For example:
 - The Vietnamese word list from Wiktionary is under CC BY-SA 4.0. See
   [its notice](core/lyre-core/src/words/wiktionary_words.NOTICE.md) and
   [D18](docs/decisions.md#d18-vietnamese-word-boundaries-from-a-word-list--agreed).
+- The BIP39 English word list, which writes the recovery key as 24 words, is
+  under MIT. See [its notice](core/lyre-core/src/recovery/bip39-english.NOTICE.md).
 - The aligner `lyric-alignment` by nguyenvulebinh,
   [model card at commit `2d0b61d13e9da6cae03a6c01fe3eeebdb6e4b4ed`](https://huggingface.co/nguyenvulebinh/lyric-alignment/tree/2d0b61d13e9da6cae03a6c01fe3eeebdb6e4b4ed).
   Lyre's model tool converted it to ONNX, and the owner publishes the export as

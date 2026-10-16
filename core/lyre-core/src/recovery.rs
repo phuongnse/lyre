@@ -1,10 +1,13 @@
-//! The recovery key pair and the recovery wrap.
+//! The recovery key: its words, its key pair and the recovery wrap.
 //!
-//! The bytes are in `docs/reference/device-access.md#key-pair` and
+//! The bytes are in `docs/reference/device-access.md#recovery-key` and
 //! `docs/reference/song-file-format-v1.md#recovery-wrap`. The recovery private
 //! key stays inside [`RecoveryKey`]: no function returns its bytes, and its
-//! `Debug` text shows nothing of it. Recovery words and generating a seed
-//! are not here.
+//! `Debug` text shows nothing of it. [`NewRecoveryKey`] makes a key from fresh
+//! randomness and gives its words once. [`RecoveryKey::from_words`] reads them
+//! back, and [`recover_access`] opens a song with them for a new device.
+
+mod words;
 
 use std::fmt;
 
@@ -17,8 +20,13 @@ use p256::{NonZeroScalar, SecretKey};
 use rand_core::{CryptoRng, OsRng, RngCore};
 use zeroize::Zeroizing;
 
+use crate::access::{self, Role};
 use crate::content_key::{ContentKey, KEY_LEN};
+use crate::device::{DeviceCodeError, PublicKey};
 use crate::scalar::derive_scalar;
+use crate::song_file::{SongFileError, v1};
+
+pub use words::RecoveryWordsError;
 
 /// The HKDF `info` of the recovery key pair.
 const RECOVERY_KEY_INFO: &[u8] = b"lyre/v1/recovery-key";
@@ -111,9 +119,71 @@ impl RecoveryKey {
         })
     }
 
+    /// Derives the key pair from the 24 recovery words, typed or scanned.
+    /// Lowercase and uppercase both work, with any whitespace between the
+    /// words. A seed whose derived scalar is zero gives
+    /// [`RecoveryWordsError::ZeroScalar`]. No real seed is known to do that.
+    pub fn from_words(text: &str) -> Result<RecoveryKey, RecoveryWordsError> {
+        let seed = words::seed_from_words(text)?;
+        RecoveryKey::from_seed(&seed).map_err(|_| RecoveryWordsError::ZeroScalar)
+    }
+
     /// The public key.
     pub fn public_key(&self) -> RecoveryPublicKey {
         RecoveryPublicKey(self.secret.public_key())
+    }
+}
+
+/// A recovery key that was just made. It holds the seed only to give its
+/// words, and wipes the seed when it drops. Nothing can turn a key pair back
+/// into words later, so the owner is shown the words once.
+pub struct NewRecoveryKey {
+    seed: Zeroizing<[u8; SEED_LEN]>,
+    public_key: RecoveryPublicKey,
+}
+
+impl fmt::Debug for NewRecoveryKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "NewRecoveryKey {{ .. }}")
+    }
+}
+
+impl NewRecoveryKey {
+    /// Makes a recovery key from fresh randomness.
+    pub fn generate() -> NewRecoveryKey {
+        NewRecoveryKey::generate_with_rng(&mut OsRng)
+    }
+
+    /// Makes a key from the given random source. A seed whose scalar is zero
+    /// is drawn again. Only tests fix the source.
+    pub(crate) fn generate_with_rng<R: RngCore + CryptoRng>(rng: &mut R) -> NewRecoveryKey {
+        loop {
+            let mut seed = Zeroizing::new([0u8; SEED_LEN]);
+            rng.fill_bytes(seed.as_mut_slice());
+            if let Ok(key) = RecoveryKey::from_seed(&seed) {
+                return NewRecoveryKey {
+                    seed,
+                    public_key: key.public_key(),
+                };
+            }
+        }
+    }
+
+    /// The 24 words, lowercase and separated by single spaces.
+    pub fn words(&self) -> Zeroizing<String> {
+        words::words_from_seed(&self.seed)
+    }
+
+    /// The content of the QR code: the same words in uppercase.
+    pub fn qr_content(&self) -> Zeroizing<String> {
+        let mut text = self.words();
+        text.make_ascii_uppercase();
+        text
+    }
+
+    /// The public key, which the device keeps and the song writer wraps for.
+    pub fn public_key(&self) -> RecoveryPublicKey {
+        self.public_key.clone()
     }
 }
 
@@ -225,6 +295,74 @@ impl RecoveryWrap {
     }
 }
 
+/// Why a song could not be recovered. The reasons are checked in this order:
+/// the words, the device code, the song file, the recovery wrap.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecoverError {
+    /// The recovery words were refused.
+    Words(RecoveryWordsError),
+    /// The device code was refused.
+    DeviceCode(DeviceCodeError),
+    /// The song file's header was refused.
+    SongFile(SongFileError),
+    /// The recovery wrap did not open. The wrong recovery key gives
+    /// [`RecoveryWrapError::Open`].
+    Wrap(RecoveryWrapError),
+}
+
+impl fmt::Display for RecoverError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RecoverError::Words(error) => error.fmt(f),
+            RecoverError::DeviceCode(error) => error.fmt(f),
+            RecoverError::SongFile(error) => error.fmt(f),
+            RecoverError::Wrap(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for RecoverError {}
+
+impl From<RecoveryWordsError> for RecoverError {
+    fn from(error: RecoveryWordsError) -> RecoverError {
+        RecoverError::Words(error)
+    }
+}
+
+impl From<DeviceCodeError> for RecoverError {
+    fn from(error: DeviceCodeError) -> RecoverError {
+        RecoverError::DeviceCode(error)
+    }
+}
+
+impl From<SongFileError> for RecoverError {
+    fn from(error: SongFileError) -> RecoverError {
+        RecoverError::SongFile(error)
+    }
+}
+
+impl From<RecoveryWrapError> for RecoverError {
+    fn from(error: RecoveryWrapError) -> RecoverError {
+        RecoverError::Wrap(error)
+    }
+}
+
+/// Opens a version 1 song file's recovery wrap with the recovery words, and
+/// writes an access file for the device code. The file has one owner entry.
+/// Only the song file's header is read.
+pub fn recover_access(
+    words: &str,
+    song_file: &[u8],
+    device_code: &str,
+) -> Result<Vec<u8>, RecoverError> {
+    let key = RecoveryKey::from_words(words)?;
+    let device = PublicKey::parse_device_code(device_code)?;
+    let header = v1::Header::parse(song_file)?;
+    let song_id = header.song_id();
+    let content_key = header.recovery_wrap().open(&key, &song_id)?;
+    Ok(access::wrap(&content_key, &song_id, &device, Role::Owner))
+}
+
 /// A random source that gives one fixed 32-byte input, once: the `ikmE` of a
 /// known-answer vector.
 #[cfg(test)]
@@ -291,10 +429,10 @@ pub(crate) fn table(doc: &str, heading: &str) -> Vec<Vec<String>> {
 mod tests {
     use super::*;
 
-    const DEVICE_DOC: &str = include_str!("../../../docs/reference/device-access.md");
+    pub(super) const DEVICE_DOC: &str = include_str!("../../../docs/reference/device-access.md");
     const FORMAT_DOC: &str = include_str!("../../../docs/reference/song-file-format-v1.md");
 
-    fn key_rows() -> Vec<Vec<String>> {
+    pub(super) fn key_rows() -> Vec<Vec<String>> {
         table(DEVICE_DOC, "### Recovery key\n\nEach row")
     }
 
@@ -518,6 +656,136 @@ mod tests {
         for text in texts {
             for scalar in &scalars {
                 assert!(!text.contains(scalar));
+            }
+        }
+    }
+
+    fn example_file(recovery: &RecoveryPublicKey, content: &ContentKey) -> Vec<u8> {
+        v1::write(
+            &crate::song_file::tests::example_song(),
+            content,
+            recovery,
+            v1::Salt::generate(),
+        )
+        .expect("the example song is written")
+    }
+
+    #[test]
+    fn two_new_keys_give_different_words() {
+        let (a, b) = (NewRecoveryKey::generate(), NewRecoveryKey::generate());
+        assert_ne!(*a.words(), *b.words());
+        assert_ne!(a.public_key(), b.public_key());
+        assert_eq!(a.words().split(' ').count(), 24);
+    }
+
+    #[test]
+    fn a_new_key_gives_its_words_qr_content_and_public_key() {
+        let new = NewRecoveryKey::generate_with_rng(&mut FixedIkm(seed(), false));
+        assert_eq!(new.words().as_str(), word_rows_second());
+        assert_eq!(*new.qr_content(), new.words().to_uppercase());
+        let key = RecoveryKey::from_words(&new.words()).expect("valid words");
+        assert_eq!(key.public_key(), new.public_key());
+        let scanned = RecoveryKey::from_words(&new.qr_content()).expect("valid QR content");
+        assert_eq!(scanned.public_key(), new.public_key());
+        assert_eq!(hex(&new.public_key().to_compressed()), key_rows()[1][2]);
+    }
+
+    fn word_rows_second() -> String {
+        table(DEVICE_DOC, "Each row of this table gives a seed")[1][1].clone()
+    }
+
+    #[test]
+    fn a_song_made_with_the_public_key_is_recovered_on_a_new_device() {
+        let new = NewRecoveryKey::generate();
+        let content = ContentKey::generate();
+        let file = example_file(&new.public_key(), &content);
+        let device = crate::device::DeviceKey::from_prf_output(&[0x11; 32]).expect("a device key");
+        let code = device.public_key().device_code();
+        let access_file = recover_access(&new.words(), &file, &code).expect("recovery works");
+        let song_id = v1::Header::parse(&file).expect("a header").song_id();
+        let opened = access::open(&access_file, &device, &song_id).expect("the device opens it");
+        assert_eq!(opened.role, Role::Owner);
+        assert_eq!(opened.content_key.expose(), content.expose());
+        let song = v1::read(&file, &opened.content_key).expect("the song is read");
+        assert_eq!(song, crate::song_file::tests::example_song());
+        // The QR content recovers the same way.
+        recover_access(&new.qr_content(), &file, &code).expect("QR content works");
+    }
+
+    #[test]
+    fn another_recovery_keys_words_are_refused() {
+        let (new, other) = (NewRecoveryKey::generate(), NewRecoveryKey::generate());
+        let file = example_file(&new.public_key(), &ContentKey::generate());
+        let code = crate::device::DeviceKey::from_prf_output(&[0x11; 32])
+            .expect("a device key")
+            .public_key()
+            .device_code();
+        assert_eq!(
+            recover_access(&other.words(), &file, &code),
+            Err(RecoverError::Wrap(RecoveryWrapError::Open))
+        );
+    }
+
+    #[test]
+    fn recovery_checks_the_words_the_device_code_and_the_file_in_that_order() {
+        let new = NewRecoveryKey::generate();
+        let file = example_file(&new.public_key(), &ContentKey::generate());
+        let code = crate::device::DeviceKey::from_prf_output(&[0x11; 32])
+            .expect("a device key")
+            .public_key()
+            .device_code();
+        let words = new.words();
+        assert_eq!(
+            recover_access("abandon", &file[..10], "nonsense"),
+            Err(RecoverError::Words(RecoveryWordsError::Count))
+        );
+        assert!(matches!(
+            recover_access(&words, &file[..10], "nonsense"),
+            Err(RecoverError::DeviceCode(_))
+        ));
+        assert!(matches!(
+            recover_access(&words, &file[..10], &code),
+            Err(RecoverError::SongFile(SongFileError::HeaderTooShort { .. }))
+        ));
+        // The header alone is enough: the 177 bytes before the index.
+        assert!(recover_access(&words, &file[..177], &code).is_ok());
+    }
+
+    #[test]
+    fn debug_and_error_text_hold_no_words() {
+        // A fixed key, so the words are the same on every run.
+        let new = NewRecoveryKey::generate_with_rng(&mut FixedIkm(seed(), false));
+        let words = new.words();
+        assert_eq!(format!("{new:?}"), "NewRecoveryKey { .. }");
+        let key = RecoveryKey::from_words(&words).expect("valid words");
+        assert_eq!(format!("{key:?}"), "RecoveryKey { .. }");
+        let file = example_file(&new.public_key(), &ContentKey::generate());
+        let errors = [
+            RecoverError::Words(RecoveryWordsError::Count),
+            RecoverError::Words(RecoveryWordsError::Word),
+            RecoverError::Words(RecoveryWordsError::Checksum),
+            RecoverError::Wrap(RecoveryWrapError::Open),
+            recover_access(&words, &file[..10], "nonsense").expect_err("refused"),
+            recover_access(&words, &file, "nonsense").expect_err("refused"),
+        ];
+        // The fixed messages, which do not change with the input.
+        let messages: Vec<String> = errors.iter().take(4).map(|e| e.to_string()).collect();
+        assert_eq!(
+            messages,
+            [
+                "the recovery key does not have 24 words",
+                "the recovery key has a word that is not in the list",
+                "the recovery key has a bad checksum",
+                "the recovery wrap did not open",
+            ]
+        );
+        let mut texts: Vec<String> = errors.iter().map(|e| format!("{e:?} {e}")).collect();
+        texts.push(format!("{:?}", new.public_key()));
+        let typed: Vec<&str> = words.split(' ').collect();
+        assert_eq!(typed.len(), 24);
+        for text in texts {
+            for part in text.split(|c: char| !c.is_ascii_alphanumeric()) {
+                assert!(!typed.contains(&part), "{text}");
             }
         }
     }
