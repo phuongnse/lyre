@@ -4,7 +4,8 @@
 // core gave the primary video track, if any. To make the thumbnail, it sends
 // only the source. To make the song file, it also sends the lyrics and timing
 // files, a random 16-byte song ID, the song's details, and the page's base URI
-// to load the core from. To make a measured song, it sends the source, the
+// to load the core from, and the device code and the owner's recovery public
+// key to encrypt it for. To make a measured song, it sends the source, the
 // lyrics, a candidate aligner's timing as each syllable's start then end in
 // lyric order, the karaoke track of that candidate's backend as the 16-bit
 // WAV file the measurement made, a random 16-byte song ID and the base URI.
@@ -23,6 +24,7 @@ export type PackageRequest =
       videoType?: string
       songId: Uint8Array
       details: SongDetailsInput
+      encryptFor: { deviceCode: string; recoveryPublicKey: Uint8Array }
     }
   | {
       type: 'make-measured-song'
@@ -73,5 +75,5 @@ export type PackageReply =
       songDurationMs: number
     }
   | { type: 'thumbnail-done'; bytes: Uint8Array | null }
-  | { type: 'song-done'; bytes: Uint8Array }
+  | { type: 'song-done'; bytes: Uint8Array; accessFile?: Uint8Array }
   | { type: 'failed'; reason?: VideoRefusal | SongRefusal }

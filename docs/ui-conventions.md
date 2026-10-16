@@ -89,10 +89,11 @@ M4.
 - A version-0 song file, opened or kept, shows one plain message, "This song
   file is from an older version of Lyre and no longer plays.", and nothing
   plays or is kept. Access files chosen with it make no difference, and the
-  Player asks for no unlock. A song made on one of the check pages plays from
-  memory, may still be version 0, and is never kept. A song made in the
-  [Making a song](#making-a-song) section is version 1 and opens like any
-  other, with its access file.
+  Player asks for no unlock. The model check page's measured song plays from
+  memory, may still be version 0, and is never kept. The source check page's
+  song is version 1 and opens with its access file, and is never kept. A song
+  made in the [Making a song](#making-a-song) section is version 1 and opens
+  like any other, with its access file.
 - A version-1 song file needs this page load's device unlock. The Player asks
   for it only when it opens such a file that has an access file chosen with
   it, and the [This device section](#device-code) shares the same unlock. The
@@ -487,14 +488,20 @@ Compose uses the same three values *(planned for M4)*.
   of Female or Male has no default. Once the karaoke track, the lyrics, the
   timing file and the role are all picked, a **Make the song file** button
   reads the timing file against the lyrics, makes every track and the
-  thumbnail, and writes a version-0 song file through the core, in pieces
-  into a working area, in a Web Worker. The song's title, artist and
+  thumbnail, and writes a version-1 song file through the core, in pieces
+  into a working area, in a Web Worker. Before it makes anything, the button
+  checks that this browser can encode Opus, then for the owner's recovery
+  public key, then waits for this page load's device unlock. A missing key or
+  device code gets the same message as
+  [Making a song](#making-a-song), and no worker starts. The song file is
+  encrypted for this device's code and the recovery public key. The song's title, artist and
   composer are the source's tags, exactly as stored. Without a title tag, the
   title is the source's file name without its extension. The lyrics are stored exactly as supplied (D5). The
   page then shows a **Download the song file** link, named after the source
-  file with `.lyre` in place of its extension. The made song plays from memory
-  in a Player under the link. The downloaded version-0 file is refused by the
-  main page's open button, and nothing is kept. Each
+  file with `.lyre` in place of its extension. A **Download the access
+  file** link follows it, named after the source file with `.lyrekey`. The
+  Player under the links plays the made song with its access file, and nothing
+  is kept in the library. Each
   refusal a user can fix has its own message, and none offers a download:
   "The lyrics file is not valid lyrics.", "The timing file does not match the
   lyrics." and "The timing ends after the song, so the song file was not
