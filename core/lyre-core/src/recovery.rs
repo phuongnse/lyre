@@ -225,62 +225,74 @@ impl RecoveryWrap {
     }
 }
 
+/// A random source that gives one fixed 32-byte input, once: the `ikmE` of a
+/// known-answer vector.
+#[cfg(test)]
+pub(crate) struct FixedIkm(pub(crate) [u8; 32], pub(crate) bool);
+
+#[cfg(test)]
+impl RngCore for FixedIkm {
+    fn next_u32(&mut self) -> u32 {
+        panic!("unexpected call");
+    }
+    fn next_u64(&mut self) -> u64 {
+        panic!("unexpected call");
+    }
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        assert!(!self.1, "filled twice");
+        assert_eq!(dest.len(), 32);
+        self.1 = true;
+        dest.copy_from_slice(&self.0);
+    }
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+        self.fill_bytes(dest);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl CryptoRng for FixedIkm {}
+
+/// The bytes of a hex string.
+#[cfg(test)]
+pub(crate) fn unhex(text: &str) -> Vec<u8> {
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).expect("hex"))
+        .collect()
+}
+
+/// The hex string of `bytes`.
+#[cfg(test)]
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The rows of the first table after `heading`, as cells with their
+/// backticks removed.
+#[cfg(test)]
+pub(crate) fn table(doc: &str, heading: &str) -> Vec<Vec<String>> {
+    let (_, section) = doc.split_once(heading).expect("the doc has the heading");
+    section
+        .lines()
+        .skip_while(|line| !line.starts_with('|'))
+        .take_while(|line| line.starts_with('|'))
+        .skip(2)
+        .map(|line| {
+            line.trim_matches('|')
+                .split('|')
+                .map(|cell| cell.trim().trim_matches('`').to_owned())
+                .collect()
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn hex(bytes: &[u8]) -> String {
-        bytes.iter().map(|b| format!("{b:02x}")).collect()
-    }
-
-    struct FixedIkm([u8; 32], bool);
-    impl RngCore for FixedIkm {
-        fn next_u32(&mut self) -> u32 {
-            panic!("unexpected call");
-        }
-        fn next_u64(&mut self) -> u64 {
-            panic!("unexpected call");
-        }
-        fn fill_bytes(&mut self, dest: &mut [u8]) {
-            assert!(!self.1, "filled twice");
-            assert_eq!(dest.len(), 32);
-            self.1 = true;
-            dest.copy_from_slice(&self.0);
-        }
-        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-            self.fill_bytes(dest);
-            Ok(())
-        }
-    }
-    impl CryptoRng for FixedIkm {}
-
     const DEVICE_DOC: &str = include_str!("../../../docs/reference/device-access.md");
     const FORMAT_DOC: &str = include_str!("../../../docs/reference/song-file-format-v1.md");
-
-    /// The rows of the first table after `heading`, as cells with their
-    /// backticks removed.
-    fn table(doc: &str, heading: &str) -> Vec<Vec<String>> {
-        let (_, section) = doc.split_once(heading).expect("the doc has the heading");
-        section
-            .lines()
-            .skip_while(|line| !line.starts_with('|'))
-            .take_while(|line| line.starts_with('|'))
-            .skip(2)
-            .map(|line| {
-                line.trim_matches('|')
-                    .split('|')
-                    .map(|cell| cell.trim().trim_matches('`').to_owned())
-                    .collect()
-            })
-            .collect()
-    }
-
-    fn unhex(text: &str) -> Vec<u8> {
-        (0..text.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&text[i..i + 2], 16).expect("hex"))
-            .collect()
-    }
 
     fn key_rows() -> Vec<Vec<String>> {
         table(DEVICE_DOC, "### Recovery key\n\nEach row")

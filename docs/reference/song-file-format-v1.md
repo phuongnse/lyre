@@ -1,9 +1,13 @@
 # Song file format, version 1
 
-Version 1 is the encrypted, authenticated song file format from M3
-*(planned for M3)*. One `.lyre` file holds one song, with each chunk
-encrypted separately. The scheme is
+Version 1 is the encrypted, authenticated song file format from M3. One
+`.lyre` file holds one song, with each chunk encrypted separately. The scheme
+is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
+
+The core writes and reads version 1 next to version 0, and its tests check
+the [known-answer example](#known-answer-example). The clients move to
+version 1 in M3 *(planned for M3)*.
 
 Encryption decides who can open a song file. It does not stop copying once
 a song is open. See
@@ -246,10 +250,9 @@ including plaintext sizes, syllable counts, song duration and segment times.
 
 ## Known-answer example
 
-The [recovery wrap vector](#recovery-wrap-vector) below is checked. The
-full file bytes, the hex dump and the SHA-256 are *(planned for M3)*, with
-the core change implementing the format. They are computed by code, never
-by hand.
+The core's tests check the full file bytes, the derived keys, the hex dump,
+the SHA-256 and the [recovery wrap vector](#recovery-wrap-vector) below. They
+are computed by code, never by hand.
 
 The inputs are the same chunk contents as the
 [version-0 example](song-file-format-v0.md#known-answer-example), with:
@@ -278,6 +281,66 @@ Its layout is fixed:
 
 The file size is 580 bytes. The init bytes and media segments remain
 the version-0 example's small placeholders, not playable media.
+
+### Derived keys
+
+The two keys that the [key derivation](#keys) gives for the example's salt
+and content key. Do not use these values for real keys.
+
+| Key | Value |
+| --- | --- |
+| `header_key` | `383aa6bc9d171f238935ff3e00360b231517f4922ab218af0e4814adadad4ae5` |
+| `chunk_key` | `79eb134071396417529fc06d20b0669ad3a8dfd4c40c0ffb8971eb2f4f0e115a` |
+
+### Hex dump
+
+The same 580 bytes as an `xxd` dump. `xxd -r` turns it back into the file.
+
+```text
+00000000: 894c 5952 450d 0a1a 0100 0000 0700 0000  .LYRE...........
+00000010: 0001 0203 0405 0607 0809 0a0b 0c0d 0e0f  ................
+00000020: 2021 2223 2425 2627 2829 2a2b 2c2d 2e2f   !"#$%&'()*+,-./
+00000030: 3031 3233 3435 3637 3839 3a3b 3c3d 3e3f  0123456789:;<=>?
+00000040: 04af d5d8 459f adab 9ff6 be66 4571 08ef  ....E......fEq..
+00000050: 67e2 fd8a fee4 a2d2 952a 0d03 2ce2 8652  g........*..,..R
+00000060: 502c cc50 45d1 18ea cc6c 2904 8c3a c2a5  P,.PE....l)..:..
+00000070: 136f 143d 2012 e52f 5954 26dc 49c0 c1b6  .o.= ../YT&.I...
+00000080: 1ace 08f3 17ec 72da 00c4 5d1d dc25 4ba1  ......r...]..%K.
+00000090: ca45 e744 438c 3296 d24e 9d38 e44a 6a24  .E.DC.2..N.8.Jj$
+000000a0: c651 9a4e 0f77 e910 bfb5 7424 a361 0dfb  .Q.N.w....t$.a..
+000000b0: 4001 0000 001b 0000 0069 0100 0000 0000  @........i......
+000000c0: 0000 0000 0000 0000 0003 0000 001a 0000  ................
+000000d0: 0084 0100 0000 0000 0000 0000 0000 0000  ................
+000000e0: 0004 0000 0024 0000 009e 0100 0000 0000  .....$..........
+000000f0: 0000 0000 0000 0000 0012 0000 002d 0000  .............-..
+00000100: 00c2 0100 0000 0000 0000 0000 0000 0000  ................
+00000110: 0013 0000 0012 0000 00ef 0100 0000 0000  ................
+00000120: 0000 0000 00e8 0300 0014 0000 0031 0000  .............1..
+00000130: 0001 0200 0000 0000 0000 0000 0000 0000  ................
+00000140: 0015 0000 0012 0000 0032 0200 0000 0000  .........2......
+00000150: 0000 0000 00e8 0300 0040 a3cb 685a b730  .........@..hZ.0
+00000160: 8cd4 027c 6371 a8bf ba24 e38f 06e1 f83c  ...|cq...$.....<
+00000170: 739b eb24 d730 13a0 d854 8292 7be7 5f47  s..$.0...T..{._G
+00000180: 2e76 16a5 58b5 0fbb 2294 c5ed 7b75 ba9f  .v..X..."...{u..
+00000190: 9a13 01ff 4447 29d7 0f0f 92f1 882a 1447  ....DG)......*.G
+000001a0: daab 2a83 514f 25c3 43cc df09 fe84 4830  ..*.QO%.C.....H0
+000001b0: 03fb 2334 f6b9 403f 5848 571c 6e4c 156a  ..#4..@?XHW.nL.j
+000001c0: 8f30 3f83 3cab 2046 3d6a 50e2 b800 5ef4  .0?.<. F=jP...^.
+000001d0: bdcb 0f98 ca6c 91b4 ebd9 b731 56e5 0876  .....l.....1V..v
+000001e0: 3147 151e 243d fc1b 8fea fef9 da0e 3a60  1G..$=........:`
+000001f0: 614b 3edc ac8f 409a 4758 938e 266e e71d  aK>...@.GX..&n..
+00000200: 7cb2 6fb9 ccbd fa98 9205 f9b1 c7c9 57d7  |.o...........W.
+00000210: 263a dd17 3ee1 64c6 556b d444 73a3 4549  &:..>.d.Uk.Ds.EI
+00000220: c84d 3dd4 3909 8523 93ee 3f33 8273 9a03  .M=.9..#..?3.s..
+00000230: 4924 3b44 22d8 2174 ee0f 1464 c717 4284  I$;D".!t...d..B.
+00000240: acaa d358                                ...X
+```
+
+SHA-256 of the whole file:
+
+```text
+6925da4868149bf695801d237ae876fbc2e0db787eea403b8405b3bd1d67fb12
+```
 
 ### Recovery wrap vector
 
