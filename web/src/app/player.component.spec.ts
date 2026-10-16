@@ -140,17 +140,18 @@ test('a song file that opens is kept in the library with its song ID and details
   fixture.destroy()
 })
 
-test('a song file made on the page plays from memory without device access and is not kept', async () => {
+test('a song file made on the page opens with its access file and is kept in the library', async () => {
   const store = new FakeLibraryStore()
+  const access = new Blob(['access bytes'], { type: 'application/octet-stream' })
   const calls: (DeviceAccess | undefined)[] = []
   TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
       {
         provide: SONG_FILE_OPENER,
-        useValue: (_source: ByteSource, access?: DeviceAccess) => {
-          calls.push(access)
-          return Promise.resolve(openedSong())
+        useValue: (_source: ByteSource, deviceAccess?: DeviceAccess) => {
+          calls.push(deviceAccess)
+          return Promise.resolve({ ...openedSong(), accessFile: access })
         },
       },
       { provide: LIBRARY_STORE, useValue: store },
@@ -159,12 +160,15 @@ test('a song file made on the page plays from memory without device access and i
   })
   const fixture = TestBed.createComponent(Player)
   await fixture.whenStable()
-  await fixture.componentInstance.openMade(new Blob(['song bytes'], { type: 'application/octet-stream' }))
+  const song = new Blob(['song bytes'], { type: 'application/octet-stream' })
+  await fixture.componentInstance.openMade(song, access)
   await fixture.whenStable()
   const element = fixture.nativeElement as HTMLElement
   expect(element.querySelector('[aria-label="Song video"]')).not.toBeNull()
-  expect(calls).toEqual([undefined])
-  expect(store.songs.size).toBe(0)
+  expect(calls).toHaveLength(1)
+  expect(calls[0]?.files).toEqual([access])
+  await vi.waitFor(() => expect(store.songs.size).toBe(1))
+  expect(store.songs.get('00112233445566778899aabbccddeeff')).toMatchObject({ file: song, accessFile: access })
   // Stops the playback while the stand-ins are still in place.
   fixture.destroy()
 })

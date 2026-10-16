@@ -24,20 +24,29 @@ import { Backend } from '../../separation/backend'
 import { SourceError, readSource } from '../../source'
 import { readRequirements, Requirement } from '../../task/requirements'
 import { secondsLeft, stagePercent, TaskRunner, TaskState } from '../../task/task-runner'
+import { DEVICE_UNLOCK } from '../device-passkey'
 import { messages } from '../messages'
 import { Models } from '../models'
-import { detailsFromTags, songFileName } from '../song-details'
+import { readRecoveryPublicKey } from '../recovery-key'
+import { accessFileName, detailsFromTags, songFileName } from '../song-details'
 import { cannotPlayMessage, sourceProblemMessage } from '../source-messages'
 
 type SourceState =
   { status: 'empty' } | { status: 'reading' } | { status: 'ready'; file: File } | { status: 'refused'; message: string }
 
+// A download of a blob: its object URL and the file name it is saved as.
+interface DownloadLink {
+  url: string
+  name: string
+}
+
 type LyricsState = { status: 'empty' } | { status: 'reading' } | { status: 'valid'; file: File } | { status: 'invalid' }
 
 // Where a press of Make the song is: checking the device, stopped by a
-// requirement it does not meet, stopped by a task in another tab, loading the
-// model files, stopped by one of them, or running the task, whose own state
-// the runner keeps.
+// requirement it does not meet, stopped by a task in another tab, stopped by a
+// missing recovery key, waiting for the device to unlock, stopped by a device
+// with no device code, loading the model files, stopped by one of them, or
+// running the task, whose own state the runner keeps.
 type Phase =
   | { status: 'idle' }
   | { status: 'checking' }
@@ -45,6 +54,9 @@ type Phase =
   | { status: 'downloading' }
   | { status: 'download-failed'; id: string; checkFailed: boolean }
   | { status: 'busy' }
+  | { status: 'no-recovery-key' }
+  | { status: 'unlocking' }
+  | { status: 'no-device-code' }
   | { status: 'task' }
 
 // The Make a song section of the main page
@@ -53,12 +65,15 @@ type Phase =
 // on the main thread as soon as it is picked, stage 1, and the lyrics are
 // checked through the core. Make the song first checks that the device meets
 // the requirements of D25, and then that no other tab holds the task lock. It
-// starts nothing if either fails. It then loads the model files, which the
-// page checks, and runs a task on them in a Web Worker. A failed task shows
-// one alert that names its stage. Cancel works once
-// the task has started. A finished task shows Done, hands its song file to the
-// page through `made`, which opens it in the Player and keeps it in the
-// library, and offers it as a download named after the source. A new run, a
+// then checks that the device keeps the owner's recovery public key, and waits
+// for this page load's device unlock for the device code (D6, D31). It starts
+// nothing if any check fails. It then loads the model files, which the page
+// checks, and runs a task on them in a Web Worker, which writes the song
+// encrypted for this device and the recovery key. A failed task shows one
+// alert that names its stage. Cancel works once the task has started. A
+// finished task shows Done, hands its song file and its access file to the page
+// through `made`, which opens the song in the Player and keeps both in the
+// library, and offers both as downloads named after the source. A new run, a
 // cancelled run and a failed run offer no download. ?model=test uses the test separator and test aligner,
 // and ?backend=wasm skips the requirements check and runs the task on
 // WebAssembly, both for the journeys. A
@@ -149,6 +164,15 @@ type Phase =
     @if (current.status === 'busy') {
       <p role="alert">{{ messages.anotherTabMakingSong }}</p>
     }
+    @if (current.status === 'no-recovery-key') {
+      <p role="alert">{{ messages.recoveryKeyMissing }}</p>
+    }
+    @if (current.status === 'unlocking') {
+      <p role="status">{{ messages.deviceUnlockWaiting }}</p>
+    }
+    @if (current.status === 'no-device-code') {
+      <p role="alert">{{ messages.noDeviceCodeForMaking }}</p>
+    }
     @if (current.status === 'downloading' || current.status === 'download-failed') {
       @if (bytes(); as bytes) {
         <mat-progress-bar
@@ -185,8 +209,11 @@ type Phase =
       @if (task.status === 'failed') {
         <p role="alert">{{ failureText(task) }}</p>
       }
-      @if (download(); as link) {
-        <a matButton="filled" [href]="link.url" [download]="link.name">{{ messages.downloadSongFile }}</a>
+      @if (download(); as links) {
+        <a matButton="filled" [href]="links.song.url" [download]="links.song.name">{{ messages.downloadSongFile }}</a>
+        <a matButton="filled" [href]="links.accessFile.url" [download]="links.accessFile.name">{{
+          messages.downloadAccessFile
+        }}</a>
       }
       <!-- Outside the status line, so a screen reader does not announce each update. -->
       @if (secondsLeft(); as seconds) {
@@ -212,6 +239,7 @@ export class MakeSong {
   protected readonly canMake = computed(
     () =>
       this.phase().status !== 'checking' &&
+      this.phase().status !== 'unlocking' &&
       this.phase().status !== 'downloading' &&
       this.runner.state().status !== 'running' &&
       this.sourceState().status === 'ready' &&
@@ -221,11 +249,14 @@ export class MakeSong {
   )
   protected readonly models = inject(Models)
   protected readonly runner = inject(TaskRunner)
+  private readonly unlock = inject(DEVICE_UNLOCK)
   protected readonly phase = signal<Phase>({ status: 'idle' })
-  // The finished song as a download, named after the source of the run that made it.
-  protected readonly download = signal<{ url: string; name: string } | undefined>(undefined)
-  // The finished song file, handed to the page, which opens and keeps it.
-  readonly made = output<Blob>()
+  // The finished song and its access file as downloads, named after the source
+  // of the run that made them.
+  protected readonly download = signal<{ song: DownloadLink; accessFile: DownloadLink } | undefined>(undefined)
+  // The finished song file and its access file, handed to the page, which
+  // opens the song and keeps both.
+  readonly made = output<{ song: Blob; accessFile: Blob }>()
   private readonly query = inject(ActivatedRoute).snapshot.queryParamMap
   private readonly test = this.query.get('model') === 'test'
   private readonly forced: Backend | undefined = this.query.get('backend') === 'wasm' ? 'wasm' : undefined
@@ -254,13 +285,23 @@ export class MakeSong {
     // the section, so a run that ended before this section opened is not handed over.
     effect(() => {
       const task = this.runner.state()
-      if (this.phase().status !== 'task' || task.status !== 'done' || task.song === undefined) return
-      const song = task.song
+      if (
+        this.phase().status !== 'task' ||
+        task.status !== 'done' ||
+        task.song === undefined ||
+        task.accessFile === undefined
+      ) {
+        return
+      }
+      const { song, accessFile } = task
       if (song === this.handled) return
       untracked(() => {
         this.handled = song
-        this.setDownload({ url: URL.createObjectURL(song), name: songFileName(this.runSource) })
-        this.made.emit(song)
+        this.setDownload({
+          song: { url: URL.createObjectURL(song), name: songFileName(this.runSource) },
+          accessFile: { url: URL.createObjectURL(accessFile), name: accessFileName(this.runSource) },
+        })
+        this.made.emit({ song, accessFile })
       })
     })
     inject(DestroyRef).onDestroy(() => this.setDownload(undefined))
@@ -337,9 +378,11 @@ export class MakeSong {
     return unmet.map((requirement) => messages.unmetRequirements[requirement]).join(' ')
   }
 
-  // Checks the device and the task lock, then loads the separator's file and the aligner's model
-  // and vocabulary, then runs the task on them. A device that falls short, or
-  // any file that fails, stops the run before a stage.
+  // Checks the device and the task lock, then the recovery public key and the
+  // device code, then loads the separator's file and the aligner's model and
+  // vocabulary, then runs the task on them. A device that falls short, a
+  // missing key or device code, or any file that fails, stops the run before a
+  // stage. The checks come before any download.
   protected async make(): Promise<void> {
     const source = this.sourceState()
     const lyrics = this.lyricsState()
@@ -360,6 +403,19 @@ export class MakeSong {
     // Before any download, so a start that is refused fetches nothing.
     if (await this.runner.anotherTaskRunning()) {
       this.phase.set({ status: 'busy' })
+      return
+    }
+    const recoveryPublicKey = readRecoveryPublicKey()
+    if (recoveryPublicKey === undefined) {
+      this.phase.set({ status: 'no-recovery-key' })
+      return
+    }
+    // The page's one unlock, shared with the This device section and the
+    // Player. Every outcome without a device code gets the same message.
+    this.phase.set({ status: 'unlocking' })
+    const outcome = await this.unlock()
+    if (outcome.result !== 'ready') {
+      this.phase.set({ status: 'no-device-code' })
       return
     }
     this.phase.set({ status: 'downloading' })
@@ -390,6 +446,7 @@ export class MakeSong {
         lyrics: bytes,
         details,
         vocalRole,
+        encryptFor: { deviceCode: outcome.deviceCode, recoveryPublicKey },
         separator: loaded.separator,
         aligner: { kind: files.kind, model: loaded.model, vocabulary: loaded.vocabulary },
       },
@@ -398,10 +455,13 @@ export class MakeSong {
     this.phase.set({ status: 'task' })
   }
 
-  // Replaces the download and revokes the earlier link's blob URL.
-  private setDownload(next: { url: string; name: string } | undefined): void {
+  // Replaces the downloads and revokes the earlier links' blob URLs.
+  private setDownload(next: { song: DownloadLink; accessFile: DownloadLink } | undefined): void {
     const previous = this.download()
-    if (previous !== undefined) URL.revokeObjectURL(previous.url)
+    if (previous !== undefined) {
+      URL.revokeObjectURL(previous.song.url)
+      URL.revokeObjectURL(previous.accessFile.url)
+    }
     this.download.set(next)
   }
 }

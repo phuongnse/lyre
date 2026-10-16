@@ -133,17 +133,18 @@ describe('runTask', () => {
     expect(fractions).toEqual([undefined, 0, 1])
   })
 
-  test('the done report carries the song a stage handed over', async () => {
+  test('the done report carries the song and access file a stage handed over', async () => {
     const song = new Uint8Array([1, 2, 3])
+    const accessFile = new Uint8Array([4, 5])
     const ran: string[] = []
-    const { reports } = await run([stage('a', ran, ({ handOver }) => handOver(song)), stage('b', ran)])
-    expect(reports.at(-1)).toEqual({ type: 'done', song })
+    const { reports } = await run([stage('a', ran, ({ handOver }) => handOver(song, accessFile)), stage('b', ran)])
+    expect(reports.at(-1)).toEqual({ type: 'done', song, accessFile })
   })
 
   test('a failure after a song was handed over carries no song', async () => {
     const ran: string[] = []
     const { reports, areas } = await run([
-      stage('a', ran, ({ handOver }) => handOver(new Uint8Array([1, 2, 3]))),
+      stage('a', ran, ({ handOver }) => handOver(new Uint8Array([1, 2, 3]), new Uint8Array([4]))),
       stage('b', ran, () => {
         throw new StageFailure('song-refused')
       }),

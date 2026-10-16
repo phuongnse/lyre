@@ -36,6 +36,8 @@ export interface SongTaskInput {
   lyrics: Uint8Array
   details: { title: string; artist: string; composer: string }
   vocalRole: VocalRole
+  // The device and the recovery public key the song is encrypted for (D31).
+  encryptFor: { deviceCode: string; recoveryPublicKey: Uint8Array }
   // The checked model files.
   separator: Blob
   aligner: { kind: 'lyric-alignment'; model: Blob; vocabulary: Blob }
@@ -244,14 +246,16 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
       async run({ area, progress, handOver }) {
         // The core gives the song file out in pieces, which go to the working area.
         const file = await area.open(SONG_FILE)
+        let accessFile: Uint8Array | undefined
         try {
-          await writeSong({
+          accessFile = await writeSong({
             songId: crypto.getRandomValues(new Uint8Array(16)),
             details: { ...input.details, vocalRole: input.vocalRole },
             lyrics,
             timesMs,
             ...tracks,
             thumbnail,
+            encryptFor: input.encryptFor,
             out: file,
           })
         } catch (error) {
@@ -259,7 +263,7 @@ export function songStages(input: SongTaskInput, media: SongMedia, models: SongM
           refused('song-refused', error instanceof SongRefused, error)
         }
         await file.close()
-        handOver(await bytesOf(await area.read(SONG_FILE)))
+        handOver(await bytesOf(await area.read(SONG_FILE)), accessFile!)
         progress(1)
       },
     },

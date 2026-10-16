@@ -7,8 +7,8 @@ itself is not stored. Only what Lyre made from it is.
 
 Version 0 is unencrypted and for development only. It is used in M1 and M2
 and never published. The web Player refuses opened and kept version-0 files.
-Songs made on the page are still version 0 and play from memory, until making
-writes version 1 *(planned for M3)* (see the
+Songs made in the main page's Make a song section are version 1. Only the check
+pages still make version 0, and those play from memory (see the
 [architecture](../architecture.md#song-file-encrypted-from-m3)).
 It is not protection of any kind: anyone with the file can read every byte.
 
@@ -340,8 +340,8 @@ Its encrypted byte layout is specified in
 [song file format, version 1](song-file-format-v1.md). The core reads and
 writes version 1, and the web Player reads it. The web client's song writer,
 in lyre-wasm, writes version 1 for a device code and the owner's recovery
-public key. Making a song still writes version 0 until it uses that writer
-*(planned for M3)*. The Android app does not write version 1 yet.
+public key. Making a song in the main page uses that writer. Only the check
+pages still write version 0. The Android app does not write version 1 yet.
 Encryption decides who can open a song file. It does not stop copying once a
 song is open.
 

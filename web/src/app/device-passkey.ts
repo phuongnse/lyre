@@ -33,7 +33,7 @@ function toBase64Url(bytes: Uint8Array): string {
     .replaceAll('=', '')
 }
 
-function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
+export function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
   const binary = atob(text.replaceAll('-', '+').replaceAll('_', '/'))
   return Uint8Array.from(binary, (char) => char.charCodeAt(0))
 }

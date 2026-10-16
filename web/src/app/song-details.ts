@@ -28,3 +28,8 @@ export function songDetailsFor(details: SourceDetails, fileName: string, vocalRo
 export function songFileName(fileName: string): string {
   return `${fileName.replace(EXTENSION, '')}.lyre`
 }
+
+// The name the access file of a song made from the source `fileName` downloads as.
+export function accessFileName(fileName: string): string {
+  return `${fileName.replace(EXTENSION, '')}.lyrekey`
+}

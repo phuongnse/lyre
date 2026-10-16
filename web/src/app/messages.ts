@@ -203,6 +203,8 @@ export const messages = {
   makeASong: 'Make a song',
   makeTheSong: 'Make the song',
   cannotMakeSongs: 'This device cannot make songs.',
+  recoveryKeyMissing: 'Create a recovery key before making your first song.',
+  noDeviceCodeForMaking: 'This device has no device code, so it cannot make songs.',
   // Keyed by Requirement.
   unmetRequirements: {
     webgpu: 'WebGPU is not available.',
@@ -215,6 +217,7 @@ export const messages = {
   makeSongFile: 'Make the song file',
   makingSongFile: 'Making the song file…',
   downloadSongFile: 'Download the song file',
+  downloadAccessFile: 'Download the access file',
   songLyricsInvalid: 'The lyrics file is not valid lyrics.',
   songTimingFileRefused: 'The timing file does not match the lyrics.',
   songTimingPastEnd: 'The timing ends after the song, so the song file was not made.',

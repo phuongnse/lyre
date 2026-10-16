@@ -40,8 +40,9 @@ export interface StageContext {
   area: WorkingArea
   // Reports the fraction of the stage done, from 0 to 1.
   progress(fraction: number): void
-  // Hands over the song file's bytes, which the done report carries.
-  handOver(song: Uint8Array): void
+  // Hands over the song file's bytes and the owner's access file, which the
+  // done report carries.
+  handOver(song: Uint8Array, accessFile: Uint8Array): void
 }
 
 export interface Stage {
@@ -59,10 +60,11 @@ export type ProgressReport = {
   timeLeftMs?: number
 }
 
-// The done report carries the song file only when a stage handed one over.
+// The done report carries the song file and its access file only when a stage
+// handed them over.
 export type TaskReport =
   | ProgressReport
-  | { type: 'done'; song?: Uint8Array }
+  | { type: 'done'; song?: Uint8Array; accessFile?: Uint8Array }
   | { type: 'failed'; stage: string; reason: TaskFailure; unknown?: UnknownSyllable }
 
 // What the page sends to start a task. Without `song`, the task runs the test
@@ -102,7 +104,7 @@ export async function runTask(o: {
   const now = o.now ?? (() => performance.now())
   const count = o.stages.length
   let stage = ''
-  let song: Uint8Array | undefined
+  let handed: { song: Uint8Array; accessFile: Uint8Array } | undefined
   try {
     const area = await o.areas.create(o.taskId)
     for (const [index, current] of o.stages.entries()) {
@@ -118,8 +120,8 @@ export async function runTask(o: {
           if (left !== undefined) report.timeLeftMs = left
           o.report(report)
         },
-        handOver(bytes) {
-          song = bytes
+        handOver(song, accessFile) {
+          handed = { song, accessFile }
         },
       })
     }
@@ -131,5 +133,5 @@ export async function runTask(o: {
     return
   }
   await o.areas.remove(o.taskId).catch(() => {})
-  o.report(song === undefined ? { type: 'done' } : { type: 'done', song })
+  o.report(handed === undefined ? { type: 'done' } : { type: 'done', ...handed })
 }

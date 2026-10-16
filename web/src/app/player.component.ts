@@ -35,8 +35,9 @@ type AudioTrackChoice = 'karaoke' | 'original'
 // library, and plays its video with the karaoke track or the original track,
 // with its lyrics over the bottom of the video. A song file that opens, and that
 // this browser can play, is kept in the library, with the access file that
-// opened it. A version-0 file is refused, whether it is opened or kept. Given a
-// song through its input, or one made on this page, it plays only that song from
+// opened it. A version-0 file is refused, whether it is opened or kept. A song
+// made on this page opens the same way, with the access file the task made. Given
+// a song through its input, as the check pages do, it plays only that song from
 // memory: it keeps nothing in the library, and has no open button or library
 // list.
 @Component({
@@ -175,16 +176,16 @@ export class Player {
     }
   }
 
-  // Plays a song file made on this page from memory, without device access, so it
-  // may still be version 0. It is not kept in the library.
-  openMade(file: Blob): Promise<void> {
-    return this.openSource(file)
+  // Opens a song file made on this page with its access file, and keeps both in
+  // the library, like any version-1 song the owner opens.
+  openMade(file: Blob, accessFile: Blob): Promise<void> {
+    return this.openSource(file, { files: [accessFile], keep: file })
   }
 
   // Opens `source`. With `chosen`, the song opens with device access and the
   // chosen access `files`, and when it opens and `keep` is set, `keep` goes
-  // into the library. Without `chosen`, the song is a made one: it opens
-  // without device access and is never kept.
+  // into the library. Without `chosen`, the song is one given through the
+  // input: it opens without device access and is never kept.
   protected async openSource(source: ByteSource, chosen?: { files: readonly Blob[]; keep?: Blob }): Promise<void> {
     const attempt = ++this.attempts
     this.leave({ status: 'opening' })

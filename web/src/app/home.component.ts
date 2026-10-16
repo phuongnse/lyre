@@ -20,7 +20,7 @@ import { Player } from './player.component'
     <lyre-device-code />
     @if (makingSong()) {
       @defer (on immediate) {
-        <lyre-make-song (made)="player.openMade($event)" />
+        <lyre-make-song (made)="player.openMade($event.song, $event.accessFile)" />
       }
     } @else {
       <button matButton="filled" type="button" (click)="makingSong.set(true)">{{ messages.makeASong }}</button>

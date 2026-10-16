@@ -4,7 +4,7 @@ import { env, InferenceSession } from 'onnxruntime-web/webgpu'
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { ModelRunner } from '../alignment/align-song'
 import { KARAOKE_TYPE } from '../karaoke-track'
-import { AlignerKind, ChunkKind, initSync, readVocabulary, SongReader } from '../lyre-wasm/lyre_wasm.js'
+import { AlignerKind, DeviceKey, initSync, readVocabulary } from '../lyre-wasm/lyre_wasm.js'
 import { FakeModelFiles } from '../models/fake-model-files'
 import { loadModel } from '../models/model-download'
 import { SessionCreator } from '../onnx-session'
@@ -23,10 +23,20 @@ const fixture = (path: string): Uint8Array<ArrayBuffer> =>
   new Uint8Array(readFileSync(new URL(`../../../tests/fixtures/${path}`, import.meta.url)))
 
 const taskId = 'task-1'
+// The fixture lyrics' syllables.
+const SYLLABLES = ['Mưa', 'rơi', 'nhẹ', 'Em', 'về', 'bên', 'sông', 'Trăng', 'lên']
+// The PRF output of the device the song is made for.
+const DEVICE_SECRET = new Uint8Array(32).fill(7)
 const SOURCE_SECONDS = 10
 const STAGES = ['read-source', 'extract-audio', 'separate', 'align', 'lay-out', 'package-media', 'write-song']
 // The core separates and aligns the whole 10 s song, which takes a few seconds.
 const TIMEOUT_MS = 60_000
+
+// A documented recovery public key (docs/reference/device-access.md#recovery-key).
+const RECOVERY_PUBLIC_KEY = Uint8Array.from(
+  '02585a2882fca9a0ee8cf896c3ac8e515402d3c85d91384bce2dce930ce3ce5307'.match(/../g)!,
+  (pair) => parseInt(pair, 16),
+)
 
 const aligners = {
   'lyric-alignment': {
@@ -144,6 +154,16 @@ function fakeMedia(): SongMedia & { karaokeFrames: number } {
   }
 }
 
+// The device code of the device the song is made for.
+function deviceCode(): string {
+  const key = new DeviceKey(DEVICE_SECRET)
+  try {
+    return key.deviceCode
+  } finally {
+    key.free()
+  }
+}
+
 async function run(o: {
   lyrics?: Uint8Array
   aligner?: keyof typeof aligners
@@ -163,6 +183,7 @@ async function run(o: {
     lyrics: o.lyrics ?? fixture('song/lyrics.txt'),
     details: { title: 'Test song', artist: 'Test artist', composer: '' },
     vocalRole: 'female',
+    encryptFor: { deviceCode: deviceCode(), recoveryPublicKey: RECOVERY_PUBLIC_KEY },
     separator,
     aligner: { kind: aligner.kind, model, vocabulary },
   }
@@ -173,22 +194,6 @@ async function run(o: {
   const areas = o.areas ?? new FakeWorkingAreas()
   await runTask({ taskId, stages: songStages(input, media, models), areas, report: (report) => reports.push(report) })
   return { reports, areas, segments, media, models }
-}
-
-// The bytes of the song file's Lyrics chunk, read through the core.
-async function lyricsChunk(song: Uint8Array): Promise<Uint8Array> {
-  const header = song.subarray(0, 32)
-  const index = song.subarray(32, 32 + SongReader.indexLength(header))
-  const reader = new SongReader(header, index, song.length)
-  try {
-    const entries = reader.entries()
-    const lyrics = entries.find((entry) => entry.kind === ChunkKind.Lyrics)!
-    const bytes = song.slice(lyrics.offset, lyrics.offset + lyrics.length)
-    for (const entry of entries) entry.free()
-    return bytes
-  } finally {
-    reader.free()
-  }
 }
 
 // Working areas that keep a copy of each area's files as it is removed.
@@ -209,8 +214,9 @@ describe('a song task', () => {
       const areas = new KeepingAreas()
       const { reports } = await run({ areas })
 
-      const done = reports.at(-1) as { type: string; song?: Uint8Array }
+      const done = reports.at(-1) as { type: string; song?: Uint8Array; accessFile?: Uint8Array }
       expect(done.type).toBe('done')
+      expect(done.accessFile).toBeDefined()
       const written = areas.kept.get(taskId)?.get('song.lyre')
       expect(written).toBeDefined()
       expect(new Uint8Array(await written!.arrayBuffer())).toEqual(done.song)
@@ -222,7 +228,7 @@ describe('a song task', () => {
 
   for (const aligner of Object.keys(aligners) as (keyof typeof aligners)[]) {
     test(
-      `with the test separator and the ${aligner} test aligner, gives a song file with the lyrics byte for byte`,
+      `with the test separator and the ${aligner} test aligner, gives a version 1 song file that opens with the access file`,
       async () => {
         const lyrics = fixture('song/lyrics.txt')
         const { reports, areas, media, segments, models } = await run({ lyrics, aligner })
@@ -232,12 +238,19 @@ describe('a song task', () => {
 
         const done = reports.at(-1)
         expect(done?.type).toBe('done')
-        const song = (done as { song?: Uint8Array }).song!
-        const opened = await openSongFile(new Blob([song as Uint8Array<ArrayBuffer>]))
+        const { song, accessFile } = done as { song: Uint8Array; accessFile: Uint8Array }
+        // Bytes 8 and 9 of the header are the version.
+        expect([song[8], song[9]]).toEqual([1, 0])
+        const key = new DeviceKey(DEVICE_SECRET)
+        const opened = await openSongFile(new Blob([song as Uint8Array<ArrayBuffer>]), {
+          files: [new Blob([accessFile as Uint8Array<ArrayBuffer>])],
+          key: async () => key,
+        })
         expect(opened.details).toEqual({ title: 'Test song', artist: 'Test artist', composer: '', vocalRole: 'female' })
-        expect(opened.lyrics).toHaveLength(9)
+        // The song's lyrics are the fixture's nine syllables, in order.
+        expect(opened.lyrics.map((syllable) => syllable.text)).toEqual(SYLLABLES)
         opened.close()
-        expect(await lyricsChunk(song)).toEqual(fixture('song/lyrics.txt'))
+        key.free()
         // The supplied bytes were not changed on the way either (D5).
         expect(lyrics).toEqual(fixture('song/lyrics.txt'))
         // The 10 s source went through the test separator in 5 segments.
