@@ -101,8 +101,9 @@ page's measurement method.
   in [knowledge](domain/knowledge.md#running-on-the-users-device).
 - **Content keys and private keys never reach JavaScript or Kotlin.** They
   are handled only inside the core and the platform key store. The core's
-  API never returns one to a client. It returns an opaque handle that the
-  client cannot read *(planned for M3)*. They never reach web UI state,
+  API never returns one to a client. The web device key is returned as an
+  opaque handle that the client cannot read. Content keys follow later in
+  M3. They never reach web UI state,
   Compose state, logs or error messages.
 
 ## Song file *(encrypted from M3)*
