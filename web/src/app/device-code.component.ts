@@ -108,7 +108,12 @@ export class DeviceCode {
   protected async show(): Promise<void> {
     this.state.set({ status: 'running' })
     this.copyState.set('idle')
-    const outcome = await this.unlock()
+    let outcome: DeviceOutcome
+    try {
+      outcome = await this.unlock()
+    } catch {
+      outcome = { result: 'failed' }
+    }
     this.state.set({ status: 'done', outcome })
   }
 

@@ -95,3 +95,19 @@ test.each([
   expect(elementOf(fixture).textContent).toContain('The browser refused to copy the device code.')
   expect(elementOf(fixture).textContent).not.toContain('The device code is copied.')
 })
+
+test('an unlock that throws shows the general failure and lets the user try again', async () => {
+  TestBed.configureTestingModule({
+    providers: [
+      provideZonelessChangeDetection(),
+      { provide: DEVICE_UNLOCK, useValue: () => Promise.reject(new Error('storage blocked')) },
+    ],
+  })
+  const fixture = TestBed.createComponent(DeviceCode)
+  await fixture.whenStable()
+  const button = elementOf(fixture).querySelector('button')
+  button?.click()
+  await fixture.whenStable()
+  expect(status(elementOf(fixture))).toBe('This device could not be unlocked, so it has no device code.')
+  expect(button?.disabled).toBe(false)
+})

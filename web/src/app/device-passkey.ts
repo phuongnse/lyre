@@ -66,15 +66,19 @@ async function createPasskey(credentials: CredentialsContainer): Promise<Uint8Ar
 
 // Asks the device's passkey for its unlock and its PRF output, and makes the
 // device key from it. The output is wiped as soon as the core has used it. An
-// error's message is never logged or passed on. The key is returned with a
+// error's message is never logged or passed on. The browser's own credentials
+// and storage are looked up inside the try, because reading `localStorage`
+// throws when the site's storage is blocked. The key is returned with a
 // ready outcome, for the caller to keep for later issues.
 export async function unlockDevice(
-  credentials: CredentialsContainer = navigator.credentials,
-  storage: Storage = localStorage,
+  credentials?: CredentialsContainer,
+  storage?: Storage,
   load: () => Promise<void> = loadCore,
 ): Promise<DeviceUnlock> {
   try {
     await load()
+    credentials ??= navigator.credentials
+    storage ??= localStorage
     const stored = storage.getItem(credentialStorageKey)
     let id: Uint8Array
     if (stored === null) {

@@ -166,6 +166,23 @@ describe('unlockDevice', () => {
     expect(storage.getItem(credentialStorageKey)).toBe(STORED_ID)
   })
 
+  test('blocked site storage gives failed instead of throwing', async () => {
+    const { credentials, get } = fake()
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('denied', 'SecurityError')
+      },
+    })
+    try {
+      const { outcome } = await unlock(credentials, undefined, () => Promise.resolve())
+      expect(outcome).toEqual({ result: 'failed' })
+      expect(get).not.toHaveBeenCalled()
+    } finally {
+      Reflect.deleteProperty(globalThis, 'localStorage')
+    }
+  })
+
   test('the same output gives the same code on a later visit', async () => {
     const storage = memoryStorage()
     const first = await unlockDevice(fake().credentials, storage)
