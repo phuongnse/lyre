@@ -128,9 +128,9 @@ describe('restoring songs', () => {
     const file = await songFile('a.lyre', device, recovery.publicKey)
     const unlock = vi.fn(deps.deviceKey)
     const slice = vi.spyOn(file, 'slice')
-    const words = recovery.words.split(' ')
-    words[3] = words[3] === 'abandon' ? 'ability' : 'abandon'
-    for (const text of [words.join(' '), 'abandon', '']) {
+    // 24 listed words with a bad checksum, from the recovery key vectors in docs/reference/device-access.md.
+    const badChecksum = Array(24).fill('abandon').join(' ')
+    for (const text of [badChecksum, 'abandon', '']) {
       expect(await restoreSongs(text, [file], { ...deps, deviceKey: unlock })).toEqual({ status: 'words-refused' })
     }
     expect(unlock).not.toHaveBeenCalled()
