@@ -106,6 +106,8 @@ export const messages = {
   keptRecoveryKey: 'I have kept my recovery key',
   recoveryKeyKept:
     "This device keeps your recovery key's public part. Every song you make can be recovered with your recovery key.",
+  recoveryKeyOtherTab:
+    'Another tab already kept a recovery key on this device. The words shown here were dropped. Keep the recovery key from that tab.',
   recoveryKeyFailed: 'The recovery key could not be kept on this device.',
   recoveryKeyLoss: 'If you lose every device and your recovery key, your songs cannot be opened again.',
   devicePasskeyName: 'Lyre device key',

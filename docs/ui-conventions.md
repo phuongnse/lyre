@@ -488,7 +488,14 @@ Compose uses the same three values *(planned for M4)*.
 - Once a key is kept, the section says "This device keeps your recovery key's
   public part. Every song you make can be recovered with your recovery key."
   and offers no button. It offers no way to replace the key, because older
-  songs are wrapped only for the old one.
+  songs are wrapped only for the old one. The write refuses to replace a kept
+  key. If two tabs show a key at once, the first to confirm wins. The other
+  tab, and any tab that shows words when the key is kept, drops its words and
+  says "Another tab already kept a recovery key on this device. The words shown
+  here were dropped. Keep the recovery key from that tab."
+- The words and the QR code live only in the section's one state value. They
+  leave it when the owner confirms, when storage refuses the key, and when
+  another tab keeps a key.
 - If the browser refuses the write, the section says "The recovery key could
   not be kept on this device." and offers the create button again. An error
   while making the key shows the same line. The page never shows the error's

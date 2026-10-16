@@ -70,7 +70,7 @@ describe('keepRecoveryPublicKey', () => {
       setItem: (key: string, value: string) => void written.set(key, value),
       getItem: (key: string) => written.get(key) ?? null,
     } as unknown as Storage
-    expect(keepRecoveryPublicKey(bytes, storage)).toBe(true)
+    expect(keepRecoveryPublicKey(bytes, storage)).toBe('kept')
     expect([...written.keys()]).toEqual([recoveryKeyStorageKey])
     expect(written.get(recoveryKeyStorageKey)).toBe(toBase64Url(bytes))
     expect(written.get(recoveryKeyStorageKey)).toMatch(/^[A-Za-z0-9_-]{44}$/)
@@ -83,6 +83,19 @@ describe('keepRecoveryPublicKey', () => {
         throw new DOMException('blocked', 'QuotaExceededError')
       },
     } as unknown as Storage
-    expect(keepRecoveryPublicKey(new Uint8Array(33).fill(2), blocked)).toBe(false)
+    expect(keepRecoveryPublicKey(new Uint8Array(33).fill(2), blocked)).toBe('failed')
+  })
+
+  it('never replaces a key that is already kept', () => {
+    const first = new Uint8Array(33).fill(2)
+    const second = new Uint8Array(33).fill(3)
+    const stored = new Map<string, string>()
+    const storage = {
+      setItem: (key: string, value: string) => void stored.set(key, value),
+      getItem: (key: string) => stored.get(key) ?? null,
+    } as unknown as Storage
+    expect(keepRecoveryPublicKey(first, storage)).toBe('kept')
+    expect(keepRecoveryPublicKey(second, storage)).toBe('exists')
+    expect(readRecoveryPublicKey(storage)).toEqual(first)
   })
 })

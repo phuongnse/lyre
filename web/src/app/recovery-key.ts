@@ -35,16 +35,23 @@ export function readRecoveryPublicKey(storage?: Storage): Uint8Array<ArrayBuffer
   }
 }
 
-// Keeps the recovery public key, as base64url without padding. False when the
-// site's storage refuses the write. Storage is looked up inside the try,
-// because reading `localStorage` throws when the site's storage is blocked.
-export function keepRecoveryPublicKey(key: Uint8Array, storage?: Storage): boolean {
+// How keeping the public key ended: written, refused because a key is already
+// kept, or failed because the site's storage refuses the write.
+export type KeepResult = 'kept' | 'exists' | 'failed'
+
+// Keeps the recovery public key, as base64url without padding. It never
+// replaces a key that is already kept: songs made with that key still need it,
+// and two tabs opened before the confirmation each hold a different key. The
+// storage is looked up inside the try, because reading `localStorage` throws
+// when the site's storage is blocked.
+export function keepRecoveryPublicKey(key: Uint8Array, storage?: Storage): KeepResult {
   try {
     storage ??= localStorage
+    if (readRecoveryPublicKey(storage) !== undefined) return 'exists'
     storage.setItem(recoveryKeyStorageKey, toBase64Url(key))
-    return true
+    return 'kept'
   } catch {
-    return false
+    return 'failed'
   }
 }
 

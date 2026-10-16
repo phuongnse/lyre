@@ -110,3 +110,61 @@ test('an error from making the key shows the alert without its text', async () =
   expect(element.textContent).not.toContain('secret detail')
   expect(element.querySelector('button')?.textContent?.trim()).toBe('Create a recovery key')
 })
+
+// The words and the QR code must leave every field of the component, not just
+// the page, so nothing keeps them reachable.
+const stateOf = (fixture: ComponentFixture<RecoveryKey>) =>
+  JSON.stringify((fixture.componentInstance as unknown as { state: () => object }).state())
+
+test('the component holds the words only while they are shown', async () => {
+  const fixture = await render()
+  await press(fixture, 'Create a recovery key')
+  expect(stateOf(fixture)).toContain(words[0])
+  await press(fixture, 'I have kept my recovery key')
+  expect(stateOf(fixture)).not.toContain(words[0])
+  expect(JSON.stringify(Object.values(fixture.componentInstance as object))).not.toContain(words[0])
+  expect(JSON.stringify(Object.values(fixture.componentInstance as object))).not.toContain('h1v1h-1z')
+})
+
+test('the component drops the words when the storage refuses the key', async () => {
+  const fixture = await render()
+  await press(fixture, 'Create a recovery key')
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('blocked', 'QuotaExceededError')
+  })
+  await press(fixture, 'I have kept my recovery key')
+  vi.restoreAllMocks()
+  expect(JSON.stringify(Object.values(fixture.componentInstance as object))).not.toContain(words[0])
+  expect(stateOf(fixture)).not.toContain(words[0])
+})
+
+test('a second tab that confirms later does not replace the first tab’s key', async () => {
+  let count = 0
+  const first = await render(() => Promise.resolve({ ...made, publicKey: new Uint8Array(33).fill(++count + 1) }))
+  const second = TestBed.createComponent(RecoveryKey)
+  await second.whenStable()
+  await press(first, 'Create a recovery key')
+  await press(second, 'Create a recovery key')
+  await press(first, 'I have kept my recovery key')
+  const kept = localStorage.getItem(recoveryKeyStorageKey)
+  expect(kept).toMatch(/^[A-Za-z0-9_-]{44}$/)
+  await press(second, 'I have kept my recovery key')
+  expect(localStorage.getItem(recoveryKeyStorageKey)).toBe(kept)
+  const element = elementOf(second)
+  expect(element.querySelector('[role="alert"]')?.textContent).toContain('Another tab already kept a recovery key')
+  expect(element.querySelector('ol')).toBeNull()
+  expect(element.querySelector('svg')).toBeNull()
+  expect(JSON.stringify(Object.values(second.componentInstance as object))).not.toContain(words[0])
+})
+
+test('a tab that shows words drops them when another tab keeps a key', async () => {
+  const fixture = await render()
+  await press(fixture, 'Create a recovery key')
+  localStorage.setItem(recoveryKeyStorageKey, 'AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD')
+  window.dispatchEvent(new StorageEvent('storage', { key: recoveryKeyStorageKey }))
+  await fixture.whenStable()
+  const element = elementOf(fixture)
+  expect(element.querySelector('ol')).toBeNull()
+  expect(element.querySelector('[role="alert"]')?.textContent).toContain('Another tab already kept a recovery key')
+  expect(stateOf(fixture)).not.toContain(words[0])
+})

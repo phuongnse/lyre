@@ -93,3 +93,25 @@ test('a recovery key that is not confirmed is not kept, and a reload makes a new
   await expect(createButton(page)).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('lyre-recovery-public-key'))).toBeNull()
 })
+
+test('two tabs that show a key keep only the first one confirmed', async ({ context, page }) => {
+  await open(page)
+  const other = await context.newPage()
+  await open(other)
+  await createButton(page).click()
+  await createButton(other).click()
+  await expect(wordItems(page)).toHaveCount(24)
+  await expect(wordItems(other)).toHaveCount(24)
+
+  await keptButton(page).click()
+  await expect(keptText(page)).toBeVisible()
+  const kept = await page.evaluate(() => localStorage.getItem('lyre-recovery-public-key'))
+  expect(kept).toMatch(/^[A-Za-z0-9_-]{44}$/)
+
+  // The other tab drops its words at once, and the key stays the first one.
+  await expect(wordItems(other)).toHaveCount(0)
+  await expect(qrImage(other)).toHaveCount(0)
+  await expect(section(other).getByRole('alert')).toContainText('Another tab already kept a recovery key')
+  await expect(createButton(other)).toHaveCount(0)
+  expect(await other.evaluate(() => localStorage.getItem('lyre-recovery-public-key'))).toBe(kept)
+})
