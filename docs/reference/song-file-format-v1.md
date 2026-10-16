@@ -246,9 +246,10 @@ including plaintext sizes, syllable counts, song duration and segment times.
 
 ## Known-answer example
 
-This doc has no checked example bytes yet. The core change implementing
-the format adds the bytes, the hex dump and the SHA-256 *(planned for M3)*.
-They are computed by code, never by hand.
+The [recovery wrap vector](#recovery-wrap-vector) below is checked. The
+full file bytes, the hex dump and the SHA-256 are *(planned for M3)*, with
+the core change implementing the format. They are computed by code, never
+by hand.
 
 The inputs are the same chunk contents as the
 [version-0 example](song-file-format-v0.md#known-answer-example), with:
@@ -256,8 +257,8 @@ The inputs are the same chunk contents as the
 - `song_id`: the bytes `00` to `0F`;
 - `salt`: the bytes `20` to `3F`;
 - content key: the bytes `40` to `5F`;
-- a fixed recovery seed and fixed HPKE ephemeral key input, chosen by the
-  core change implementing the format.
+- the recovery seed and HPKE ephemeral input of the
+  [recovery wrap vector](#recovery-wrap-vector).
 
 The example has seven index entries and no video or thumbnail.
 Its layout is fixed:
@@ -277,6 +278,32 @@ Its layout is fixed:
 
 The file size is 580 bytes. The init bytes and media segments remain
 the version-0 example's small placeholders, not playable media.
+
+### Recovery wrap vector
+
+This vector seals one content key to a recovery public key. The core's tests
+read it. The recovery public key is the one in the
+[recovery key](device-access.md#recovery-key) row for the same seed. The
+ephemeral input is the 32-byte `ikmE` that RFC 9180 gives to `DeriveKeyPair`
+to make the sender's ephemeral key. Production code draws it from the
+system's random source. Do not use these values for real keys.
+
+| Item | Value |
+| --- | --- |
+| Recovery seed | `606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f` |
+| Recovery public key | `02585a2882fca9a0ee8cf896c3ac8e515402d3c85d91384bce2dce930ce3ce5307` |
+| `song_id` | `000102030405060708090a0b0c0d0e0f` |
+| Content key | `404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f` |
+| Ephemeral input (`ikmE`) | `808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f` |
+| `info` | `6c7972652f76312f7265636f766572792d77726170000102030405060708090a0b0c0d0e0f02585a2882fca9a0ee8cf896c3ac8e515402d3c85d91384bce2dce930ce3ce5307` |
+| `recovery_enc` | `04afd5d8459fadab9ff6be66457108ef67e2fd8afee4a2d2952a0d032ce28652502ccc5045d118eacc6c29048c3ac2a5136f143d2012e52f595426dc49c0c1b61a` |
+| `recovery_sealed` | `ce08f317ec72da00c45d1ddc254ba1ca45e744438c3296d24e9d38e44a6a24c6519a4e0f77e910bfb57424a3610dfb40` |
+
+Opening `recovery_enc` and `recovery_sealed` with the recovery private key,
+this `info` and empty `aad` gives the content key. A changed byte of
+`recovery_sealed`, another `song_id` or another recovery private key fails
+authentication. A `recovery_enc` that is not an uncompressed point on the
+curve is refused before any open.
 
 ### Invalid variants
 

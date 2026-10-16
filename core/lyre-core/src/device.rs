@@ -6,15 +6,12 @@
 
 use std::fmt;
 
-use hkdf::Hkdf;
-use p256::elliptic_curve::ops::Reduce;
+use crate::bech32m;
+use crate::scalar::derive_scalar;
+use p256::SecretKey;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
-use p256::{FieldBytes, NonZeroScalar, Scalar, SecretKey};
 use qrcodegen::{QrCodeEcc, QrSegment, Version};
 use sha2::{Digest, Sha256};
-use zeroize::Zeroizing;
-
-use crate::bech32m;
 
 /// The fixed Lyre PRF salt, as text. The client passes its UTF-8 bytes as the
 /// WebAuthn PRF `eval.first` input.
@@ -25,9 +22,6 @@ const DEVICE_KEY_INFO: &[u8] = b"lyre/v1/device-key";
 
 /// The size of a PRF output, in bytes.
 const PRF_LEN: usize = 32;
-
-/// The size of the HKDF output, in bytes.
-const OKM_LEN: usize = 48;
 
 /// The size of a compressed P-256 public key, in bytes.
 const COMPRESSED_LEN: usize = 33;
@@ -118,11 +112,8 @@ impl DeviceKey {
         if prf_output.len() != PRF_LEN {
             return Err(DeviceKeyError::PrfLength);
         }
-        let mut okm = Zeroizing::new([0u8; OKM_LEN]);
-        Hkdf::<Sha256>::new(None, prf_output)
-            .expand(DEVICE_KEY_INFO, okm.as_mut_slice())
-            .expect("48 bytes are within the HKDF limit");
-        let scalar = scalar_from_wide(&okm)?;
+        let scalar =
+            derive_scalar(prf_output, DEVICE_KEY_INFO).ok_or(DeviceKeyError::ZeroScalar)?;
         Ok(DeviceKey {
             secret: SecretKey::from(scalar),
         })
@@ -135,21 +126,6 @@ impl DeviceKey {
             .expect("a compressed point is 33 bytes");
         PublicKey(bytes)
     }
-}
-
-/// Reads 48 big-endian bytes as one integer, reduces it modulo the group
-/// order `n` and rejects zero.
-fn scalar_from_wide(okm: &[u8; OKM_LEN]) -> Result<NonZeroScalar, DeviceKeyError> {
-    let (hi, lo) = okm.split_at(OKM_LEN - 32);
-    let mut hi_bytes = FieldBytes::default();
-    hi_bytes[32 - hi.len()..].copy_from_slice(hi);
-    let hi = <Scalar as Reduce<p256::U256>>::reduce_bytes(&hi_bytes);
-    let lo = <Scalar as Reduce<p256::U256>>::reduce_bytes(FieldBytes::from_slice(lo));
-    let two_64 = Scalar::from(1u64 << 63) * Scalar::from(2u64);
-    let two_128 = two_64 * two_64;
-    let two_256 = two_128 * two_128;
-    let scalar = hi * two_256 + lo;
-    Option::from(NonZeroScalar::new(scalar)).ok_or(DeviceKeyError::ZeroScalar)
 }
 
 /// A QR code, as its dark modules. It has no quiet zone: the client adds the
@@ -489,36 +465,6 @@ mod tests {
                 Some(DeviceKeyError::PrfLength)
             );
         }
-    }
-
-    #[test]
-    fn a_reduced_scalar_of_zero_is_rejected() {
-        // The group order n of P-256, as 48 big-endian bytes.
-        let n = unhex(
-            "00000000000000000000000000000000ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
-        );
-        let n: [u8; 48] = n.try_into().expect("48 bytes");
-        assert_eq!(scalar_from_wide(&n).err(), Some(DeviceKeyError::ZeroScalar));
-        assert_eq!(
-            scalar_from_wide(&[0; 48]).err(),
-            Some(DeviceKeyError::ZeroScalar)
-        );
-        let mut n_plus_one = n;
-        n_plus_one[47] += 1;
-        let one = scalar_from_wide(&n_plus_one).expect("n + 1 reduces to 1");
-        assert_eq!(*one, Scalar::ONE);
-    }
-
-    #[test]
-    fn a_wide_value_reduces_modulo_n() {
-        // 2^256 mod n is 2^256 − n, so the 48 bytes 01 00…00 reduce to it.
-        let mut wide = [0u8; 48];
-        wide[15] = 1;
-        let reduced = scalar_from_wide(&wide).expect("not zero");
-        assert_eq!(
-            hex(&reduced.to_bytes()),
-            "00000000ffffffff00000000000000004319055258e8617b0c46353d039cdaaf"
-        );
     }
 
     #[test]

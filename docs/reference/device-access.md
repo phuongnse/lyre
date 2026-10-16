@@ -2,8 +2,9 @@
 
 This doc fixes the bytes and text of what moves between devices besides the
 song file: device codes, fingerprints, access files and recovery keys.
-The web device key, the device code, its QR code and the fingerprint are
-built. Access files and recovery keys are *(planned for M3)*. The scheme is
+The web device key, the device code, its QR code, the fingerprint and the
+recovery key pair derivation are built. Recovery words and access files are
+*(planned for M3)*. The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).
 
@@ -328,9 +329,9 @@ failure. The [access file](#access-file) section describes this limit.
 
 ## Known-answer vectors
 
-The web device key, the device code and the fingerprint have checked
-vectors. The core changes that implement access files and recovery keys add
-theirs, including invalid variants.
+The web device key, the device code, the fingerprint and the recovery key
+pair have checked vectors. The core changes that implement access files and
+recovery words add theirs, including invalid variants.
 
 The vectors were worked out with an independent script that uses only
 Python's standard library. The core's tests read the tables below. Each
@@ -389,5 +390,17 @@ The core change implementing access files adds its vectors here
 
 ### Recovery key
 
-The core change implementing recovery keys adds its vectors here
-*(planned for M3)*.
+Each row gives a 32-byte recovery seed, the private scalar `d` that the
+[key pair](#key-pair) derivation gives for it, and the compressed public key
+`d × G`. The seed `606162…7e7f` is the seed of the
+[recovery wrap vector](song-file-format-v1.md#recovery-wrap-vector).
+
+| Seed | `d` | Compressed public key |
+| --- | --- | --- |
+| `0000000000000000000000000000000000000000000000000000000000000000` | `101408c8753687e94a194e3d3c1d33076244c7a28124703f52c01d21ab09b1e5` | `0370573a8a0a5a5c6cf920ceee7792e8859fb24b36d759b751dc736d8a9b30166b` |
+| `606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f` | `b285ecf31a61b58b3639d96d14d390c13bf77899e9a2cfbbb21d52e022a2461f` | `02585a2882fca9a0ee8cf896c3ac8e515402d3c85d91384bce2dce930ce3ce5307` |
+| `ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff` | `8ebb0af0e9ae08549cb62aa6d019f533f13bf1fcb6998ff30827cf650d309abe` | `02357ff7cf48c888ac817a38eebdc6d940213cca7b20850698370827fed11ae48e` |
+
+A 48-byte HKDF output equal to `n` is rejected with `ZeroScalar`. No real
+seed is known to give it, so the core tests that rule with the value `n`
+itself. The word encoding has no vectors yet *(planned for M3)*.
