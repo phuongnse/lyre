@@ -2,7 +2,8 @@
 //!
 //! The bytes are in `docs/reference/device-access.md#access-file`. [`wrap`]
 //! writes a file with one entry for one device. [`open`] opens a file with
-//! this device's key, for one song. The content key comes back only as a
+//! this device's key, for one song. [`share`] turns an owner's entry into a
+//! recipient's file. The content key comes back only as a
 //! [`ContentKey`] handle, together with the role. No function returns key
 //! bytes, and no error names any.
 
@@ -324,6 +325,53 @@ pub fn open(
         content_key: ContentKey::from_bytes(bytes),
         role,
     })
+}
+
+/// Why a song could not be shared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShareError {
+    /// The owner's access file was refused.
+    Access(AccessFileError),
+    /// The access file holds a recipient entry. Only the owner shares (D13).
+    NotOwner,
+}
+
+impl fmt::Display for ShareError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ShareError::Access(error) => error.fmt(f),
+            ShareError::NotOwner => write!(f, "only the owner can share this song"),
+        }
+    }
+}
+
+impl std::error::Error for ShareError {}
+
+impl From<AccessFileError> for ShareError {
+    fn from(error: AccessFileError) -> ShareError {
+        ShareError::Access(error)
+    }
+}
+
+/// Shares a song with another device. The owner's access file is opened with
+/// the owner's key, and the song's content key is wrapped again for the
+/// recipient with the recipient role. A recipient's file is refused.
+pub fn share(
+    owner_file: &[u8],
+    device_key: &DeviceKey,
+    song_id: &[u8; SONG_ID_LEN],
+    recipient: &PublicKey,
+) -> Result<Vec<u8>, ShareError> {
+    let access = open(owner_file, device_key, song_id)?;
+    if access.role != Role::Owner {
+        return Err(ShareError::NotOwner);
+    }
+    Ok(wrap(
+        &access.content_key,
+        song_id,
+        recipient,
+        Role::Recipient,
+    ))
 }
 
 #[cfg(test)]
@@ -761,6 +809,62 @@ mod tests {
             assert!(!text.contains(&key_hex), "{text}");
             assert!(!text.contains(&scalar), "{text}");
             assert!(!text.contains("0x40"), "{text}");
+        }
+    }
+
+    #[test]
+    fn sharing_from_an_owner_file_opens_for_the_recipient_with_the_recipient_role() {
+        let owner = other_key(0x11);
+        let recipient = other_key(0x22);
+        let key = ContentKey::generate();
+        let id = song_id();
+        let owner_file = wrap(&key, &id, &owner.public_key(), Role::Owner);
+
+        let shared = share(&owner_file, &owner, &id, &recipient.public_key()).expect("shares");
+        let access = open(&shared, &recipient, &id).expect("the recipient opens it");
+        assert_eq!(access.role, Role::Recipient);
+        assert_eq!(access.content_key.expose(), key.expose());
+        assert_eq!(
+            open(&shared, &owner, &id).err(),
+            Some(AccessFileError::OtherDevice)
+        );
+    }
+
+    #[test]
+    fn sharing_from_a_recipient_file_is_refused() {
+        let device = other_key(0x11);
+        let id = song_id();
+        let file = wrap(&content_key(), &id, &device.public_key(), Role::Recipient);
+        assert_eq!(
+            share(&file, &device, &id, &other_key(0x22).public_key()),
+            Err(ShareError::NotOwner)
+        );
+    }
+
+    #[test]
+    fn sharing_a_song_the_file_has_no_entry_for_is_refused() {
+        let device = other_key(0x11);
+        let file = wrap(
+            &content_key(),
+            &song_id(),
+            &device.public_key(),
+            Role::Owner,
+        );
+        assert_eq!(
+            share(&file, &device, &[7; 16], &other_key(0x22).public_key()),
+            Err(ShareError::Access(AccessFileError::OtherSong))
+        );
+    }
+
+    #[test]
+    fn share_errors_hold_no_key_hex() {
+        let key_hex = hex(content_key().expose());
+        for error in [
+            ShareError::NotOwner,
+            ShareError::Access(AccessFileError::Open),
+        ] {
+            let text = format!("{error:?} {error}");
+            assert!(!text.contains(&key_hex), "{text}");
         }
     }
 }

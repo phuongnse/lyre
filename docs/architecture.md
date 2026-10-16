@@ -162,10 +162,14 @@ The encrypted layout, keys and recovery wrap are specified in
 - **Wrapping.** The core wraps a song's content key for a device with HPKE
   (RFC 9180) base mode: DHKEM(P-256, HKDF-SHA256), HKDF-SHA256 and AES-256-GCM.
   The song ID, device key and owner or recipient role are bound into the
-  HPKE info. Sharing in the clients is *(planned for M3)*.
+  HPKE info. The core shares a song by opening the owner's entry and wrapping
+  its content key again for another device's public key, as a one-entry
+  recipient access file. It refuses to share from a recipient's file (D13).
+  The web client's Player offers sharing. Android does not (D27).
 - **Access file.** A `.lyrekey` file is for one device and holds the wrapped
   content keys of one or more songs, each marked as the owner's or a
-  recipient's. The core writes a file with one entry and opens a file of up to
+  recipient's. The core writes a file with one entry, for the owner when a song
+  is made and for a recipient when it is shared, and opens a file of up to
   16,384 entries with this device's key. Entries are matched to song files by
   song ID, never by file name or folder. The song file does not change when it
   is shared (D6).

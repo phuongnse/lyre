@@ -1103,6 +1103,8 @@ impl OpenIndex {
 #[wasm_bindgen]
 pub struct SongReader {
     song_id: [u8; 16],
+    /// Whether the access file that opened the song holds an owner entry.
+    owner: bool,
     index: OpenIndex,
     entries: Vec<ChunkEntry>,
     details: Option<SongDetails>,
@@ -1150,7 +1152,7 @@ impl SongReader {
         // A size that is negative, fractional or too large becomes one the
         // index check rejects or compares exactly.
         let index = Index::parse(&header, index, file_size as u64)?;
-        SongReader::with_index(header.song_id(), OpenIndex::V0(index))
+        SongReader::with_index(header.song_id(), false, OpenIndex::V0(index))
     }
 
     /// Opens a version-1 song file: checks the `header`, opens the
@@ -1179,10 +1181,18 @@ impl SongReader {
             index_and_tag,
             file_size as u64,
         )?;
-        SongReader::with_index(header.song_id(), OpenIndex::V1(index))
+        SongReader::with_index(
+            header.song_id(),
+            access.role == access::Role::Owner,
+            OpenIndex::V1(index),
+        )
     }
 
-    fn with_index(song_id: [u8; 16], index: OpenIndex) -> Result<SongReader, SongFileFault> {
+    fn with_index(
+        song_id: [u8; 16],
+        owner: bool,
+        index: OpenIndex,
+    ) -> Result<SongReader, SongFileFault> {
         let entries = index
             .entries()
             .iter()
@@ -1190,6 +1200,7 @@ impl SongReader {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(SongReader {
             song_id,
+            owner,
             index,
             stored_types: vec![None; entries.len()],
             entries,
@@ -1214,6 +1225,37 @@ impl SongReader {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect()
+    }
+
+    /// Whether the song was opened with an owner's access file. Only an owner
+    /// can share. A version-0 song has no access file, so it is not.
+    #[wasm_bindgen(getter, js_name = isOwner)]
+    pub fn is_owner(&self) -> bool {
+        self.owner
+    }
+
+    /// Shares the song with the device that has `device_code`. The device
+    /// code is checked first. Then the owner's `access_file` is opened again
+    /// with this device's key, and the song's content key is wrapped for the
+    /// other device with the recipient role. The song file does not change.
+    pub fn share(
+        &self,
+        device_key: &DeviceKey,
+        access_file: &[u8],
+        device_code: &str,
+    ) -> Result<SharedAccess, ShareFault> {
+        let recipient = device::PublicKey::parse_device_code(device_code)
+            .map_err(|_| ShareFaultKind::DeviceCode)?;
+        let file = access::share(access_file, &device_key.key, &self.song_id, &recipient).map_err(
+            |error| match error {
+                access::ShareError::NotOwner => ShareFaultKind::NotOwner,
+                access::ShareError::Access(_) => ShareFaultKind::CannotOpen,
+            },
+        )?;
+        Ok(SharedAccess {
+            fingerprint: recipient.fingerprint(),
+            access_file: file,
+        })
     }
 
     /// The song details, once their chunk is read.
@@ -1678,6 +1720,52 @@ impl From<DeviceKeyError> for DeviceKeyFault {
         };
         DeviceKeyFault { kind }
     }
+}
+
+/// Why a song could not be shared. It holds no core message.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShareFaultKind {
+    /// The device code is not valid.
+    DeviceCode,
+    /// The access file is not an owner's.
+    NotOwner,
+    /// The access file does not open for this song on this device.
+    CannotOpen,
+}
+
+/// Why a song could not be shared.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShareFault {
+    kind: ShareFaultKind,
+}
+
+#[wasm_bindgen]
+impl ShareFault {
+    #[wasm_bindgen(getter)]
+    pub fn kind(&self) -> ShareFaultKind {
+        self.kind
+    }
+}
+
+impl From<ShareFaultKind> for ShareFault {
+    fn from(kind: ShareFaultKind) -> ShareFault {
+        ShareFault { kind }
+    }
+}
+
+/// A recipient access file for another device, with that device's
+/// fingerprint to compare.
+#[wasm_bindgen]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedAccess {
+    /// The other device's fingerprint.
+    #[wasm_bindgen(getter_with_clone)]
+    pub fingerprint: String,
+    /// The recipient access file's bytes.
+    #[wasm_bindgen(getter_with_clone, js_name = accessFile)]
+    pub access_file: Vec<u8>,
 }
 
 /// The QR code of a device code: the modules of a square symbol, without the
@@ -2926,6 +3014,57 @@ mod tests {
             lyre_cli::build_for_device(fixture_manifest(), &core.public_key()).expect("builds");
         let result = SongReader::new(&build.song_file[..32], &build.song_file[32..200], 1000.0);
         assert_eq!(kind_of(result), SongFileFaultKind::Damaged);
+    }
+
+    #[test]
+    fn an_owner_shares_the_song_and_the_recipient_opens_it_without_share() {
+        let (core, handle) = device_keys(PRF[0]);
+        let (_, other) = device_keys(9);
+        let build = lyre_cli::build_for_device(fixture_manifest(), &core.public_key())
+            .expect("the fixture song builds");
+        let (reader, _) =
+            read_encrypted(&build.song_file, &handle, &build.access_file).expect("opens");
+        assert!(reader.is_owner());
+
+        let shared = reader
+            .share(&handle, &build.access_file, &other.device_code())
+            .expect("shares");
+        assert_eq!(shared.fingerprint, other.fingerprint());
+        let (recipient, _) =
+            read_encrypted(&build.song_file, &other, &shared.access_file).expect("opens");
+        assert!(!recipient.is_owner());
+        assert_eq!(recipient.song_id(), reader.song_id());
+
+        // The recipient cannot share, and the owner's file does not open on
+        // the other device.
+        let fault = recipient
+            .share(&other, &shared.access_file, &handle.device_code())
+            .expect_err("a recipient cannot share");
+        assert_eq!(fault.kind(), ShareFaultKind::NotOwner);
+        assert_eq!(
+            kind_of(read_encrypted(&build.song_file, &other, &build.access_file)),
+            SongFileFaultKind::CannotOpen
+        );
+    }
+
+    #[test]
+    fn a_changed_device_code_is_refused_before_any_file_is_made() {
+        let (core, handle) = device_keys(PRF[0]);
+        let build = lyre_cli::build_for_device(fixture_manifest(), &core.public_key())
+            .expect("the fixture song builds");
+        let (reader, _) =
+            read_encrypted(&build.song_file, &handle, &build.access_file).expect("opens");
+        let changed = "lyre1pqd77ag0nlwzjnaqkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dkpfn6rh";
+        // Not even a bad access file is read first.
+        let fault = reader
+            .share(&handle, &[], changed)
+            .expect_err("a changed code");
+        assert_eq!(fault.kind(), ShareFaultKind::DeviceCode);
+        let (_, other) = device_keys(9);
+        let fault = reader
+            .share(&handle, &[], &other.device_code())
+            .expect_err("no access file");
+        assert_eq!(fault.kind(), ShareFaultKind::CannotOpen);
     }
 
     #[test]

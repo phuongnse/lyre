@@ -5,6 +5,8 @@ import {
   SongFileFault,
   SongFileFaultKind,
   SongReader,
+  ShareFault,
+  ShareFaultKind,
 } from './lyre-wasm/lyre_wasm.js'
 
 // Opens a song file through the core, following the reading model of
@@ -38,6 +40,24 @@ export class SongFileError extends Error {
     super(problem)
     this.name = 'SongFileError'
   }
+}
+
+// Why a song could not be shared: the device code is not valid, or the core
+// could not make the access file.
+export type ShareProblem = 'invalid-code' | 'failed'
+
+export class ShareError extends Error {
+  constructor(readonly problem: ShareProblem) {
+    super(problem)
+    this.name = 'ShareError'
+  }
+}
+
+// What sharing gives: the other device's fingerprint, to compare with the one
+// that device shows, and a recipient access file for it.
+export interface SharedAccess {
+  fingerprint: string
+  accessFile: Blob
 }
 
 // One chunk: its position in the index, where it is stored and, for a media
@@ -104,6 +124,10 @@ export interface OpenedSong {
   songId: string
   // The access file that opened a version-1 song file. A version-0 file has none.
   accessFile?: Blob
+  // Shares the song with the device that has this device code, through the
+  // core. It is there only for a song opened with an owner access file. It
+  // rejects with a ShareError.
+  share?(deviceCode: string): Promise<SharedAccess>
   details: SongDetails
   durationMs: number
   video?: MediaTrack
@@ -155,6 +179,7 @@ export async function openSongFile(source: ByteSource, access?: DeviceAccess): P
   const index = await readRange(source, headerLength, headerLength + indexLength, shortRead)
   let reader: SongReader
   let accessFile: Blob | undefined
+  let deviceKey: DeviceKey | undefined
   if (headerLength === HEADER_START_LENGTH) {
     reader = core(() => new SongReader(header, index, source.size))
   } else {
@@ -165,6 +190,7 @@ export async function openSongFile(source: ByteSource, access?: DeviceAccess): P
     const opened = await openEncrypted(header, index, source.size, key, access.files)
     reader = opened.reader
     accessFile = opened.accessFile
+    deviceKey = key
   }
   try {
     const chunks = reader.entries().map((entry, position) => {
@@ -229,9 +255,39 @@ export async function openSongFile(source: ByteSource, access?: DeviceAccess): P
       return copy
     })
     let closed = false
+    const owner = reader.isOwner
+    const ownerFile = accessFile
+    const ownerKey = deviceKey
     return {
       songId: reader.songId,
       accessFile,
+      share:
+        owner && ownerFile && ownerKey
+          ? async (deviceCode) => {
+              if (closed) throw new ShareError('failed')
+              let bytes: Uint8Array
+              try {
+                bytes = new Uint8Array(await ownerFile.arrayBuffer())
+              } catch {
+                throw new ShareError('failed')
+              }
+              if (closed) throw new ShareError('failed')
+              try {
+                const shared = reader.share(ownerKey, bytes, deviceCode)
+                const copy = {
+                  fingerprint: shared.fingerprint,
+                  accessFile: new Blob([Uint8Array.from(shared.accessFile)]),
+                }
+                shared.free()
+                return copy
+              } catch (error) {
+                if (!(error instanceof ShareFault)) throw error
+                const problem = error.kind === ShareFaultKind.DeviceCode ? 'invalid-code' : 'failed'
+                error.free()
+                throw new ShareError(problem)
+              }
+            }
+          : undefined,
       details,
       durationMs: reader.durationMs,
       video,

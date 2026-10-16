@@ -4,8 +4,8 @@ This doc fixes the bytes and text of what moves between devices besides the
 song file: device codes, fingerprints, access files and recovery keys.
 The web device key, the device code, its QR code, the fingerprint, the
 recovery key pair derivation, the recovery words and the core's access file
-wrap and open are built. The recovery key screens and sharing in the clients
-are *(planned for M3)*.
+wrap and open are built, and so is sharing in the web client. The recovery key
+screens are *(planned for M3)*.
 The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).

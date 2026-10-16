@@ -2,7 +2,15 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { beforeAll, expect, test, vi } from 'vitest'
 import { DeviceKey, initSync } from './lyre-wasm/lyre_wasm.js'
-import { ByteSource, ChunkRef, DeviceAccess, openSongFile, SongFileError, SongFileProblem } from './song-file'
+import {
+  ByteSource,
+  ChunkRef,
+  DeviceAccess,
+  openSongFile,
+  ShareError,
+  SongFileError,
+  SongFileProblem,
+} from './song-file'
 
 beforeAll(() => {
   initSync({ module: readFileSync(new URL('./lyre-wasm/lyre_wasm_bg.wasm', import.meta.url)) })
@@ -282,6 +290,56 @@ test('a version-1 file opens with the vector access file after a changed one, an
   expect(text(await song.read(song.karaoke.init))).toBe('ki')
   song.close()
   key.free()
+})
+
+test('a song opened with an owner access file shares with another device, which opens it without share', async () => {
+  const key = vectorKey()
+  const other = new DeviceKey(Uint8Array.from({ length: 32 }, (_, i) => i + 1))
+  const song = await openSongFile(new Blob([exampleV1()]), {
+    files: [new Blob([vectorAccessFile()])],
+    key: () => Promise.resolve(key),
+  })
+  expect(song.share).toBeDefined()
+  const shared = await song.share!(other.deviceCode)
+  expect(shared.fingerprint).toBe(other.fingerprint)
+
+  const recipient = await openSongFile(new Blob([exampleV1()]), {
+    files: [shared.accessFile],
+    key: () => Promise.resolve(other),
+  })
+  expect(recipient.songId).toBe(song.songId)
+  expect(recipient.share).toBeUndefined()
+  expect(
+    await problemOf(new Blob([exampleV1()]), { files: [shared.accessFile], key: () => Promise.resolve(key) }),
+  ).toBe('cannot-open')
+  recipient.close()
+  song.close()
+  other.free()
+  key.free()
+})
+
+test('sharing with a changed device code rejects as invalid-code, and after close as failed', async () => {
+  const key = vectorKey()
+  const other = new DeviceKey(Uint8Array.from({ length: 32 }, (_, i) => i + 1))
+  const song = await openSongFile(new Blob([exampleV1()]), {
+    files: [new Blob([vectorAccessFile()])],
+    key: () => Promise.resolve(key),
+  })
+  const code = other.deviceCode
+  const changed = code.slice(0, -1) + (code.endsWith('q') ? 'p' : 'q')
+  await expect(song.share!(changed)).rejects.toBeInstanceOf(ShareError)
+  await expect(song.share!(changed)).rejects.toMatchObject({ problem: 'invalid-code' })
+  await expect(song.share!('')).rejects.toMatchObject({ problem: 'invalid-code' })
+  song.close()
+  await expect(song.share!(code)).rejects.toMatchObject({ problem: 'failed' })
+  other.free()
+  key.free()
+})
+
+test('a version-0 song has no share', async () => {
+  const song = await openSongFile(new Blob([example()]))
+  expect(song.share).toBeUndefined()
+  song.close()
 })
 
 test('a version-1 file is refused as cannot-open when no chosen access file opens it', async () => {
