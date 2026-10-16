@@ -338,8 +338,10 @@ changing how a player reads it:
 The scheme is [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 Its encrypted byte layout is specified in
 [song file format, version 1](song-file-format-v1.md). The core reads and
-writes version 1, and the web Player reads it. Writing it in the clients is
-planned for M3 *(planned for M3)*.
+writes version 1, and the web Player reads it. The web client's song writer,
+in lyre-wasm, writes version 1 for a device code and the owner's recovery
+public key. Making a song still writes version 0 until it uses that writer
+*(planned for M3)*. The Android app does not write version 1 yet.
 Encryption decides who can open a song file. It does not stop copying once a
 song is open.
 

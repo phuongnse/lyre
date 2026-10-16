@@ -172,7 +172,7 @@ async function makeMeasuredSong(request: Extract<PackageRequest, { type: 'make-m
 // Writes a song file in pieces into a fresh working area, under the task
 // lock so the startup cleanup never removes it mid-write, and reads it back.
 // The area is removed at the end, also after an error.
-async function writeInArea(write: (out: PieceSink) => Promise<void>): Promise<Uint8Array> {
+async function writeInArea(write: (out: PieceSink) => Promise<unknown>): Promise<Uint8Array> {
   return navigator.locks.request(TASK_LOCK, async () => {
     const areas = opfsWorkingAreas()
     const taskId = crypto.randomUUID()

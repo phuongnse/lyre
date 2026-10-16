@@ -93,6 +93,29 @@ impl fmt::Display for RecoveryWrapError {
 
 impl std::error::Error for RecoveryWrapError {}
 
+/// Why a recovery public key could not be read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecoveryPublicKeyError {
+    /// The key is not 33 bytes.
+    Length,
+    /// The prefix is not `02` or `03`, or the key is not a point on the
+    /// P-256 curve.
+    Key,
+}
+
+impl fmt::Display for RecoveryPublicKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RecoveryPublicKeyError::Length => write!(f, "the recovery public key is not 33 bytes"),
+            RecoveryPublicKeyError::Key => {
+                write!(f, "the recovery public key is not a valid point")
+            }
+        }
+    }
+}
+
+impl std::error::Error for RecoveryPublicKeyError {}
+
 /// The owner's recovery key pair. The private key stays inside and cannot be
 /// read.
 pub struct RecoveryKey {
@@ -192,6 +215,20 @@ impl NewRecoveryKey {
 pub struct RecoveryPublicKey(p256::PublicKey);
 
 impl RecoveryPublicKey {
+    /// Reads a 33-byte SEC1 compressed key. The prefix must be `02` or `03`
+    /// and the key must be a point on the P-256 curve.
+    pub fn from_compressed(bytes: &[u8]) -> Result<RecoveryPublicKey, RecoveryPublicKeyError> {
+        if bytes.len() != COMPRESSED_LEN {
+            return Err(RecoveryPublicKeyError::Length);
+        }
+        if bytes[0] != 0x02 && bytes[0] != 0x03 {
+            return Err(RecoveryPublicKeyError::Key);
+        }
+        p256::PublicKey::from_sec1_bytes(bytes)
+            .map(RecoveryPublicKey)
+            .map_err(|_| RecoveryPublicKeyError::Key)
+    }
+
     /// The 33-byte SEC1 compressed encoding.
     pub fn to_compressed(&self) -> [u8; COMPRESSED_LEN] {
         <[u8; COMPRESSED_LEN]>::try_from(self.0.to_encoded_point(true).as_bytes())
@@ -638,6 +675,50 @@ mod tests {
     }
 
     #[test]
+    fn the_documented_public_keys_parse_and_round_trip() {
+        for row in key_rows() {
+            let compressed = unhex(&row[2]);
+            let key = RecoveryPublicKey::from_compressed(&compressed).expect("a valid key");
+            assert_eq!(key.to_compressed().to_vec(), compressed);
+        }
+    }
+
+    #[test]
+    fn an_invalid_public_key_is_refused_with_its_reason() {
+        let valid = unhex(&key_rows()[0][2]);
+        for len in [0, 32, 34] {
+            let bytes = vec![valid[0]; len];
+            assert_eq!(
+                RecoveryPublicKey::from_compressed(&bytes),
+                Err(RecoveryPublicKeyError::Length),
+                "{len} bytes"
+            );
+        }
+        for prefix in [0x00, 0x04] {
+            let mut bytes = valid.clone();
+            bytes[0] = prefix;
+            assert_eq!(
+                RecoveryPublicKey::from_compressed(&bytes),
+                Err(RecoveryPublicKeyError::Key),
+                "prefix {prefix:02x}"
+            );
+        }
+        let mut p = vec![0x02];
+        p.extend(unhex(
+            "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
+        ));
+        let mut off_curve = vec![0x02];
+        off_curve.extend([0u8; 31]);
+        off_curve.push(1);
+        for bytes in [p, off_curve] {
+            assert_eq!(
+                RecoveryPublicKey::from_compressed(&bytes),
+                Err(RecoveryPublicKeyError::Key)
+            );
+        }
+    }
+
+    #[test]
     fn debug_and_error_text_hold_no_private_scalar() {
         let scalars: Vec<String> = key_rows().into_iter().map(|row| row[1].clone()).collect();
         for row in key_rows() {
@@ -652,6 +733,8 @@ mod tests {
             format!("{0:?} {0}", RecoveryKeyError::ZeroScalar),
             format!("{0:?} {0}", RecoveryWrapError::Enc),
             format!("{0:?} {0}", RecoveryWrapError::Open),
+            format!("{0:?} {0}", RecoveryPublicKeyError::Length),
+            format!("{0:?} {0}", RecoveryPublicKeyError::Key),
         ];
         for text in texts {
             for scalar in &scalars {
