@@ -336,7 +336,8 @@ changing how a player reads it:
 The scheme is [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 Its encrypted byte layout is specified in
 [song file format, version 1](song-file-format-v1.md). The core reads and
-writes version 1, and the clients move to it in M3 *(planned for M3)*.
+writes version 1, and the web Player reads it. Writing it in the clients is
+planned for M3 *(planned for M3)*.
 Encryption decides who can open a song file. It does not stop copying once a
 song is open.
 

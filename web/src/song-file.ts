@@ -1,10 +1,20 @@
-import { ChunkKind, VocalRole as CoreVocalRole, SongFileFault, SongReader } from './lyre-wasm/lyre_wasm.js'
+import {
+  ChunkKind,
+  DeviceKey,
+  VocalRole as CoreVocalRole,
+  SongFileFault,
+  SongFileFaultKind,
+  SongReader,
+} from './lyre-wasm/lyre_wasm.js'
 
 // Opens a song file through the core, following the reading model of
-// docs/reference/song-file-format-v0.md: the header, then the index, then one
-// chunk at a time. The whole file is never read at once. Load the core first.
+// docs/reference/song-file-format-v0.md and, for version 1,
+// docs/reference/song-file-format-v1.md#reading-model: the header, then the
+// index, then one chunk at a time. The whole file is never read at once. Load
+// the core first.
 
-const HEADER_LENGTH = 32
+// The bytes every header start with: enough to tell the version and its header length.
+const HEADER_START_LENGTH = 32
 
 // The bytes of a song file. A File or a Blob is one.
 export interface ByteSource {
@@ -13,7 +23,15 @@ export interface ByteSource {
 }
 
 // Why a file was refused. The core's own messages are not meant for users.
-export type SongFileProblem = 'not-a-song-file' | 'damaged'
+export type SongFileProblem = 'not-a-song-file' | 'damaged' | 'cannot-open'
+
+// What a version-1 song file needs to open: the access files the owner chose,
+// and this page load's device key. `key` resolves to undefined when the device
+// is not unlocked. It is the core's opaque handle and is never freed here.
+export interface DeviceAccess {
+  files: readonly Blob[]
+  key: () => Promise<DeviceKey | undefined>
+}
 
 export class SongFileError extends Error {
   constructor(readonly problem: SongFileProblem) {
@@ -84,6 +102,8 @@ export interface OpenedSong {
   // The song ID from the header, as 32 lowercase hex digits. Two files of the
   // same song share it.
   songId: string
+  // The access file that opened a version-1 song file. A version-0 file has none.
+  accessFile?: Blob
   details: SongDetails
   durationMs: number
   video?: MediaTrack
@@ -115,11 +135,27 @@ export interface OpenedSong {
   close(): void
 }
 
-export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
-  const header = await readRange(source, 0, Math.min(HEADER_LENGTH, source.size))
+// Opens a song file. A version-0 file needs nothing else. A version-1 file
+// opens with the first of the `access` files that fits it and this device's key.
+export async function openSongFile(source: ByteSource, access?: DeviceAccess): Promise<OpenedSong> {
+  let header = await readRange(source, 0, Math.min(HEADER_START_LENGTH, source.size))
+  const headerLength = core(() => SongReader.headerLength(header))
+  if (headerLength > header.length) header = await readRange(source, 0, headerLength)
   const indexLength = core(() => SongReader.indexLength(header))
-  const index = await readRange(source, HEADER_LENGTH, HEADER_LENGTH + indexLength)
-  const reader = core(() => new SongReader(header, index, source.size))
+  const index = await readRange(source, headerLength, headerLength + indexLength)
+  let reader: SongReader
+  let accessFile: Blob | undefined
+  if (headerLength === HEADER_START_LENGTH) {
+    reader = core(() => new SongReader(header, index, source.size))
+  } else {
+    // No access file can open it, so the owner is not asked to unlock for nothing.
+    if (!access || access.files.length === 0) throw new SongFileError('cannot-open')
+    const key = await access.key()
+    if (!key) throw new SongFileError('cannot-open')
+    const opened = await openEncrypted(header, index, source.size, key, access.files)
+    reader = opened.reader
+    accessFile = opened.accessFile
+  }
   try {
     const chunks = reader.entries().map((entry, position) => {
       const chunk = {
@@ -185,6 +221,7 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
     let closed = false
     return {
       songId: reader.songId,
+      accessFile,
       details,
       durationMs: reader.durationMs,
       video,
@@ -234,6 +271,36 @@ export async function openSongFile(source: ByteSource): Promise<OpenedSong> {
   }
 }
 
+// Tries each access file in order. A refusal to open means the file does not
+// fit this song or this device, so the next one is tried. Any other fault
+// ends the attempt.
+async function openEncrypted(
+  header: Uint8Array<ArrayBuffer>,
+  index: Uint8Array<ArrayBuffer>,
+  fileSize: number,
+  key: DeviceKey,
+  files: readonly Blob[],
+): Promise<{ reader: SongReader; accessFile: Blob }> {
+  for (const accessFile of files) {
+    let bytes: Uint8Array
+    try {
+      bytes = new Uint8Array(await accessFile.arrayBuffer())
+    } catch {
+      continue
+    }
+    try {
+      return { reader: SongReader.openEncrypted(header, index, fileSize, key, bytes), accessFile }
+    } catch (error) {
+      if (!(error instanceof SongFileFault)) throw error
+      const cannotOpen = error.kind === SongFileFaultKind.CannotOpen
+      const problem = problemOf(error)
+      error.free()
+      if (!cannotOpen) throw new SongFileError(problem)
+    }
+  }
+  throw new SongFileError('cannot-open')
+}
+
 // Reads the bytes in [start, end). A read error or a short read means the file
 // is damaged or incomplete.
 async function readRange(source: ByteSource, start: number, end: number): Promise<Uint8Array<ArrayBuffer>> {
@@ -253,8 +320,13 @@ function core<T>(call: () => T): T {
     return call()
   } catch (error) {
     if (!(error instanceof SongFileFault)) throw error
-    const problem = error.notASongFile ? 'not-a-song-file' : 'damaged'
+    const problem = problemOf(error)
     error.free()
     throw new SongFileError(problem)
   }
+}
+
+function problemOf(fault: SongFileFault): SongFileProblem {
+  if (fault.kind === SongFileFaultKind.CannotOpen) return 'cannot-open'
+  return fault.notASongFile ? 'not-a-song-file' : 'damaged'
 }

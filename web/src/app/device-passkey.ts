@@ -1,4 +1,4 @@
-import { InjectionToken } from '@angular/core'
+import { InjectionToken, inject } from '@angular/core'
 import { loadCore } from '../core'
 import { DeviceKey, DeviceKeyFault, devicePrfSalt } from '../lyre-wasm/lyre_wasm.js'
 import { messages } from './messages'
@@ -136,26 +136,47 @@ export async function unlockDevice(
 }
 
 // Keeps the first ready result for the page's lifetime: later calls ask the
-// passkey nothing. The key handle stays inside this closure. Refusals and
-// failures are not kept.
-export function keepFirstReady(unlock: () => Promise<DeviceUnlock>): () => Promise<DeviceOutcome> {
+// passkey nothing. The result holds the key handle, which only the core's
+// opener may use, and nobody frees it. Refusals and failures are not kept.
+export function keepFirstReady(unlock: () => Promise<DeviceUnlock>): () => Promise<DeviceUnlock> {
   let ready: DeviceUnlock | undefined
   let pending: Promise<DeviceUnlock> | undefined
   return async () => {
-    if (ready) return ready.outcome
+    if (ready) return ready
     pending ??= unlock()
     try {
       const unlocked = await pending
       if (unlocked.outcome.result === 'ready') ready = unlocked
-      return unlocked.outcome
+      return unlocked
     } finally {
       pending = undefined
     }
   }
 }
 
+// This page load's one device unlock, shared by every part of the page that
+// needs it, so the passkey is asked once.
+const UNLOCKED_DEVICE = new InjectionToken<() => Promise<DeviceUnlock>>('UNLOCKED_DEVICE', {
+  providedIn: 'root',
+  factory: () => keepFirstReady(() => unlockDevice()),
+})
+
 // The page gets the unlock by injection, so tests can replace it.
 export const DEVICE_UNLOCK = new InjectionToken<() => Promise<DeviceOutcome>>('DEVICE_UNLOCK', {
   providedIn: 'root',
-  factory: () => keepFirstReady(() => unlockDevice()),
+  factory: () => {
+    const unlocked = inject(UNLOCKED_DEVICE)
+    return async () => (await unlocked()).outcome
+  },
+})
+
+// The device key of the shared unlock, or undefined when the device is not
+// unlocked. It is the core's opaque handle: it goes to the song file opener and
+// nowhere else, never into UI state, logs or messages.
+export const DEVICE_KEY = new InjectionToken<() => Promise<DeviceKey | undefined>>('DEVICE_KEY', {
+  providedIn: 'root',
+  factory: () => {
+    const unlocked = inject(UNLOCKED_DEVICE)
+    return async () => (await unlocked()).key
+  },
 })

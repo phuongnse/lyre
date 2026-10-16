@@ -28,12 +28,20 @@ export class Library {
     })
   }
 
-  // Keeps `file`, the song file `song` was opened from, then asks the browser
-  // for persistent storage.
+  // Keeps `file`, the song file `song` was opened from, with the access file
+  // that opened it, then asks the browser for persistent storage.
   keep(song: OpenedSong, file: Blob): Promise<void> {
     return this.update(async () => {
       const { title, artist, composer } = song.details
-      await this.store.keep({ songId: song.songId, title, artist, composer, openedAt: Date.now(), file })
+      await this.store.keep({
+        songId: song.songId,
+        title,
+        artist,
+        composer,
+        openedAt: Date.now(),
+        file,
+        accessFile: song.accessFile,
+      })
       const songs = await this.store.list()
       return { songs, mayBeCleared: !((await this.store.persisted()) || (await this.store.persist())) }
     })

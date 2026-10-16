@@ -3,7 +3,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { afterEach, expect, test, vi } from 'vitest'
 import { SONG_FILE_OPENER } from '../core'
 import { FakeLibraryStore } from '../fake-library-store'
-import { OpenedSong, SongFileError } from '../song-file'
+import { ByteSource, DeviceAccess, OpenedSong, SongFileError } from '../song-file'
+import { DEVICE_KEY } from './device-passkey'
 import { LIBRARY_STORE } from './library'
 import { Player } from './player.component'
 
@@ -12,33 +13,36 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// Renders the Player with `opener` and `store`, then chooses `file` in it.
+type Opener = (source: ByteSource, access?: DeviceAccess) => Promise<OpenedSong>
+
+// Renders the Player with `opener` and `store`, then chooses `files` in it.
 async function chooseFile(
-  opener: () => Promise<OpenedSong>,
+  opener: Opener,
   store = new FakeLibraryStore(),
-  file = new File(['hello'], 'song.lyre'),
+  files: File | File[] = new File(['hello'], 'song.lyre'),
 ): Promise<HTMLElement> {
-  return (await chooseFileIn(opener, store, file)).nativeElement as HTMLElement
+  return (await chooseFileIn(opener, store, files)).nativeElement as HTMLElement
 }
 
 async function chooseFileIn(
-  opener: () => Promise<OpenedSong>,
+  opener: Opener,
   store: FakeLibraryStore,
-  file: File,
+  files: File | File[],
 ): Promise<ComponentFixture<Player>> {
   TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
-      { provide: SONG_FILE_OPENER, useValue: () => opener() },
+      { provide: SONG_FILE_OPENER, useValue: opener },
       { provide: LIBRARY_STORE, useValue: store },
+      { provide: DEVICE_KEY, useValue: () => Promise.resolve(undefined) },
     ],
   })
   const fixture = TestBed.createComponent(Player)
   await fixture.whenStable()
   const element = fixture.nativeElement as HTMLElement
   const input = element.querySelector('input[type="file"]') as HTMLInputElement
-  // jsdom has no DataTransfer to build a FileList, and the Player reads only the first file.
-  Object.defineProperty(input, 'files', { value: [file] })
+  // jsdom has no DataTransfer to build a FileList.
+  Object.defineProperty(input, 'files', { value: Array.isArray(files) ? files : [files] })
   input.dispatchEvent(new Event('change'))
   await fixture.whenStable()
   return fixture
@@ -143,6 +147,7 @@ test('a song file made on the page is kept in the library as the same Blob', asy
       provideZonelessChangeDetection(),
       { provide: SONG_FILE_OPENER, useValue: () => Promise.resolve(openedSong()) },
       { provide: LIBRARY_STORE, useValue: store },
+      { provide: DEVICE_KEY, useValue: () => Promise.resolve(undefined) },
     ],
   })
   const fixture = TestBed.createComponent(Player)
@@ -205,6 +210,7 @@ test('a song given through the input opens, is not kept, and the Player has no o
         },
       },
       { provide: LIBRARY_STORE, useValue: store },
+      { provide: DEVICE_KEY, useValue: () => Promise.resolve(undefined) },
     ],
   })
   const fixture = TestBed.createComponent(Player)
@@ -223,6 +229,61 @@ test('a song given through the input opens, is not kept, and the Player has no o
   await fixture.whenStable()
   expect(keep).not.toHaveBeenCalled()
   expect(store.songs.size).toBe(0)
+  // Stops the playback while the stand-ins are still in place.
+  fixture.destroy()
+})
+
+test('choosing a song file with an access file gives the opener only the .lyrekey file as an access file', async () => {
+  const song = new File(['song bytes'], 'song.lyre')
+  const access = new File(['access bytes'], 'device.LYREKEY')
+  const calls: { source: ByteSource; access?: DeviceAccess }[] = []
+  const fixture = await chooseFileIn(
+    (source, access) => {
+      calls.push({ source, access })
+      return Promise.resolve(openedSong())
+    },
+    new FakeLibraryStore(),
+    [access, song],
+  )
+  expect(calls).toHaveLength(1)
+  expect(calls[0].source).toBe(song)
+  expect(calls[0].access?.files).toEqual([access])
+  // Stops the playback while the stand-ins are still in place.
+  fixture.destroy()
+})
+
+test('a song the opener cannot open shows the cannot-open message, no video, and keeps nothing', async () => {
+  const store = new FakeLibraryStore()
+  const element = await chooseFile(() => Promise.reject(new SongFileError('cannot-open')), store)
+  expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+    'This song cannot be opened on this device.',
+  )
+  expect(element.querySelector('video')).toBeNull()
+  expect(element.querySelector('ul')).toBeNull()
+  expect(store.songs.size).toBe(0)
+})
+
+test('the library keeps the access file that opened a song, and choosing it passes that file back', async () => {
+  const store = new FakeLibraryStore()
+  const access = new File(['access bytes'], 'device.lyrekey')
+  const calls: (DeviceAccess | undefined)[] = []
+  const fixture = await chooseFileIn(
+    (_source, deviceAccess) => {
+      calls.push(deviceAccess)
+      return Promise.resolve({ ...openedSong(), accessFile: access })
+    },
+    store,
+    [new File(['song bytes'], 'song.lyre'), access],
+  )
+  await vi.waitFor(() => expect(store.songs.size).toBe(1))
+  expect(store.songs.get('00112233445566778899aabbccddeeff')?.accessFile).toBe(access)
+
+  await fixture.whenStable()
+  const element = fixture.nativeElement as HTMLElement
+  const button = element.querySelector('ul[aria-label="Library"] button') as HTMLButtonElement
+  button.click()
+  await vi.waitFor(() => expect(calls).toHaveLength(2))
+  expect(calls[1]?.files).toEqual([access])
   // Stops the playback while the stand-ins are still in place.
   fixture.destroy()
 })

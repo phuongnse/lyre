@@ -6,8 +6,8 @@ is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 
 The core writes and reads version 1 next to version 0, and its tests check
-the [known-answer example](#known-answer-example). The clients move to
-version 1 in M3 *(planned for M3)*.
+the [known-answer example](#known-answer-example). The web Player reads
+version 1. Writing it in the clients is planned for M3 *(planned for M3)*.
 
 Encryption decides who can open a song file. It does not stop copying once
 a song is open. See

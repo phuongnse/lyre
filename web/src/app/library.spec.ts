@@ -67,3 +67,12 @@ test('a store that fails leaves the library empty, and keeping does not throw', 
   expect(kept.songs()).toEqual([])
   expect(kept.mayBeCleared()).toBe(false)
 })
+
+test('a version-1 song is kept with the access file that opened it', async () => {
+  const store = new FakeLibraryStore()
+  const kept = library(store)
+  const access = new Blob(['access'])
+  await kept.keep({ ...song('00112233445566778899aabbccddeeff', 'Mưa'), accessFile: access }, new Blob(['one']))
+  expect(kept.songs()[0].accessFile).toBe(access)
+  expect(store.songs.get('00112233445566778899aabbccddeeff')?.accessFile).toBe(access)
+})

@@ -55,8 +55,8 @@ lyre-cli build <manifest.toml> <out.lyre> --device-code <code> --access <out.lyr
 - The two options go together, in this order, after the two paths. Giving them
   is what selects version 1. With only one of them, or in another order, the
   command prints the usage and writes nothing. Without them it writes version
-  0, as above. Version 0 stays the default until the web Player reads
-  version 1.
+  0, as above. Version 0 stays the default while the web client still makes
+  version-0 songs and the version-0 journeys use them.
 - Every build makes a fresh content key. The key is written only inside the
   access file, wrapped for the device. It is never printed or logged.
 - The access file holds one entry for the song, with the owner role.

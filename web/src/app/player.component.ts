@@ -13,7 +13,9 @@ import {
 import { MatButton } from '@angular/material/button'
 import { MatButtonToggle, MatButtonToggleGroup } from '@angular/material/button-toggle'
 import { SONG_FILE_OPENER } from '../core'
+import { KeptSong } from '../library-store'
 import { ByteSource, OpenedSong, SongFileError, SongFileProblem } from '../song-file'
+import { DEVICE_KEY } from './device-passkey'
 import { Library } from './library'
 import { LibraryList } from './library.component'
 import { Lyrics } from './lyrics.component'
@@ -29,12 +31,12 @@ type State =
 
 type AudioTrackChoice = 'karaoke' | 'original'
 
-// The Player: opens a song file, or a song from the library, and plays its
-// video with the karaoke track or the original track, with its lyrics over the
-// bottom of the video. A song file that opens, and that this browser can play,
-// is kept in the library. Given a song through its input, it plays only that
-// song: it keeps nothing in the library, and has no open button or library
-// list.
+// The Player: opens a song file with its access files, or a song from the
+// library, and plays its video with the karaoke track or the original track,
+// with its lyrics over the bottom of the video. A song file that opens, and that
+// this browser can play, is kept in the library, with the access file that
+// opened it. Given a song through its input, it plays only that song: it keeps
+// nothing in the library, and has no open button or library list.
 @Component({
   selector: 'lyre-player',
   imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, LibraryList, Lyrics],
@@ -45,8 +47,8 @@ type AudioTrackChoice = 'karaoke' | 'original'
       <button matButton="filled" type="button" [disabled]="current.status === 'opening'" (click)="fileInput.click()">
         {{ messages.openSongFile }}
       </button>
-      <input #fileInput type="file" accept=".lyre" hidden (change)="open(fileInput)" />
-      <lyre-library (choose)="openSource($event.file)" />
+      <input #fileInput type="file" accept=".lyre,.lyrekey" multiple hidden (change)="open(fileInput)" />
+      <lyre-library (choose)="openKept($event)" />
     }
     @switch (current.status) {
       @case ('opening') {
@@ -54,7 +56,7 @@ type AudioTrackChoice = 'karaoke' | 'original'
       }
       @case ('failed') {
         <p role="alert">
-          {{ current.problem === 'not-a-song-file' ? messages.songFileNotASongFile : messages.songFileDamaged }}
+          {{ problemMessage(current.problem) }}
         </p>
       }
       @case ('unplayable') {
@@ -113,6 +115,7 @@ export class Player {
   protected readonly track = signal<AudioTrackChoice>('karaoke')
   private readonly openSongFile = inject(SONG_FILE_OPENER)
   private readonly library = inject(Library)
+  private readonly deviceKey = inject(DEVICE_KEY)
   // Counts the songs asked for, so only the latest one opens.
   private attempts = 0
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video')
@@ -142,10 +145,30 @@ export class Player {
   }
 
   protected async open(input: HTMLInputElement): Promise<void> {
-    const file = input.files?.[0]
+    // The extension only sorts the files into two kinds. The core matches an
+    // access file to its song by song ID.
+    const chosen = Array.from(input.files ?? [])
     // Clears the choice, so choosing the same file again opens it again.
     input.value = ''
-    if (file) await this.openSource(file, file)
+    const isAccessFile = (file: File) => file.name.toLowerCase().endsWith('.lyrekey')
+    const file = chosen.find((candidate) => !isAccessFile(candidate))
+    if (file) await this.openSource(file, file, chosen.filter(isAccessFile))
+  }
+
+  // Opens a song kept in the library, with the access file it was kept with.
+  protected openKept(kept: KeptSong): Promise<void> {
+    return this.openSource(kept.file, undefined, kept.accessFile ? [kept.accessFile] : [])
+  }
+
+  protected problemMessage(problem: SongFileProblem): string {
+    switch (problem) {
+      case 'not-a-song-file':
+        return messages.songFileNotASongFile
+      case 'cannot-open':
+        return messages.songCannotOpen
+      default:
+        return messages.songFileDamaged
+    }
   }
 
   // Opens a song file made on this page, and keeps it in the library as an opened file is.
@@ -153,12 +176,13 @@ export class Player {
     return this.openSource(file, file)
   }
 
-  // Opens `source`. When it is a chosen `file` that opens, keeps it in the library.
-  protected async openSource(source: ByteSource, file?: Blob): Promise<void> {
+  // Opens `source` with the chosen `accessFiles`. When it is a chosen `file`
+  // that opens, keeps it in the library.
+  protected async openSource(source: ByteSource, file?: Blob, accessFiles: readonly Blob[] = []): Promise<void> {
     const attempt = ++this.attempts
     this.leave({ status: 'opening' })
     try {
-      const song = await this.openSongFile(source)
+      const song = await this.openSongFile(source, { files: accessFiles, key: this.deviceKey })
       if (attempt !== this.attempts || this.state().status !== 'opening') {
         song.close()
         return

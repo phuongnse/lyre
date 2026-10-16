@@ -46,6 +46,7 @@ export const messages = {
   openSongFile: 'Open a song file',
   songFileOpening: 'Opening the song file…',
   songFileNotASongFile: 'This file is not a song file.',
+  songCannotOpen: 'This song cannot be opened on this device.',
   songFileDamaged: 'This song file is damaged or incomplete.',
   // Keyed by SongMedia.
   cannotPlay: {

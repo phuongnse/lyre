@@ -1,6 +1,6 @@
 import { InjectionToken } from '@angular/core'
 import init, { coreVersion } from './lyre-wasm/lyre_wasm.js'
-import { ByteSource, OpenedSong, openSongFile } from './song-file'
+import { ByteSource, DeviceAccess, OpenedSong, openSongFile } from './song-file'
 
 // Every caller shares one initialisation of the WebAssembly module.
 let ready: Promise<unknown> | undefined
@@ -24,10 +24,13 @@ export const CORE_VERSION_LOADER = new InjectionToken<() => Promise<string>>('CO
 })
 
 // Components get the song file opener by injection, so tests can replace it.
-export const SONG_FILE_OPENER = new InjectionToken<(source: ByteSource) => Promise<OpenedSong>>('SONG_FILE_OPENER', {
-  providedIn: 'root',
-  factory: () => async (source) => {
-    await loadCore()
-    return openSongFile(source)
+export const SONG_FILE_OPENER = new InjectionToken<(source: ByteSource, access?: DeviceAccess) => Promise<OpenedSong>>(
+  'SONG_FILE_OPENER',
+  {
+    providedIn: 'root',
+    factory: () => async (source, access) => {
+      await loadCore()
+      return openSongFile(source, access)
+    },
   },
-})
+)

@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { Page } from '@playwright/test'
+import { FileChooser, Page } from '@playwright/test'
 
 const run = promisify(execFile)
 
@@ -13,9 +13,10 @@ export const maleFixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture
 // tests/fixtures/song/h265.toml.
 export const h265Fixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture-h265.lyre', import.meta.url))
 
-export type Choice = string | { name: string; mimeType: string; buffer: Buffer }
+// One file or several, as Playwright's `setFiles` takes them.
+export type Choice = Parameters<FileChooser['setFiles']>[0]
 
-// Chooses `file` with the Player's open button on the current page.
+// Chooses `file` (one choice or several) with the Player's open button on the current page.
 export async function chooseSongFile(page: Page, file: Choice): Promise<void> {
   const chooser = page.waitForEvent('filechooser')
   await page.getByRole('button', { name: 'Open a song file' }).click()
