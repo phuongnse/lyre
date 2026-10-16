@@ -127,7 +127,7 @@ needs, and a changed or truncated file is rejected. Format version 0, used
 in M1 and M2, is unencrypted, for development only. The web Player refuses
 opened and kept version-0 files. Songs made in the main page's Make a song
 section are version 1, encrypted for the device and the recovery key. Only the
-check pages still make version-0 files, which play from memory. No version-0
+model check page still makes version-0 files, which play from memory. No version-0
 file is ever published.
 
 The byte layout, limits and media codecs are specified in

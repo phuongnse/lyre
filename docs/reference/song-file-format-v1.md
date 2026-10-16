@@ -10,7 +10,7 @@ the [known-answer example](#known-answer-example). The web Player reads
 version 1. The web client's song writer, in lyre-wasm, writes version 1 for a
 device code and the owner's recovery public key. It makes a fresh content key
 in the core and gives the owner access file. Making a song in the main page
-uses that writer. Only the check pages still write version 0. The Android app
+uses that writer. Only the model check page still writes version 0. The Android app
 does not write version 1 yet.
 
 Encryption decides who can open a song file. It does not stop copying once

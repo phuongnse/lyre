@@ -204,16 +204,19 @@ report that it cannot encode Opus, and checks that making the audio tracks
 shows only the cannot-encode-audio message.
 
 The song file journeys make a song file on the source check page from a
-source, `karaoke.webm`, a one-line lyrics file and a timing file, and play it
-in the Player under the download link, from memory. The downloaded version-0
-file is not opened, because the main page's open button refuses it, and
-nothing is kept in the library. `song.webm` gives a song file with video and a thumbnail,
+source, `karaoke.webm`, a one-line lyrics file and a timing file. They run on
+`localhost` with a virtual passkey authenticator and a seeded recovery public
+key, because the page waits for the device unlock. The downloaded file is
+version 1, and the access file downloads too. The journeys play the song in
+the Player under the download links, with its access file, and nothing is
+kept in the library. `song.webm` gives a song file with video and a thumbnail,
 which plays, and whose Karaoke and Original switch keeps the position while
 paused. `song.mp3` gives one with no video and no thumbnail. Playwright's
 Chromium refuses its original track's type, so its journey expects the
 Player's cannot-play message there, and playback in a browser that accepts
 the type. A timing that ends at 5 s, after the 2 s song, gets the page's
-refusal and no download.
+refusal and no download. A journey with no recovery public key gets the
+recovery key message, starts no worker and stores no device passkey entry.
 
 The thumbnail journeys check the thumbnail the web client makes. `song.webm`
 gives its middle frame as a JPEG of 64×36. `cover.mp3` gives its PNG cover

@@ -6,9 +6,11 @@ import { canEncodeKaraoke } from '../../karaoke-track'
 import { SegmentTimes, SongRefusal, VideoRefusal, VocalRole } from '../../original-track-messages'
 import { SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
 import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
+import { DEVICE_UNLOCK } from '../device-passkey'
 import { messages } from '../messages'
 import { Player } from '../player.component'
-import { songDetailsFor, songFileName } from '../song-details'
+import { readRecoveryPublicKey } from '../recovery-key'
+import { accessFileName, songDetailsFor, songFileName } from '../song-details'
 import { cannotPlayMessage, sourceProblemMessage } from '../source-messages'
 import {
   Packaging,
@@ -52,12 +54,17 @@ interface AudioTracks {
   songDurationMs: number
 }
 
-// The song file made: its blob: URL, the name it downloads as and the file
-// itself, which the Player plays from memory.
-interface SongDownload {
+// A file made: its blob: URL, the name it downloads as and the file itself.
+interface MadeFile {
   url: string
   name: string
   file: Blob
+}
+
+// The song file made, and the access file for this device that goes with it.
+// The Player plays the song with its access file.
+interface SongDownload extends MadeFile {
+  access: MadeFile
 }
 
 type State =
@@ -81,6 +88,9 @@ type State =
   | { status: 'making'; file: File; details: SourceDetails }
   | { status: 'make-failed'; file: File; details: SourceDetails; reason?: VideoRefusal }
   | { status: 'cannot-encode'; file: File; details: SourceDetails }
+  | { status: 'no-recovery-key'; file: File; details: SourceDetails }
+  | { status: 'unlocking'; file: File; details: SourceDetails }
+  | { status: 'no-device-code'; file: File; details: SourceDetails }
   | { status: 'making-song'; file: File; details: SourceDetails }
   | { status: 'song-failed'; file: File; details: SourceDetails; reason?: VideoRefusal | SongRefusal }
   | { status: 'failed'; problem: SourceProblem }
@@ -120,8 +130,9 @@ function isVideoRefusal(reason: VideoRefusal | SongRefusal | undefined): reason 
 // tracks, cut at the same times, and the video track, in the worker, or make
 // its thumbnail, also in the worker. With picked lyrics and timing files and
 // a vocal role, it can then write all of these into a song file through the
-// core, in the worker, stage 9, and offer it as a download, with a Player under
-// the link that plays the song from memory. A source this
+// core, in the worker, stage 9, encrypted for this device and the owner's
+// recovery public key, and offer it and its access file as downloads, with a
+// Player under the links that plays the song with its access file. A source this
 // browser cannot play shows the reason next to its details, and can still be
 // decoded and packaged, because this is a test page. Opened by its URL,
 // #/source-check.
@@ -164,6 +175,9 @@ function isVideoRefusal(reason: VideoRefusal | SongRefusal | undefined): reason 
       current.status === 'making' ||
       current.status === 'make-failed' ||
       current.status === 'cannot-encode' ||
+      current.status === 'no-recovery-key' ||
+      current.status === 'unlocking' ||
+      current.status === 'no-device-code' ||
       current.status === 'making-song' ||
       current.status === 'song-failed'
     ) {
@@ -173,6 +187,7 @@ function isVideoRefusal(reason: VideoRefusal | SongRefusal | undefined): reason 
         current.status === 'packaging' ||
         current.status === 'thumbnailing' ||
         current.status === 'making' ||
+        current.status === 'unlocking' ||
         current.status === 'making-song';
       @if (details.cannotPlay !== undefined) {
         <p role="alert">{{ cannotPlayMessage(details.cannotPlay) }}</p>
@@ -279,6 +294,12 @@ function isVideoRefusal(reason: VideoRefusal | SongRefusal | undefined): reason 
         <p role="alert">{{ makeFailedMessage(current.reason) }}</p>
       } @else if (current.status === 'cannot-encode') {
         <p role="alert">{{ messages.cannotEncodeAudio }}</p>
+      } @else if (current.status === 'no-recovery-key') {
+        <p role="alert">{{ messages.recoveryKeyMissing }}</p>
+      } @else if (current.status === 'unlocking') {
+        <p role="status">{{ messages.deviceUnlockWaiting }}</p>
+      } @else if (current.status === 'no-device-code') {
+        <p role="alert">{{ messages.noDeviceCodeForMaking }}</p>
       } @else if (current.status === 'making-song') {
         <p role="status">{{ messages.makingSongFile }}</p>
       } @else if (current.status === 'song-failed') {
@@ -286,7 +307,10 @@ function isVideoRefusal(reason: VideoRefusal | SongRefusal | undefined): reason 
       } @else if (current.song !== undefined) {
         @let song = current.song;
         <a matButton="filled" [href]="song.url" [download]="song.name">{{ messages.downloadSongFile }}</a>
-        <lyre-player [song]="song.file" />
+        <a matButton="filled" [href]="song.access.url" [download]="song.access.name">{{
+          messages.downloadAccessFile
+        }}</a>
+        <lyre-player [song]="song.file" [access]="song.access.file" />
       } @else if (current.thumbnail === 'none') {
         <p role="status">{{ messages.noThumbnail }}</p>
       } @else if (current.thumbnail !== undefined) {
@@ -371,8 +395,10 @@ export class SourceCheck {
   private attempts = 0
   // The packaging worker running, if any.
   private packaging: Packaging | undefined
-  // The blob: URL of the last song file made, if any.
-  private songUrl: string | undefined
+  // The page's one unlock, shared with the This device section and the Player.
+  private readonly unlock = inject(DEVICE_UNLOCK)
+  // The blob: URLs of the last song file and access file made, if any.
+  private songUrls: string[] = []
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.revokeSongUrl())
@@ -535,10 +561,12 @@ export class SourceCheck {
   }
 
   // Makes every track and the thumbnail, then writes them with the lyrics and
-  // the timing into a song file through the core, in a Web Worker, and offers
-  // it as a download. The details come from the source's tags. A browser that
-  // cannot encode Opus is told so before any work starts. Each refusal a user
-  // can fix gets its own message, and any other failure one plain message.
+  // the timing into a version-1 song file through the core, in a Web Worker,
+  // and offers it and its access file as downloads. The details come from the
+  // source's tags. A browser that cannot encode Opus, a missing recovery
+  // public key and a device with no device code are each told so before any
+  // work starts. Each refusal a user can fix gets its own message, and any
+  // other failure one plain message.
   protected async makeSong(file: File, details: SourceDetails): Promise<void> {
     const karaokeFile = this.karaokeFile()
     const lyrics = this.lyricsFile()
@@ -564,6 +592,21 @@ export class SourceCheck {
       this.state.set({ status: 'cannot-encode', file, details })
       return
     }
+    const recoveryPublicKey = readRecoveryPublicKey()
+    if (recoveryPublicKey === undefined) {
+      this.state.set({ status: 'no-recovery-key', file, details })
+      return
+    }
+    // Every outcome without a device code gets the same message. The device
+    // code goes to the worker and nowhere else, never into the page's state.
+    this.state.set({ status: 'unlocking', file, details })
+    const outcome = await this.unlock()
+    if (attempt !== this.attempts) return
+    if (outcome.result !== 'ready') {
+      this.state.set({ status: 'no-device-code', file, details })
+      return
+    }
+    this.state.set({ status: 'making-song', file, details })
     const packaging = makeSongInWorker({
       baseUri: document.baseURI,
       file,
@@ -575,16 +618,30 @@ export class SourceCheck {
       // The song ID is random, chosen when the song is made.
       songId: crypto.getRandomValues(new Uint8Array(16)),
       details: songDetailsFor(details, file.name, vocalRole),
+      encryptFor: { deviceCode: outcome.deviceCode, recoveryPublicKey },
     })
     this.packaging = packaging
     const reply = await packaging.reply
     if (attempt !== this.attempts) return
     this.packaging = undefined
-    if (reply.type === 'song-done') {
+    // A song made here is always encrypted, so a reply without an access file is a failure.
+    if (reply.type === 'song-done' && reply.accessFile !== undefined) {
       const blob = new Blob([reply.bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' })
+      const accessBlob = new Blob([reply.accessFile as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
-      this.songUrl = url
-      this.state.set({ status: 'ready', file, details, song: { url, name: songFileName(file.name), file: blob } })
+      const accessUrl = URL.createObjectURL(accessBlob)
+      this.songUrls = [url, accessUrl]
+      this.state.set({
+        status: 'ready',
+        file,
+        details,
+        song: {
+          url,
+          name: songFileName(file.name),
+          file: blob,
+          access: { url: accessUrl, name: accessFileName(file.name), file: accessBlob },
+        },
+      })
     } else {
       const reason = reply.type === 'failed' ? reply.reason : undefined
       this.state.set(
@@ -596,8 +653,8 @@ export class SourceCheck {
   }
 
   private revokeSongUrl(): void {
-    if (this.songUrl !== undefined) URL.revokeObjectURL(this.songUrl)
-    this.songUrl = undefined
+    for (const url of this.songUrls) URL.revokeObjectURL(url)
+    this.songUrls = []
   }
 
   private stopPackaging(): void {

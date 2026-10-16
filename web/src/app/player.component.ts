@@ -37,9 +37,10 @@ type AudioTrackChoice = 'karaoke' | 'original'
 // this browser can play, is kept in the library, with the access file that
 // opened it. A version-0 file is refused, whether it is opened or kept. A song
 // made on this page opens the same way, with the access file the task made. Given
-// a song through its input, as the check pages do, it plays only that song from
-// memory: it keeps nothing in the library, and has no open button or library
-// list.
+// a song through its input, as the check pages do, it plays only that song: it
+// keeps nothing in the library, and has no open button or library list. With an
+// access file through its input too, the song opens with device access, like a
+// version-1 song the owner opens. Without one, it plays from memory.
 @Component({
   selector: 'lyre-player',
   imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, LibraryList, Lyrics],
@@ -112,6 +113,8 @@ type AudioTrackChoice = 'karaoke' | 'original'
 export class Player {
   // A song to play without keeping it, such as a measured song.
   readonly song = input<Blob>()
+  // The access file of that song, when it is a version-1 song to open with device access.
+  readonly access = input<Blob>()
   protected readonly messages = messages
   protected readonly state = signal<State>({ status: 'empty' })
   protected readonly playing = signal(false)
@@ -139,10 +142,11 @@ export class Player {
         if (this.playback === playback) this.playback = undefined
       })
     })
-    // A song given through the input opens from memory, so the library never keeps it.
+    // A song given through the input is never kept in the library.
     effect(() => {
       const song = this.song()
-      if (song) untracked(() => void this.openSource(song))
+      const access = this.access()
+      if (song) untracked(() => void this.openSource(song, access && { files: [access] }))
     })
     inject(DestroyRef).onDestroy(() => this.leave())
   }

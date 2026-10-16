@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, Page, test } from '@playwright/test'
-import { chooseSongFile, Choice, unlockedDeviceCode } from './song-file'
+import { chooseSongFile, Choice, seedRecoveryKey, unlockedDeviceCode } from './song-file'
 import { openWith } from './webauthn'
 
 // Chromium refuses WebAuthn on IP address origins, so these journeys use localhost.
@@ -30,18 +30,6 @@ function watchProblems(page: Page): string[] {
   })
   page.on('pageerror', (error) => problems.push(error.message))
   return problems
-}
-
-// A documented recovery public key (docs/reference/device-access.md#recovery-key), as
-// the recovery key screen will keep it: base64url of its 33-byte compressed form.
-const RECOVERY_KEY = Buffer.from(
-  '02585a2882fca9a0ee8cf896c3ac8e515402d3c85d91384bce2dce930ce3ce5307',
-  'hex',
-).toString('base64url')
-
-// Keeps the recovery public key in this page's storage on every load.
-async function seedRecoveryKey(page: Page): Promise<void> {
-  await page.addInitScript((key) => localStorage.setItem('lyre-recovery-public-key', key), RECOVERY_KEY)
 }
 
 // The URLs of the test model requests, so a journey checks that none was made.

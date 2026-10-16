@@ -15,7 +15,8 @@ import { checkVideoEnd, packageVideo, videoRefusal } from './video-track'
 // karaoke track cut at its times and the video track, and makes a source's
 // thumbnail, off the page's main thread. It can also make all of these and
 // write them, with the lyrics and the timing, into a song file through the
-// core. It can also make a song from a source, the karaoke track and the
+// core, encrypted for a device and the owner's recovery public key, and answer
+// with its access file too. It can also make a song from a source, the karaoke track and the
 // timing of a measurement, for the model check page to play. It answers with
 // a summary or the song file, never with the error's text.
 addEventListener('message', (event: MessageEvent<PackageRequest>) => {
@@ -48,7 +49,8 @@ addEventListener('message', (event: MessageEvent<PackageRequest>) => {
     )
   } else if (request.type === 'make-song') {
     void makeSong(request).then(
-      (bytes) => postMessage({ type: 'song-done', bytes } satisfies PackageReply, [bytes.buffer]),
+      ({ bytes, accessFile }) =>
+        postMessage({ type: 'song-done', bytes, accessFile } satisfies PackageReply, [bytes.buffer, accessFile.buffer]),
       (error: unknown) => {
         // Only a fixed reason code crosses, never the error's text.
         const reason = error instanceof SongRefused ? error.reason : videoRefusal(error)
@@ -57,7 +59,7 @@ addEventListener('message', (event: MessageEvent<PackageRequest>) => {
     )
   } else if (request.type === 'make-measured-song') {
     void makeMeasuredSong(request).then(
-      (bytes) => postMessage({ type: 'song-done', bytes } satisfies PackageReply, [bytes.buffer]),
+      ({ bytes }) => postMessage({ type: 'song-done', bytes } satisfies PackageReply, [bytes.buffer]),
       // The page has one message for any failure, so no reason crosses.
       () => postMessage({ type: 'failed' } satisfies PackageReply),
     )
@@ -91,9 +93,12 @@ async function makeAudio(
 }
 
 // Reads the timing file against the lyrics, then makes every track and the
-// thumbnail, and writes the song file through the core. The lyrics' bytes go
-// to the core unchanged (D5).
-async function makeSong(request: Extract<PackageRequest, { type: 'make-song' }>): Promise<Uint8Array> {
+// thumbnail, and writes the song file through the core, encrypted for the
+// device code and the recovery public key. It gives the song file and its
+// access file. The lyrics' bytes go to the core unchanged (D5).
+async function makeSong(
+  request: Extract<PackageRequest, { type: 'make-song' }>,
+): Promise<{ bytes: Uint8Array; accessFile: Uint8Array<ArrayBuffer> }> {
   // The build copies the core's module to lyre-wasm/, next to the page.
   await init({ module_or_path: new URL('lyre-wasm/lyre_wasm_bg.wasm', request.baseUri) })
   const lyrics = new Uint8Array(await request.lyrics.arrayBuffer())
@@ -109,7 +114,7 @@ async function makeSong(request: Extract<PackageRequest, { type: 'make-song' }>)
   if (video !== null) checkVideoEnd(video, songDurationMs)
   const thumbnail = await makeThumbnail(request.file)
 
-  return writeInArea((out) =>
+  const { bytes, result } = await writeInArea((out) =>
     writeSong({
       songId: request.songId,
       details: request.details,
@@ -120,8 +125,12 @@ async function makeSong(request: Extract<PackageRequest, { type: 'make-song' }>)
       video,
       thumbnail,
       out,
+      encryptFor: request.encryptFor,
     }),
   )
+  // An encrypted song always has an access file.
+  if (result === undefined) throw new Error('no access file')
+  return { bytes, accessFile: result }
 }
 
 // The last extension of a file name, such as ".webm".
@@ -135,7 +144,9 @@ const KARAOKE_PIECE_FRAMES = 44_100
 // no thumbnail. Its title is the source's title tag, or else the file name
 // without its extension. The artist and composer come from the tags, and the
 // vocal role is female. The lyrics' bytes go to the core unchanged (D5).
-async function makeMeasuredSong(request: Extract<PackageRequest, { type: 'make-measured-song' }>): Promise<Uint8Array> {
+async function makeMeasuredSong(
+  request: Extract<PackageRequest, { type: 'make-measured-song' }>,
+): Promise<{ bytes: Uint8Array }> {
   // The build copies the core's module to lyre-wasm/, next to the page.
   await init({ module_or_path: new URL('lyre-wasm/lyre_wasm_bg.wasm', request.baseUri) })
   const details = await readSource(request.file)
@@ -149,7 +160,7 @@ async function makeMeasuredSong(request: Extract<PackageRequest, { type: 'make-m
   const songDurationMs = karaokeTimes[karaokeTimes.length - 1]!.endMs
   const video = details.videoType === undefined ? null : await packageVideo(request.file, details.videoType)
   if (video !== null) checkVideoEnd(video, songDurationMs)
-  return writeInArea((out) =>
+  return await writeInArea((out) =>
     writeSong({
       songId: request.songId,
       details: {
@@ -171,22 +182,24 @@ async function makeMeasuredSong(request: Extract<PackageRequest, { type: 'make-m
 
 // Writes a song file in pieces into a fresh working area, under the task
 // lock so the startup cleanup never removes it mid-write, and reads it back.
-// The area is removed at the end, also after an error.
-async function writeInArea(write: (out: PieceSink) => Promise<unknown>): Promise<Uint8Array> {
+// The area is removed at the end, also after an error. It gives the file's
+// bytes and what `write` returned.
+async function writeInArea<T>(write: (out: PieceSink) => Promise<T>): Promise<{ bytes: Uint8Array; result: T }> {
   return navigator.locks.request(TASK_LOCK, async () => {
     const areas = opfsWorkingAreas()
     const taskId = crypto.randomUUID()
     try {
       const area = await areas.create(taskId)
       const file = await area.open(SONG_FILE)
+      let result: T
       try {
-        await write(file)
+        result = await write(file)
       } catch (error) {
         await file.close().catch(() => {})
         throw error
       }
       await file.close()
-      return new Uint8Array(await (await area.read(SONG_FILE)).arrayBuffer())
+      return { bytes: new Uint8Array(await (await area.read(SONG_FILE)).arrayBuffer()), result }
     } finally {
       await areas.remove(taskId).catch(() => {})
     }

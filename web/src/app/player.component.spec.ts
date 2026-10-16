@@ -293,6 +293,49 @@ test('a song given through the input opens, is not kept, and the Player has no o
   fixture.destroy()
 })
 
+test('a song given through the input with an access file opens with device access and is not kept', async () => {
+  const store = new FakeLibraryStore()
+  const keep = vi.spyOn(store, 'keep')
+  const song = openedSong()
+  const deviceKey = () => Promise.resolve(undefined)
+  const calls: { source: ByteSource; access?: DeviceAccess }[] = []
+  TestBed.configureTestingModule({
+    providers: [
+      provideZonelessChangeDetection(),
+      {
+        provide: SONG_FILE_OPENER,
+        useValue: (source: ByteSource, access?: DeviceAccess) => {
+          calls.push({ source, access })
+          return Promise.resolve(song)
+        },
+      },
+      { provide: LIBRARY_STORE, useValue: store },
+      { provide: DEVICE_KEY, useValue: deviceKey },
+    ],
+  })
+  const fixture = TestBed.createComponent(Player)
+  const bytes = new Blob(['made song'])
+  const accessBlob = new Blob(['made access'])
+  fixture.componentRef.setInput('song', bytes)
+  fixture.componentRef.setInput('access', accessBlob)
+  await fixture.whenStable()
+  const element = fixture.nativeElement as HTMLElement
+  await vi.waitFor(() => expect(element.querySelector('video')).not.toBeNull())
+  expect(calls).toHaveLength(1)
+  expect(calls[0].source).toBe(bytes)
+  expect(calls[0].access?.files).toEqual([accessBlob])
+  expect(calls[0].access?.key).toBe(deviceKey)
+  expect([...element.querySelectorAll('button')].map((button) => button.textContent?.trim())).not.toContain(
+    'Open a song file',
+  )
+  expect(element.querySelector('lyre-library')).toBeNull()
+  await fixture.whenStable()
+  expect(keep).not.toHaveBeenCalled()
+  expect(store.songs.size).toBe(0)
+  // Stops the playback while the stand-ins are still in place.
+  fixture.destroy()
+})
+
 test('choosing a song file with an access file gives the opener only the .lyrekey file as an access file', async () => {
   const song = new File(['song bytes'], 'song.lyre')
   const access = new File(['access bytes'], 'device.LYREKEY')
