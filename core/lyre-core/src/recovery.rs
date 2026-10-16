@@ -400,10 +400,21 @@ pub fn recover_access(
 ) -> Result<Vec<u8>, RecoverError> {
     let key = RecoveryKey::from_words(words)?;
     let device = PublicKey::parse_device_code(device_code)?;
+    recover_access_with(&key, song_file, &device)
+}
+
+/// Like [`recover_access`], for a recovery key that is already read and a
+/// device public key that is already parsed. A client reads the words once and
+/// then recovers many songs with the key.
+pub fn recover_access_with(
+    key: &RecoveryKey,
+    song_file: &[u8],
+    device: &PublicKey,
+) -> Result<Vec<u8>, RecoverError> {
     let header = v1::Header::parse(song_file)?;
     let song_id = header.song_id();
-    let content_key = header.recovery_wrap().open(&key, &song_id)?;
-    Ok(access::wrap(&content_key, &song_id, &device, Role::Owner))
+    let content_key = header.recovery_wrap().open(key, &song_id)?;
+    Ok(access::wrap(&content_key, &song_id, device, Role::Owner))
 }
 
 /// A random source that gives one fixed 32-byte input, once: the `ikmE` of a
@@ -825,6 +836,27 @@ mod tests {
             .device_code();
         assert_eq!(
             recover_access(&other.words(), &file, &code),
+            Err(RecoverError::Wrap(RecoveryWrapError::Open))
+        );
+    }
+
+    #[test]
+    fn a_recovery_key_that_is_already_read_recovers_the_same_song() {
+        let new = NewRecoveryKey::generate();
+        let content = ContentKey::generate();
+        let file = example_file(&new.public_key(), &content);
+        let device = crate::device::DeviceKey::from_prf_output(&[0x11; 32]).expect("a device key");
+        let key = RecoveryKey::from_words(&new.words()).expect("valid words");
+        let access_file =
+            recover_access_with(&key, &file, &device.public_key()).expect("recovery works");
+        let song_id = v1::Header::parse(&file).expect("a header").song_id();
+        let opened = access::open(&access_file, &device, &song_id).expect("the device opens it");
+        assert_eq!(opened.role, Role::Owner);
+        assert_eq!(opened.content_key.expose(), content.expose());
+
+        let other = RecoveryKey::from_words(&NewRecoveryKey::generate().words()).expect("words");
+        assert_eq!(
+            recover_access_with(&other, &file, &device.public_key()),
             Err(RecoverError::Wrap(RecoveryWrapError::Open))
         );
     }

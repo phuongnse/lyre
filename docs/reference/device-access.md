@@ -5,8 +5,8 @@ song file: device codes, fingerprints, access files and recovery keys.
 The web device key, the device code, its QR code, the fingerprint, the
 recovery key pair derivation, the recovery words and the core's access file
 wrap and open are built, and so is sharing in the web client. The web client
-also makes the recovery key and shows it once. The screens that scan and use it
-are *(planned for M3)*.
+also makes the recovery key and shows it once, and restores songs from typed or
+pasted recovery words.
 The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).
