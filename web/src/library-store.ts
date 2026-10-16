@@ -3,7 +3,8 @@
 // persistent storage (docs/domain/knowledge.md#running-on-the-users-device).
 
 // A kept song: its ID and details as the song file stores them, when it was
-// last opened, in milliseconds since the epoch, and the file itself.
+// last opened, in milliseconds since the epoch, and the file itself. A
+// version-1 song also keeps the access file that opened it.
 export interface KeptSong {
   songId: string
   title: string
@@ -11,6 +12,7 @@ export interface KeptSong {
   composer: string
   openedAt: number
   file: Blob
+  accessFile?: Blob
 }
 
 export interface LibraryStore {

@@ -1,27 +1,65 @@
 // @vitest-environment node
 import { existsSync, readFileSync } from 'node:fs'
-import { beforeAll, expect, test } from 'vitest'
-import { initSync } from './lyre-wasm/lyre_wasm.js'
-import { ByteSource, ChunkRef, openSongFile, SongFileError, SongFileProblem } from './song-file'
+import { beforeAll, expect, test, vi } from 'vitest'
+import { DeviceKey, initSync } from './lyre-wasm/lyre_wasm.js'
+import { ByteSource, ChunkRef, DeviceAccess, openSongFile, SongFileError, SongFileProblem } from './song-file'
 
 beforeAll(() => {
   initSync({ module: readFileSync(new URL('./lyre-wasm/lyre_wasm_bg.wasm', import.meta.url)) })
 })
 
+function fromHex(hex: string): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16)
+  return bytes
+}
+
+// The bytes of the `xxd` dump under the doc's "Hex dump" heading.
+function xxdDump(file: string): Uint8Array<ArrayBuffer> {
+  const doc = readFileSync(new URL(`../../docs/reference/${file}`, import.meta.url), 'utf8')
+  const dump = doc.split('### Hex dump')[1].split('```text\n')[1].split('```')[0]
+  return fromHex(
+    dump
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => line.slice(line.indexOf(': ') + 2).split('  ')[0])
+      .join('')
+      .replaceAll(' ', ''),
+  )
+}
+
 // The known-answer example, read from the format doc's hex dump so the tests
 // keep no second copy of its bytes.
 function example(): Uint8Array<ArrayBuffer> {
-  const doc = readFileSync(new URL('../../docs/reference/song-file-format-v0.md', import.meta.url), 'utf8')
-  const dump = doc.split('### Hex dump')[1].split('```text\n')[1].split('```')[0]
-  const hex = dump
-    .split('\n')
-    .filter((line) => line !== '')
-    .map((line) => line.slice(line.indexOf(': ') + 2).split('  ')[0])
-    .join('')
-    .replaceAll(' ', '')
-  const bytes = new Uint8Array(hex.length / 2)
-  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16)
+  const bytes = xxdDump('song-file-format-v0.md')
   expect(bytes.length).toBe(307)
+  return bytes
+}
+
+// The version-1 known-answer example, read the same way.
+function exampleV1(): Uint8Array<ArrayBuffer> {
+  const bytes = xxdDump('song-file-format-v1.md')
+  expect(bytes.length).toBe(580)
+  return bytes
+}
+
+// The device-access vector's access file for the version-1 example, read from
+// the doc's hex block.
+function vectorAccessFile(): Uint8Array<ArrayBuffer> {
+  const doc = readFileSync(new URL('../../docs/reference/device-access.md', import.meta.url), 'utf8')
+  const hex = doc.split('The whole 179-byte access file')[1].split('```text\n')[1].split('```')[0]
+  const bytes = fromHex(hex.replaceAll('\n', ''))
+  expect(bytes.length).toBe(179)
+  return bytes
+}
+
+// The vector's device key: PRF output 0..31.
+const vectorKey = () => new DeviceKey(Uint8Array.from({ length: 32 }, (_, i) => i))
+
+// The access file with one byte of its entry changed, so it no longer opens.
+function changedAccessFile(): Uint8Array<ArrayBuffer> {
+  const bytes = vectorAccessFile()
+  bytes[bytes.length - 1] ^= 1
   return bytes
 }
 
@@ -38,9 +76,9 @@ function recording(blob: Blob): { source: ByteSource; ranges: [number, number][]
   return { source, ranges }
 }
 
-async function problemOf(source: ByteSource): Promise<SongFileProblem | undefined> {
+async function problemOf(source: ByteSource, access?: DeviceAccess): Promise<SongFileProblem | undefined> {
   try {
-    ;(await openSongFile(source)).close()
+    ;(await openSongFile(source, access)).close()
     return undefined
   } catch (error) {
     if (error instanceof SongFileError) return error.problem
@@ -230,4 +268,72 @@ test('a source that fails to read is damaged', async () => {
     slice: () => ({ arrayBuffer: () => Promise.reject(new Error('read failed')) }) as unknown as Blob,
   }
   expect(await problemOf(failing)).toBe('damaged')
+})
+
+test('a version-1 file opens with the vector access file after a changed one, and gives the one that opened it', async () => {
+  const key = vectorKey()
+  const changed = new Blob([changedAccessFile()])
+  const vector = new Blob([vectorAccessFile()])
+  const access: DeviceAccess = { files: [changed, vector], key: () => Promise.resolve(key) }
+  const song = await openSongFile(new Blob([exampleV1()]), access)
+  expect(song.accessFile).toBe(vector)
+  expect(song.songId).toBe('000102030405060708090a0b0c0d0e0f')
+  expect(song.details.title).toBe('Mưa')
+  expect(text(await song.read(song.karaoke.init))).toBe('ki')
+  song.close()
+  key.free()
+})
+
+test('a version-1 file is refused as cannot-open when no chosen access file opens it', async () => {
+  const key = vectorKey()
+  const song = new Blob([exampleV1()])
+  const keyOf = () => Promise.resolve(key)
+  const changed = new Blob([changedAccessFile()])
+  expect(await problemOf(song, { files: [changed], key: keyOf })).toBe('cannot-open')
+  expect(await problemOf(song, { files: [changed, new Blob([new Uint8Array(179)])], key: keyOf })).toBe('cannot-open')
+  expect(await problemOf(song, undefined)).toBe('cannot-open')
+  key.free()
+})
+
+test('a version-1 file with no access file is refused before the device is asked for its key', async () => {
+  const key = vi.fn(() => Promise.resolve(undefined))
+  await expect(openSongFile(new Blob([exampleV1()]), { files: [], key })).rejects.toMatchObject({
+    problem: 'cannot-open',
+  })
+  expect(key).not.toHaveBeenCalled()
+})
+
+test('a version-1 file is refused as cannot-open for another device and when the device is not unlocked', async () => {
+  const other = new DeviceKey(Uint8Array.from({ length: 32 }, (_, i) => i + 1))
+  const files = [new Blob([vectorAccessFile()])]
+  expect(await problemOf(new Blob([exampleV1()]), { files, key: () => Promise.resolve(other) })).toBe('cannot-open')
+  expect(await problemOf(new Blob([exampleV1()]), { files, key: () => Promise.resolve(undefined) })).toBe('cannot-open')
+  other.free()
+})
+
+test('a version-1 file with one index byte changed is refused as cannot-open', async () => {
+  const key = vectorKey()
+  const bytes = exampleV1()
+  bytes[177] ^= 1
+  const files = [new Blob([vectorAccessFile()])]
+  expect(await problemOf(new Blob([bytes]), { files, key: () => Promise.resolve(key) })).toBe('cannot-open')
+  key.free()
+})
+
+test('a version-1 file cut short inside its header or its index is refused as cannot-open', async () => {
+  const key = vectorKey()
+  const files = [new Blob([vectorAccessFile()])]
+  const access = { files, key: () => Promise.resolve(key) }
+  expect(await problemOf(new Blob([exampleV1().slice(0, 200)]), access)).toBe('cannot-open')
+  expect(await problemOf(new Blob([exampleV1().slice(0, 100)]), access)).toBe('cannot-open')
+  key.free()
+})
+
+test('a version-0 file opens without the device key, even with access files chosen', async () => {
+  const key = vi.fn(() => Promise.resolve(undefined))
+  const song = await openSongFile(new Blob([example()]), { files: [new Blob([vectorAccessFile()])], key })
+  expect(song.accessFile).toBeUndefined()
+  expect(song.details.title).toBe('Mưa')
+  song.close()
+  expect(key).not.toHaveBeenCalled()
 })

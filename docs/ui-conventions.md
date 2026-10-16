@@ -81,6 +81,23 @@ M4.
   original track's media segments are read only once the singer switches to
   it. A file the core refuses shows one plain message, "not a song file" or
   "damaged or incomplete", and nothing plays.
+- The open button takes a song file with its access files (`.lyre` and
+  `.lyrekey`), in one choice. The extension only sorts the files into two
+  kinds. The core matches an access file to its song by song ID, never by file
+  name ([D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed)).
+  It tries each access file and uses the one that opens the song. A version-0
+  song file opens as before, without any unlock, even when access files are
+  chosen with it.
+- A version-1 song file needs this page load's device unlock. The Player asks
+  for it only when it opens such a file that has an access file chosen with
+  it, and the [This device section](#device-code) shares the same unlock. The
+  Player never holds the device key itself. It passes the core's key handle on
+  to the core.
+- A version-1 song file that does not open shows one plain message, "This song
+  cannot be opened on this device.", and nothing plays or is kept. This covers
+  no access file chosen, an access file for another device or another song, a
+  changed song file or access file, and an unlock that is cancelled or
+  refused. The This device section explains an unlock problem in more detail.
 - A song whose stored media type the device cannot play shows one plain
   message naming the track: "This device cannot play this song's video.", or
   its karaoke track or its original track. Nothing plays, and the song is not
@@ -110,6 +127,8 @@ M4.
 - The library lists the kept songs under the Player, the most recently
   opened first. Each shows its title, and its artist and composer when they
   are known, exactly as the song file stores them. Choosing one plays it.
+- A version-1 song is kept with the access file that opened it. Choosing it
+  after a reload asks for the device unlock again, then plays it.
 - It asks the browser for persistent storage when a song is kept, not when the
   page loads. When the browser refuses, the library says that the browser may
   clear these songs. See [why](domain/knowledge.md#running-on-the-users-device).
@@ -353,7 +372,9 @@ Compose uses the same three values *(planned for M4)*.
   to the core, which makes the device key
   ([devices and access](architecture.md#devices-and-access)). The page then
   wipes the buffer. Within one page load, later presses reuse the key and ask
-  for no unlock. The page asks the passkey with the fixed Lyre PRF salt, so a
+  for no unlock. The Player shares this unlock: opening a version-1 song asks
+  for no second unlock after a press, and a press asks for none after a song
+  opened. The page asks the passkey with the fixed Lyre PRF salt, so a
   reload shows the same device code.
 - The page keeps one thing in `localStorage`: the passkey's credential ID, and
   only once that passkey has given a device key. The ID is not secret and holds

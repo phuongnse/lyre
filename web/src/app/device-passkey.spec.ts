@@ -196,8 +196,8 @@ describe('keepFirstReady', () => {
     const { credentials, get } = fake()
     const storage = memoryStorage()
     const unlockOnce = keepFirstReady(() => unlockDevice(credentials, storage))
-    const first = await unlockOnce()
-    const second = await unlockOnce()
+    const first = (await unlockOnce()).outcome
+    const second = (await unlockOnce()).outcome
     expect(first.result).toBe('ready')
     expect(second).toEqual(first)
     expect(get).toHaveBeenCalledTimes(1)
@@ -207,8 +207,8 @@ describe('keepFirstReady', () => {
     const { credentials, get } = fake({ prf: 'none' })
     const storage = memoryStorage()
     const unlockOnce = keepFirstReady(() => unlockDevice(credentials, storage))
-    expect((await unlockOnce()).result).toBe('prf-missing')
-    expect((await unlockOnce()).result).toBe('prf-missing')
+    expect((await unlockOnce()).outcome.result).toBe('prf-missing')
+    expect((await unlockOnce()).outcome.result).toBe('prf-missing')
     expect(get).toHaveBeenCalledTimes(2)
   })
 })
