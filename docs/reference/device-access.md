@@ -6,7 +6,8 @@ The web device key, the device code, its QR code, the fingerprint, the
 recovery key pair derivation, the recovery words and the core's access file
 wrap and open are built, and so is sharing in the web client. The web client
 also makes the recovery key and shows it once, and restores songs from typed or
-pasted recovery words.
+pasted recovery words. The Android device key and the way an access file opens
+with it are planned for M4.
 The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).
@@ -49,11 +50,97 @@ copies. The output never reaches UI state, storage or logs. The private key
 stays inside the core, as the
 [core rules](../architecture.md#core-rules) require.
 
-Android generates its device key in Android Keystore instead (D8).
-Its public key uses the same [device code](#device-code) encoding.
+Android generates its device key in Android Keystore instead (D8). See
+[Android device key](#android-device-key-planned-for-m4).
 
 *Why 48 bytes:* reducing a wider integer keeps the bias negligible.
 The versioned labels separate the PRF input, device key and recovery key.
+
+## Android device key *(planned for M4)*
+
+An Android device makes its device key in Android Keystore (D8). The key is
+for key agreement only. The app never reads the private key. The lowest
+Android version is Android 12 (API 31)
+([D32](../decisions.md#d32-the-lowest-android-version-is-android-12--agreed)).
+
+The app makes the key once, with these settings:
+
+- **Alias:** `lyre-device-key`.
+- **Curve:** EC `secp256r1`, which is P-256.
+- **Purpose:** `PURPOSE_AGREE_KEY` only. The key cannot sign, encrypt or decrypt.
+- **Unlock:** `setUnlockedDeviceRequired(true)`. The key works only while the
+  device is unlocked. There is no extra prompt per use.
+- **Attestation challenge:** 32 random bytes from the system's random source,
+  made for this key.
+- **Hardware:** `setIsStrongBoxBacked(true)` when the device has
+  `FEATURE_STRONGBOX_KEYSTORE`. Otherwise, or on `StrongBoxUnavailableException`,
+  the app generates the key again in the TEE.
+- **Never:** exportable, and never a software key.
+
+The public key comes from the leaf certificate of the attestation chain.
+The app passes it to the core, which encodes it as a
+[device code](#device-code), the same as for a web device.
+
+*Why no prompt per use:* the web client asks for one unlock per session. A
+prompt on every open would interrupt playback.
+
+### Attestation check
+
+The app checks the key's attestation chain once, when it makes the key.
+It does the check in the app because only Android has key attestation. The
+chain comes from the device's own Keystore.
+
+| Part | What the check accepts |
+| --- | --- |
+| Chain | Each certificate's signature verifies against the next. The chain ends at a pinned Google hardware attestation root. The roots are in [Android's key attestation guide](https://developer.android.com/privacy-and-security/security-key-attestation#root_certificate). The M4 issue that builds the check sets the pins. |
+| Extension | The key description extension, OID `1.3.6.1.4.1.11129.2.1.17`, in the leaf certificate. |
+| Security levels | `attestationSecurityLevel` and `keyMintSecurityLevel` are each TrustedEnvironment (1) or StrongBox (2). Software (0) fails. |
+| Challenge | `attestationChallenge` equals the app's challenge. |
+| Purpose | In the hardware-enforced list, the purpose is exactly {AGREE_KEY (6)}. |
+| Algorithm | In the hardware-enforced list, the algorithm is EC (3) and `ecCurve` is P_256 (1). |
+| Origin | In the hardware-enforced list, the origin is GENERATED (0). |
+| Public key | The leaf certificate's public key is the key that the app made. |
+
+The check does not look at these:
+
+- **Verified-boot state and bootloader lock.** *Why:* D8 asks for a key that
+  stays in hardware, not for device integrity. A locked bootloader would turn
+  away custom ROM users with no gain in key binding.
+- **Online revocation.** *Why:* Lyre makes no network call to give a device a
+  key ([D9](../decisions.md#d9-lyre-has-no-server--agreed)). The cost is that
+  a revoked attestation key is not noticed.
+
+### When the check fails
+
+The app deletes the key and shows one message. The message has no device code,
+fingerprint, QR code or copy button. The app never falls back to a software
+key (D8). The text is in the
+[UI conventions](../ui-conventions.md#device-code).
+
+### Opening an access file on Android
+
+Keystore cannot export the private key, so Keystore does the key agreement.
+The core does the rest of the HPKE open.
+
+1. The core checks the whole file and the device match, as in
+   [Rejections](#rejections). It finds the entry by song ID and returns the
+   entry's validated 65-byte `enc`.
+2. The app runs `KeyAgreement.getInstance("ECDH", "AndroidKeyStore")` with the
+   device key and `enc`. The result is the 32-byte big-endian x coordinate.
+   This is `dh`, as RFC 9180 defines it for DHKEM(P-256).
+3. The app passes `dh` straight to the core. The core computes
+   `shared_secret = ExtractAndExpand(dh, enc || pkRm)`, where `pkRm` is the
+   uncompressed device key. It runs the key schedule with the same
+   [`info`](#hpke-wrap) and empty `aad`, opens `ct` and keeps the content key
+   as an opaque handle.
+4. The app overwrites its buffer with zeros right away.
+
+The rules are those of the PRF output on the web. `dh` never reaches Compose
+state, storage, logs or error messages. Clearing is best effort because the
+JVM may keep copies.
+
+*Why:* the step that needs the private key runs inside Keystore. `dh` opens
+only this one entry.
 
 ## Device code
 
@@ -297,6 +384,7 @@ entry's content key or role is used.
 | Input | Rule | When checked |
 | --- | --- | --- |
 | Web PRF output | It must be exactly 32 bytes. | Before HKDF |
+| Android key agreement output | It must be exactly 32 bytes. | Before HKDF |
 | Derived device or recovery scalar | It must not be zero after reduction modulo `n`. | During key derivation |
 | Device code text | HRP must be `lyre`, case-insensitively. Mixed case, internal whitespace and characters outside Bech32m are invalid. | Before decoding the key |
 | Device code length | After trimming, it must be 65 characters: one version group, 53 key groups and six checksum characters after the separator. | Before decoding the key |
@@ -325,6 +413,7 @@ failure. The [access file](#access-file) section describes this limit.
 | Item | Size or count |
 | --- | --- |
 | PRF output | Exactly 32 bytes |
+| Android key agreement output | Exactly 32 bytes |
 | HKDF output for either key derivation | Exactly 48 bytes |
 | Compressed P-256 public key | Exactly 33 bytes |
 | Uncompressed P-256 public key or HPKE `enc` | Exactly 65 bytes |
@@ -348,6 +437,7 @@ failure. The [access file](#access-file) section describes this limit.
 
 The web device key, the device code, the fingerprint, the recovery key pair,
 the recovery words and the access file have checked vectors.
+The vector for the Android open comes with the core issue *(planned for M4)*.
 
 An independent script that uses only Python's standard library worked out the
 web device key, device code, fingerprint, recovery key pair and recovery words

@@ -35,7 +35,7 @@
 | **M1** | Karaoke playback | Done | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
 | **M2** | Making songs on the device | Done | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page measures the aligner's int8 and fp32 files (D29) on real devices and confirms the separator. |
 | **M3** | Devices, encryption and sharing | Done | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
-| **M4** | Android | Next | The Android app plays songs and shows a device code to receive shared songs, with its device key in Android Keystore. Songs made in the web client play in the Android app. |
+| **M4** | Android | Next | The Android app's Player plays songs shared with it, its library lists the songs opened on the device, and it shows a device code to receive songs, with its device key in Android Keystore. Songs made in the web client play there. It makes and shares no songs and holds no recovery key ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed)). |
 | **M5** | Library and queue | Planned | Library, queue in order or shuffled, search by title, artist, composer and lyrics that ignores Vietnamese diacritics, thumbnails, lyric corrections. |
 | **M6** | Clip editor | Planned | The owner cuts several sections from one source, each with its own details and lyrics, and each becomes a song. |
 | **M7** | Google Drive | Planned | The user picks Drive files or folders; songs play from Drive before they finish downloading and stay playable offline once cached. |
@@ -179,6 +179,30 @@ M3 delivered:
 
 Done when all nine were merged.
 
+## M4 — Android
+
+The Android app plays and receives songs, as
+[D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed) sets.
+Its lowest version is Android 12
+([D32](decisions.md#d32-the-lowest-android-version-is-android-12--agreed)).
+
+M4 is planned in this order:
+
+1. The docs on the Android device key and the lowest Android version ([#288](https://github.com/phuongnse/lyre/issues/288)).
+2. Device tests on an emulator in the checks ([#289](https://github.com/phuongnse/lyre/issues/289)).
+3. `lyre-ffi` exposes no model or alignment functions ([#290](https://github.com/phuongnse/lyre/issues/290)).
+4. The core opens an access file with a key agreement done by the platform key store ([#291](https://github.com/phuongnse/lyre/issues/291)).
+5. The device key in Android Keystore, shown as a device code ([#292](https://github.com/phuongnse/lyre/issues/292)).
+6. `lyre-ffi` opens a version-1 song with an access file and the Android device key ([#293](https://github.com/phuongnse/lyre/issues/293)).
+7. The Android Player plays a version-1 song with its access file ([#294](https://github.com/phuongnse/lyre/issues/294)).
+8. Lyrics highlighted syllable by syllable ([#295](https://github.com/phuongnse/lyre/issues/295)).
+9. Both Players name the codec a device cannot play ([#296](https://github.com/phuongnse/lyre/issues/296)).
+10. The library keeps the songs opened on this device ([#297](https://github.com/phuongnse/lyre/issues/297)).
+11. The docs sweep ([#298](https://github.com/phuongnse/lyre/issues/298)).
+
+The Android app makes no songs, shares none and holds no recovery key
+([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed)).
+
 ## Early checks on real devices
 
 - The owner runs both checks on real devices, because the CI runners have no
@@ -240,9 +264,6 @@ is added, because D8 forbids a key kept in browser storage.
 Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
-- **M4:** Android playback and device keys
-  ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed));
-  the lowest Android version, and emulator tests in CI.
 - **M8:** settle [D23](decisions.md#d23-backing-vocals-as-their-own-track--proposed), backing vocals as their own track,
   and choose a lead and backing separator with a clear licence.
 - **M9:** licences for every model that is downloaded for other people, and

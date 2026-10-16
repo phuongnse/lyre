@@ -8,8 +8,8 @@ jna = "5.19.1"
 junit = "4.13.2"
 # Compose 1.12 needs API 37. The SDK package for it is "platforms;android-37.0".
 compileSdk = "37"
-# A provisional value. The lowest supported Android version is still open in D10.
-minSdk = "26"
+# Android 12, the first version with key agreement in Android Keystore (D32).
+minSdk = "31"
 # The NDK that the ubuntu-24.04 runner image already has.
 ndk = "27.3.13750724"
 ktlint = "1.8.0"

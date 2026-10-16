@@ -48,6 +48,7 @@ See [the life of a milestone](../delivery.md#the-life-of-a-milestone).
 | **Device** | One phone, tablet or computer running Lyre. On the web, the machine, not the browser (D8). | M3 |
 | **Device key** | A device's key pair. The private key never leaves the device (D6, D8). | M3 |
 | **Device code** | A device's public key, encoded so a person can send it as text or a QR code. | M3 |
+| **Key attestation** | A certificate chain from Android Keystore that proves a device key was made in secure hardware and cannot be exported. The Android app checks it before offering a device code (D8). | M4 |
 | **Fingerprint** | A short code derived from a device code, read aloud or compared by eye to make sure a device code was not swapped on the way. | M3 |
 | **Content key** | The random key of one song. Each write of its song file derives the file's encryption keys from it. | M3 |
 | **Access file** | A small `.lyrekey` file for one device that holds the wrapped content keys of one or more songs, each marked as the owner's or a recipient's. Lyre matches each to its song file by song ID. Without an entry for the device, the song does not open there. | M3 |
