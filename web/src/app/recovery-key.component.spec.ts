@@ -13,8 +13,24 @@ const made: NewRecovery = {
   publicKey: new Uint8Array(33).fill(2),
 }
 
-beforeEach(() => localStorage.clear())
-afterEach(() => vi.unstubAllGlobals())
+// jsdom has no Web Locks. This stand-in runs one request at a time.
+let tail: Promise<unknown> = Promise.resolve()
+const locks = {
+  request: (_name: string, callback: () => unknown) => {
+    const run = tail.then(callback)
+    tail = run.catch(() => undefined)
+    return run
+  },
+}
+
+beforeEach(() => {
+  localStorage.clear()
+  Object.defineProperty(navigator, 'locks', { value: locks, configurable: true })
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+  delete (navigator as { locks?: unknown }).locks
+})
 
 async function render(make: () => Promise<NewRecovery> = () => Promise.resolve(made)) {
   TestBed.configureTestingModule({
@@ -31,6 +47,9 @@ const press = async (fixture: ComponentFixture<RecoveryKey>, name: string) => {
   const button = [...elementOf(fixture).querySelectorAll('button')].find((b) => b.textContent?.trim() === name)
   expect(button).toBeDefined()
   button!.click()
+  await fixture.whenStable()
+  // Confirming waits for the lock, which the fixture does not track.
+  await new Promise((resolve) => setTimeout(resolve))
   await fixture.whenStable()
 }
 

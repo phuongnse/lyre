@@ -62,40 +62,87 @@ describe('readRecoveryPublicKey', () => {
   })
 })
 
+// A lock manager that runs one request at a time, as the browser's does for one name.
+function serialLocks(): LockManager {
+  let tail: Promise<unknown> = Promise.resolve()
+  return {
+    request: (_name: string, callback: () => unknown) => {
+      const run = tail.then(callback)
+      tail = run.catch(() => undefined)
+      return run
+    },
+  } as unknown as LockManager
+}
+
+// A storage that keeps its entries in a map and records each value written.
+function fakeStorage(stored: Map<string, string>, writes: string[]): Storage {
+  return {
+    setItem: (key: string, value: string) => {
+      writes.push(value)
+      stored.set(key, value)
+    },
+    getItem: (key: string) => stored.get(key) ?? null,
+  } as unknown as Storage
+}
+
 describe('keepRecoveryPublicKey', () => {
-  it('writes base64url that readRecoveryPublicKey reads back', () => {
+  const locks = serialLocks()
+
+  it('writes base64url that readRecoveryPublicKey reads back', async () => {
     const bytes = Uint8Array.from(KEY_HEX.match(/../g)!, (pair) => parseInt(pair, 16))
     const written = new Map<string, string>()
     const storage = {
       setItem: (key: string, value: string) => void written.set(key, value),
       getItem: (key: string) => written.get(key) ?? null,
     } as unknown as Storage
-    expect(keepRecoveryPublicKey(bytes, storage)).toBe('kept')
+    expect(await keepRecoveryPublicKey(bytes, storage, locks)).toBe('kept')
     expect([...written.keys()]).toEqual([recoveryKeyStorageKey])
     expect(written.get(recoveryKeyStorageKey)).toBe(toBase64Url(bytes))
     expect(written.get(recoveryKeyStorageKey)).toMatch(/^[A-Za-z0-9_-]{44}$/)
     expect(readRecoveryPublicKey(storage)).toEqual(bytes)
   })
 
-  it('reports a failure when the storage is blocked', () => {
+  it('reports a failure when the storage is blocked', async () => {
     const blocked = {
+      getItem: () => null,
       setItem: () => {
         throw new DOMException('blocked', 'QuotaExceededError')
       },
     } as unknown as Storage
-    expect(keepRecoveryPublicKey(new Uint8Array(33).fill(2), blocked)).toBe('failed')
+    expect(await keepRecoveryPublicKey(new Uint8Array(33).fill(2), blocked, locks)).toBe('failed')
   })
 
-  it('never replaces a key that is already kept', () => {
+  it('reports a failure when the browser has no Web Locks, and writes nothing', async () => {
+    const stored = new Map<string, string>()
+    const writes: string[] = []
+    expect(await keepRecoveryPublicKey(new Uint8Array(33).fill(2), fakeStorage(stored, writes), undefined)).toBe(
+      'failed',
+    )
+    expect(writes).toEqual([])
+  })
+
+  it('never replaces a key that is already kept', async () => {
     const first = new Uint8Array(33).fill(2)
     const second = new Uint8Array(33).fill(3)
     const stored = new Map<string, string>()
-    const storage = {
-      setItem: (key: string, value: string) => void stored.set(key, value),
-      getItem: (key: string) => stored.get(key) ?? null,
-    } as unknown as Storage
-    expect(keepRecoveryPublicKey(first, storage)).toBe('kept')
-    expect(keepRecoveryPublicKey(second, storage)).toBe('exists')
+    const storage = fakeStorage(stored, [])
+    expect(await keepRecoveryPublicKey(first, storage, locks)).toBe('kept')
+    expect(await keepRecoveryPublicKey(second, storage, locks)).toBe('exists')
+    expect(readRecoveryPublicKey(storage)).toEqual(first)
+  })
+
+  it('keeps one key when two confirmations overlap', async () => {
+    const first = new Uint8Array(33).fill(2)
+    const second = new Uint8Array(33).fill(3)
+    const stored = new Map<string, string>()
+    const writes: string[] = []
+    const storage = fakeStorage(stored, writes)
+    const results = await Promise.all([
+      keepRecoveryPublicKey(first, storage, locks),
+      keepRecoveryPublicKey(second, storage, locks),
+    ])
+    expect(results).toEqual(['kept', 'exists'])
+    expect(writes).toEqual([toBase64Url(first)])
     expect(readRecoveryPublicKey(storage)).toEqual(first)
   })
 })

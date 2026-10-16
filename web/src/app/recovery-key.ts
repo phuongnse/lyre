@@ -36,20 +36,34 @@ export function readRecoveryPublicKey(storage?: Storage): Uint8Array<ArrayBuffer
 }
 
 // How keeping the public key ended: written, refused because a key is already
-// kept, or failed because the site's storage refuses the write.
+// kept, or failed because the site's storage refuses the write or the browser
+// cannot serialise the tabs.
 export type KeepResult = 'kept' | 'exists' | 'failed'
+
+// The lock that serialises the check and the write across tabs.
+const KEEP_LOCK = 'lyre-recovery-key'
 
 // Keeps the recovery public key, as base64url without padding. It never
 // replaces a key that is already kept: songs made with that key still need it,
-// and two tabs opened before the confirmation each hold a different key. The
-// storage is looked up inside the try, because reading `localStorage` throws
-// when the site's storage is blocked.
-export function keepRecoveryPublicKey(key: Uint8Array, storage?: Storage): KeepResult {
+// and two tabs opened before the confirmation each hold a different key. Two
+// tabs may confirm together, so the check and the write run under a Web Lock
+// that all tabs of the site share. Without Web Locks the key is not kept,
+// because a check and write that other tabs can interleave could overwrite a
+// key. The storage is looked up inside the try, because reading `localStorage`
+// throws when the site's storage is blocked.
+export async function keepRecoveryPublicKey(
+  key: Uint8Array,
+  storage?: Storage,
+  locks: LockManager | undefined = globalThis.navigator?.locks,
+): Promise<KeepResult> {
+  if (!locks) return 'failed'
   try {
-    storage ??= localStorage
-    if (readRecoveryPublicKey(storage) !== undefined) return 'exists'
-    storage.setItem(recoveryKeyStorageKey, toBase64Url(key))
-    return 'kept'
+    return await locks.request(KEEP_LOCK, (): KeepResult => {
+      storage ??= localStorage
+      if (readRecoveryPublicKey(storage) !== undefined) return 'exists'
+      storage.setItem(recoveryKeyStorageKey, toBase64Url(key))
+      return 'kept'
+    })
   } catch {
     return 'failed'
   }

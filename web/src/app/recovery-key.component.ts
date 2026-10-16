@@ -85,6 +85,7 @@ export class RecoveryKey {
     status: readRecoveryPublicKey() === undefined ? 'none' : 'kept',
   })
   private readonly makeKey = inject(RECOVERY_KEY_MAKER)
+  private keeping = false
 
   protected async create(): Promise<void> {
     this.state.set({ status: 'creating' })
@@ -97,12 +98,19 @@ export class RecoveryKey {
     }
   }
 
-  protected keep(): void {
+  protected async keep(): Promise<void> {
     const current = this.state()
-    if (current.status !== 'shown') return
-    // Whatever the result, the words and the QR code leave the state.
-    const result = keepRecoveryPublicKey(current.publicKey)
-    this.state.set({ status: result === 'exists' ? 'superseded' : result })
+    if (current.status !== 'shown' || this.keeping) return
+    // A second press while the first waits for the lock would find the key the
+    // first wrote, and wrongly report another tab.
+    this.keeping = true
+    try {
+      const result = await keepRecoveryPublicKey(current.publicKey)
+      // Whatever the result, the words and the QR code leave the state.
+      this.state.set({ status: result === 'exists' ? 'superseded' : result })
+    } finally {
+      this.keeping = false
+    }
   }
 
   // Another tab kept a key. This tab never replaces it: it drops the words it
