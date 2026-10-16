@@ -30,13 +30,15 @@ M4.
   `--lyre-vocal-*` from [Lyrics in the Player](#lyrics-in-the-player).
 - Put no hard-coded colours, font sizes, radii or spacing values in
   components. The exceptions are the white and black of the
-  [lyric text style](#text-style), its em-based outline and shadow sizes, the
+  [lyric text style](#text-style), the black and white of the
+  [device code's QR code](#device-code), its em-based outline and shadow sizes, the
   [vocal role colours](#vocal-role-colours), and the lyric font size with its
   16 px floor and its bold weight (see [Lyrics area](#lyrics-area)).
-- All tokens come from one seed colour, `#6B5778` (smoky purple). Two sets of
+- All tokens come from one seed colour, `#6B5778` (smoky purple). Three sets of
   colours do not come from the seed, and a seed change never changes them: the
   white and black of the
-  [lyric text style](#text-style) and the
+  [lyric text style](#text-style), the black and white of the
+  [QR code](#device-code) and the
   [vocal role colours](#vocal-role-colours).
 - The same seed generates the Kotlin `ColorScheme`, `Typography` and `Shapes`
   *(planned for M4)*. `dynamicColor` is off.
@@ -337,6 +339,56 @@ Compose uses the same three values *(planned for M4)*.
   the strings catalogue, with a value from 0 to 4 for the dots fully swept. The
   same `requestAnimationFrame` loop as the highlight updates them, with no
   signal update per frame.
+
+## Device code
+
+- The main page has a **This device** section, under the Player. Its
+  **Show the device code** button unlocks the device's own passkey. The page
+  does not unlock it on load, because browsers, Safari among them, ask for a
+  passkey only after a user gesture.
+- The first press creates a passkey on this device, with PRF
+  ([D8](decisions.md#d8-device-keys-are-bound-to-the-device-not-the-apps-storage--agreed)).
+  A passkey that can sync is refused at once, by its backup flags.
+- Each press asks for the device's unlock and passes the PRF output straight
+  to the core, which makes the device key
+  ([devices and access](architecture.md#devices-and-access)). The page then
+  wipes the buffer. Within one page load, later presses reuse the key and ask
+  for no unlock. The page asks the passkey with the fixed Lyre PRF salt, so a
+  reload shows the same device code.
+- The page keeps one thing in `localStorage`: the passkey's credential ID, and
+  only once that passkey has given a device key. The ID is not secret and holds
+  no key. If the passkey gives no PRF output, or turns out to be able to sync,
+  the page removes the ID.
+- Once the device is unlocked, the section shows the device code as text,
+  labelled "Device code", the fingerprint, labelled "Fingerprint", and the QR
+  code as an image named "QR code of the device code". The core makes all
+  three. The QR settings are in the
+  [reference](reference/device-access.md#device-code).
+- The QR code is black on white with a quiet zone of four modules, whatever
+  the theme. The site follows the system's dark mode, and light cells on a
+  dark ground are unreadable to many scanners. This is an exception to the
+  [theming](#theming) rules.
+- A **Copy the device code** button puts exactly the shown code on the
+  clipboard. A line then says "The device code is copied." or, when the
+  browser refuses the write or has no clipboard API, "The browser refused to
+  copy the device code."
+- A browser whose passkey returns no PRF output, or a passkey that can sync,
+  gets one plain message that says why, and no device code, QR code or copy
+  button:
+  - "This browser cannot give this device a device code, because its passkeys
+    return no PRF output."
+  - "This device gets no device code, because its passkey can sync to other
+    devices."
+  - "This device could not be unlocked, so it has no device code." This is for
+    a cancelled unlock, a missing passkey or any other failure. The page never
+    shows the browser's own error text.
+- A web page cannot delete a passkey. A passkey refused for having no PRF or
+  for syncing stays on the device until the user deletes it in the device's
+  passkey settings.
+- The Playwright journeys use Chromium's virtual authenticator. They check
+  the code, the same code after a reload, the two refusals, the copy action
+  and that no encoding of the PRF output reaches the page, its storage or the
+  console. They do not prove behaviour on real phones or Apple devices.
 
 ## Check pages
 

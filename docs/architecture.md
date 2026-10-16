@@ -133,10 +133,10 @@ The encrypted layout, keys and recovery wrap are specified in
 [song file format, version 1](reference/song-file-format-v1.md)
 *(planned for M3)*.
 
-## Devices and access *(planned for M3)*
+## Devices and access
 
 - **Device key.** Created the first time Lyre runs on a device (D8):
-  - Android: an EC P-256 key pair in Android Keystore, hardware backed,
+  - Android *(planned for M4)*: an EC P-256 key pair in Android Keystore, hardware backed,
     not exportable. Lyre checks its attestation.
   - Web: a device-bound passkey with the PRF extension. The PRF output is
     available only after the user unlocks the device. The core derives the
@@ -146,18 +146,22 @@ The encrypted layout, keys and recovery wrap are specified in
       straight to the core, then overwrites the buffer with zeros. It never
       keeps the output in state, storage or logs. Clearing is best effort,
       because the JavaScript engine may keep copies.
+    - The client keeps one thing in `localStorage`: the passkey's credential
+      ID. The ID is not secret and holds no key. The client needs it to ask
+      the same passkey again after a reload. It stores the ID only once that
+      passkey has given a device key.
 - **Device code.** The compressed P-256 public key in Bech32m with the `lyre`
   prefix and a version, as text and a QR code. A fingerprint from SHA-256 of
   the public key shows 20 digits in groups of 4, for checking by voice or eye.
-- **Wrapping.** A song's content key is wrapped for a device with HPKE
+- **Wrapping.** *(planned for M3)* A song's content key is wrapped for a device with HPKE
   (RFC 9180) base mode: DHKEM(P-256, HKDF-SHA256), HKDF-SHA256 and AES-256-GCM.
   The song ID, device code and owner or recipient role are bound into the
   HPKE info.
-- **Access file.** A `.lyrekey` file is for one device and holds the wrapped
+- **Access file.** *(planned for M3)* A `.lyrekey` file is for one device and holds the wrapped
   content keys of one or more songs, each marked as the owner's or a
   recipient's. Entries are matched to song files by song ID, never by file
   name or folder. The song file does not change when it is shared (D6).
-- **Recovery key.** Created before the first song, shown once as 24 BIP39
+- **Recovery key.** *(planned for M3)* Created before the first song, shown once as 24 BIP39
   English words and a QR code, and kept offline. The device keeps only the
   public part. Its wrap is stored inside each song file whenever the file is
   written, so a new device can be given access to all the owner's songs (D7).

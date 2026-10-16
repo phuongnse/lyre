@@ -1,42 +1,16 @@
 import { InjectionToken } from '@angular/core'
+import { BackupFlags, bytesOf, randomBytes, readBackupFlags } from '../webauthn'
 
 // The check for D8 (docs/decisions.md): does a device-bound passkey return a
 // PRF output in this browser and OS? It makes no device key and keeps nothing.
 
-// The backup flags of a passkey: whether it can sync (BE) and whether it has
-// synced (BS).
-export type BackupFlags = { eligible: boolean; state: boolean }
+const name = 'Lyre passkey check'
 
 export type Outcome =
   | { result: 'works'; flags: BackupFlags }
   | { result: 'refused-sync'; flags: BackupFlags }
   | { result: 'prf-missing'; flags: BackupFlags }
   | { result: 'failed'; errorName: string }
-
-const name = 'Lyre passkey check'
-
-// The flags byte follows the 32-byte RP ID hash. The sign count follows it, so
-// authenticator data is at least 37 bytes long.
-const flagsOffset = 32
-const minimumLength = 37
-const backupEligibleBit = 0x08
-const backupStateBit = 0x10
-
-export function readBackupFlags(authData: ArrayBuffer): BackupFlags {
-  if (authData.byteLength < minimumLength) throw new RangeError('Authenticator data is too short')
-  const flags = new Uint8Array(authData)[flagsOffset]
-  return { eligible: (flags & backupEligibleBit) !== 0, state: (flags & backupStateBit) !== 0 }
-}
-
-function randomBytes(length: number): Uint8Array<ArrayBuffer> {
-  return crypto.getRandomValues(new Uint8Array(length))
-}
-
-function bytesOf(source: BufferSource): Uint8Array {
-  return ArrayBuffer.isView(source)
-    ? new Uint8Array(source.buffer, source.byteOffset, source.byteLength)
-    : new Uint8Array(source)
-}
 
 // Creates a test passkey, reads its backup flags and asks it for one PRF output.
 // The output is wiped at once: only whether one came back is reported. The

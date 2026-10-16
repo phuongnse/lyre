@@ -10,6 +10,7 @@ use hkdf::Hkdf;
 use p256::elliptic_curve::ops::Reduce;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
 use p256::{FieldBytes, NonZeroScalar, Scalar, SecretKey};
+use qrcodegen::{QrCodeEcc, QrSegment, Version};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -151,6 +152,16 @@ fn scalar_from_wide(okm: &[u8; OKM_LEN]) -> Result<NonZeroScalar, DeviceKeyError
     Option::from(NonZeroScalar::new(scalar)).ok_or(DeviceKeyError::ZeroScalar)
 }
 
+/// A QR code, as its dark modules. It has no quiet zone: the client adds the
+/// blank border.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QrCode {
+    /// The side of the square symbol, in modules.
+    pub size: usize,
+    /// The modules row by row, from the top left. True is dark.
+    pub dark: Vec<bool>,
+}
+
 /// A device's public key: 33 bytes, SEC1 compressed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicKey([u8; COMPRESSED_LEN]);
@@ -181,6 +192,30 @@ impl PublicKey {
             })
             .collect();
         groups.join(" ")
+    }
+
+    /// The device code as a QR code: the uppercase code in one alphanumeric
+    /// segment at error correction level M. Its 65 characters always make
+    /// version 4, a 33 × 33 symbol.
+    pub fn qr_code(&self) -> QrCode {
+        let segments = [QrSegment::make_alphanumeric(
+            &self.device_code().to_uppercase(),
+        )];
+        // Boosting the level is off, so the level stays M.
+        let code = qrcodegen::QrCode::encode_segments_advanced(
+            &segments,
+            QrCodeEcc::Medium,
+            Version::MIN,
+            Version::MAX,
+            None,
+            false,
+        )
+        .expect("a device code fits in a QR code");
+        let size = code.size() as usize;
+        let dark = (0..size * size)
+            .map(|i| code.get_module((i % size) as i32, (i / size) as i32))
+            .collect();
+        QrCode { size, dark }
     }
 
     /// Reads a device code, typed or scanned. Whitespace around it is
@@ -348,6 +383,48 @@ mod tests {
         let keys: Vec<String> = key_rows().into_iter().map(|row| row[2].clone()).collect();
         let codes: Vec<String> = code_rows().into_iter().map(|row| row[0].clone()).collect();
         assert_eq!(keys, codes);
+    }
+
+    /// Draws the modules black on white with a quiet zone of four modules,
+    /// four pixels to a module, and reads the first QR code in the picture.
+    fn read_qr(qr: &QrCode) -> (rqrr::MetaData, String) {
+        const QUIET: usize = 4;
+        const SCALE: usize = 4;
+        let side = (qr.size + 2 * QUIET) * SCALE;
+        let mut image = rqrr::PreparedImage::prepare_from_greyscale(side, side, |x, y| {
+            let (column, row) = (x / SCALE, y / SCALE);
+            let inside = (QUIET..QUIET + qr.size).contains(&column)
+                && (QUIET..QUIET + qr.size).contains(&row);
+            if inside && qr.dark[(row - QUIET) * qr.size + column - QUIET] {
+                0
+            } else {
+                255
+            }
+        });
+        let grids = image.detect_grids();
+        assert_eq!(grids.len(), 1);
+        grids[0].decode().expect("the QR code decodes")
+    }
+
+    #[test]
+    fn a_qr_code_decodes_to_the_uppercase_code_in_33_by_33_at_level_m() {
+        for row in code_rows() {
+            let key = PublicKey(unhex(&row[0]).try_into().expect("33 bytes"));
+            let qr = key.qr_code();
+            assert_eq!(qr.size, 33, "{}", row[1]);
+            assert_eq!(qr.dark.len(), 33 * 33);
+            let (meta, text) = read_qr(&qr);
+            assert_eq!(text, row[1].to_uppercase());
+            assert_eq!(meta.version.0, 4);
+            // rqrr numbers the levels as the format bits do: M is 0.
+            assert_eq!(meta.ecc_level, 0);
+        }
+    }
+
+    #[test]
+    fn a_qr_code_is_the_same_every_time() {
+        let key = PublicKey(unhex(&code_rows()[0][0]).try_into().expect("33 bytes"));
+        assert_eq!(key.qr_code(), key.qr_code());
     }
 
     #[test]
