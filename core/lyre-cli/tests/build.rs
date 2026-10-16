@@ -5,6 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use lyre_core::access::{self, AccessFileError, Role};
+use lyre_core::device::DeviceKey;
+use lyre_core::song_file::v1;
 use lyre_core::song_file::{self, SyllableTime, VocalRole};
 
 /// The largest total size of every file under `tests/fixtures`, in bytes.
@@ -86,6 +89,137 @@ fn command_writes_the_built_song() {
 
     assert!(output.status.success(), "{output:?}");
     assert_eq!(fs::read(&out).expect("output is written"), build_fixture());
+}
+
+fn device(byte: u8) -> DeviceKey {
+    DeviceKey::from_prf_output(&[byte; 32]).expect("a device key")
+}
+
+/// Runs `lyre-cli build` on the fixture with the given extra arguments.
+fn build_with(out: &Path, extra: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_lyre-cli"))
+        .arg("build")
+        .arg(song_dir().join("song.toml"))
+        .arg(out)
+        .args(extra)
+        .output()
+        .expect("lyre-cli runs")
+}
+
+/// Builds the fixture for the device made from `0x11` bytes. Returns the song
+/// file and the access file.
+fn build_for_device_command(dir: &Path) -> (Vec<u8>, Vec<u8>) {
+    let out = dir.join("v1/fixture.lyre");
+    let access = dir.join("v1/fixture.lyrekey");
+    let code = device(0x11).public_key().device_code();
+    let output = build_with(
+        &out,
+        &[
+            "--device-code",
+            &code,
+            "--access",
+            access.to_str().expect("UTF-8"),
+        ],
+    );
+    assert!(output.status.success(), "{output:?}");
+    (
+        fs::read(&out).expect("song file is written"),
+        fs::read(&access).expect("access file is written"),
+    )
+}
+
+#[test]
+fn command_writes_a_version_1_song_that_the_device_opens() {
+    let dir = tempfile::tempdir().expect("temporary folder");
+    let (song_file, access_file) = build_for_device_command(dir.path());
+
+    let id = v1::Header::parse(&song_file)
+        .expect("a version-1 header")
+        .song_id();
+    let access = access::open(&access_file, &device(0x11), &id).expect("the device opens it");
+    assert_eq!(access.role, Role::Owner);
+    let song = v1::read(&song_file, &access.content_key).expect("the content key opens the song");
+    let expected = song_file::read(&build_fixture()).expect("the version-0 fixture reads");
+    assert_eq!(song.lyrics.as_bytes(), expected.lyrics.as_bytes());
+    assert_eq!(song.timing.syllables(), expected.timing.syllables());
+    assert_eq!(song.details.title(), expected.details.title());
+    assert_eq!(song.thumbnail, expected.thumbnail);
+    assert_eq!(song.video.map(|t| t.init), expected.video.map(|t| t.init));
+    assert_eq!(song.karaoke.init, expected.karaoke.init);
+    assert_eq!(song.karaoke.segments.len(), expected.karaoke.segments.len());
+    assert_eq!(
+        song.original.segments.len(),
+        expected.original.segments.len()
+    );
+    assert!(
+        song_file::read(&song_file).is_err(),
+        "a version-1 file is not a version-0 file"
+    );
+}
+
+#[test]
+fn another_device_cannot_open_the_access_file() {
+    let dir = tempfile::tempdir().expect("temporary folder");
+    let (song_file, access_file) = build_for_device_command(dir.path());
+    let id = v1::Header::parse(&song_file)
+        .expect("a version-1 header")
+        .song_id();
+
+    let result = access::open(&access_file, &device(0xff), &id);
+    assert!(
+        matches!(result, Err(AccessFileError::OtherDevice)),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn every_version_1_build_has_a_fresh_content_key() {
+    let dir = tempfile::tempdir().expect("temporary folder");
+    let (first_song, first_access) = build_for_device_command(dir.path());
+    let (second_song, second_access) = build_for_device_command(dir.path());
+    let id = v1::Header::parse(&first_song).expect("a header").song_id();
+    let first = access::open(&first_access, &device(0x11), &id).expect("the device opens it");
+    let second = access::open(&second_access, &device(0x11), &id).expect("the device opens it");
+
+    assert!(v1::read(&first_song, &first.content_key).is_ok());
+    assert!(v1::read(&second_song, &second.content_key).is_ok());
+    assert!(v1::read(&second_song, &first.content_key).is_err());
+    assert!(v1::read(&first_song, &second.content_key).is_err());
+}
+
+#[test]
+fn command_without_the_new_options_writes_version_0() {
+    let dir = tempfile::tempdir().expect("temporary folder");
+    let out = dir.path().join("fixture.lyre");
+    let output = build_with(&out, &[]);
+
+    assert!(output.status.success(), "{output:?}");
+    let bytes = fs::read(&out).expect("output is written");
+    assert_eq!(bytes, build_fixture());
+    assert_eq!(&bytes[8..10], &[0, 0]);
+}
+
+#[test]
+fn command_rejects_bad_device_options_and_writes_nothing() {
+    let dir = tempfile::tempdir().expect("temporary folder");
+    let out = dir.path().join("bad.lyre");
+    let access = dir.path().join("bad.lyrekey");
+    let access = access.to_str().expect("UTF-8");
+    let code = device(0x11).public_key().device_code();
+    for (extra, exit) in [
+        (
+            vec!["--device-code", "lyre1pnotacode", "--access", access],
+            2,
+        ),
+        (vec!["--device-code", code.as_str()], 2),
+        (vec!["--access", access], 2),
+        (vec!["--access", access, "--device-code", code.as_str()], 2),
+    ] {
+        let output = build_with(&out, &extra);
+        assert_eq!(output.status.code(), Some(exit), "{extra:?}: {output:?}");
+        assert!(!out.exists(), "{extra:?}");
+        assert!(!Path::new(access).exists(), "{extra:?}");
+    }
 }
 
 #[test]

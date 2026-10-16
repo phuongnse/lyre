@@ -1,4 +1,6 @@
 import { expect, Locator, Page, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
+import { buildForDevice } from './song-file'
 import { encodingsOf, expectNotInPage, openWith, returnedPrf } from './webauthn'
 
 // Chromium refuses WebAuthn on IP address origins, so these journeys use localhost.
@@ -87,6 +89,24 @@ test('a device-bound passkey with PRF shows the device code, the fingerprint and
   await expect(fingerprintText(page)).toHaveText(fingerprint)
   await expect(qrImage(page)).toBeVisible()
   await expectNoLeak(page, consoleMessages, databasesBefore, true)
+})
+
+test('lyre-cli builds a version-1 song and an access file for the device code on the page', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(180_000)
+  await openWith(page, '/', { hasPrf: true, backupEligible: false })
+  await press(page)
+  const code = await codeText(page).innerText()
+
+  const { song, access } = await buildForDevice(code, testInfo.outputPath('device'))
+
+  const songBytes = await readFile(song)
+  expect([...songBytes.subarray(0, 8)]).toEqual([0x89, 0x4c, 0x59, 0x52, 0x45, 0x0d, 0x0a, 0x1a])
+  expect([...songBytes.subarray(8, 10)]).toEqual([1, 0])
+  const accessBytes = await readFile(access)
+  expect(accessBytes).toHaveLength(179)
+  expect([...accessBytes.subarray(0, 8)]).toEqual([0x89, 0x4c, 0x4b, 0x45, 0x59, 0x0d, 0x0a, 0x1a])
 })
 
 test('a later press in the same page load shows the same code', async ({ page }) => {

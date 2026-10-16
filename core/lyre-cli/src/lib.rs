@@ -1,5 +1,6 @@
-//! `lyre-cli`: a developer tool that builds version-0 song files from small
-//! fixtures, with timing written by hand.
+//! `lyre-cli`: a developer tool that builds song files from small fixtures,
+//! with timing written by hand. It writes version 0 by default. Given a device
+//! code, it writes version 1 and an access file for that device.
 //!
 //! The manifest and the timing file are described in
 //! `docs/reference/lyre-cli.md`. The media files are init and media
@@ -11,11 +12,17 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use lyre_core::access::{self, Role};
+use lyre_core::content_key::ContentKey;
+use lyre_core::device::PublicKey;
 use lyre_core::lyrics::{Lyrics, LyricsError};
+use lyre_core::recovery::{RecoveryKey, RecoveryPublicKey};
+use lyre_core::song_file::v1::{self, Salt};
 use lyre_core::song_file::{
     self, Segment, Song, SongDetails, SongFileError, Timing, Track, VocalRole,
 };
 use lyre_core::timing_file::{self, TimingFileError};
+use rand_core::{OsRng, RngCore};
 use serde::Deserialize;
 
 /// The manifest: where the parts of the song are, and its details. Paths are
@@ -62,9 +69,54 @@ struct SegmentSpec {
     duration_ms: u32,
 }
 
-/// Builds the song file that the manifest at `manifest` describes, and
-/// returns its bytes. Nothing is written.
+/// Builds the version-0 song file that the manifest at `manifest` describes,
+/// and returns its bytes. Nothing is written.
 pub fn build(manifest: &Path) -> Result<Vec<u8>, BuildError> {
+    song_file::write(&song(manifest)?).map_err(BuildError::SongFile)
+}
+
+/// The two files of a version-1 build: the song file and its access file.
+/// There is no `Debug`, so the bytes cannot reach a log by accident.
+pub struct DeviceBuild {
+    pub song_file: Vec<u8>,
+    pub access_file: Vec<u8>,
+}
+
+/// Builds the version-1 song file that the manifest at `manifest` describes,
+/// with a fresh content key, and an access file that wraps the key for
+/// `device` with the owner role. The content key leaves this function only
+/// inside the access file. Nothing is written.
+pub fn build_for_device(manifest: &Path, device: &PublicKey) -> Result<DeviceBuild, BuildError> {
+    let song = song(manifest)?;
+    let content_key = ContentKey::generate();
+    let song_file = v1::write(
+        &song,
+        &content_key,
+        &throwaway_recovery_key(),
+        Salt::generate(),
+    )
+    .map_err(BuildError::SongFile)?;
+    let access_file = access::wrap(&content_key, &song.song_id, device, Role::Owner);
+    Ok(DeviceBuild {
+        song_file,
+        access_file,
+    })
+}
+
+/// The recovery public key for a development build. Its private key is made
+/// from fresh random bytes and dropped here, so no one can recover these
+/// files.
+fn throwaway_recovery_key() -> RecoveryPublicKey {
+    let mut seed = [0u8; 32];
+    OsRng.fill_bytes(&mut seed);
+    // A zero scalar has a negligible chance.
+    RecoveryKey::from_seed(&seed)
+        .expect("a random seed gives a recovery key")
+        .public_key()
+}
+
+/// Reads the manifest at `manifest` and the files it names into a song.
+fn song(manifest: &Path) -> Result<Song, BuildError> {
     let text = fs::read_to_string(manifest).map_err(|source| BuildError::Read {
         path: manifest.to_path_buf(),
         source,
@@ -113,7 +165,7 @@ pub fn build(manifest: &Path) -> Result<Vec<u8>, BuildError> {
             segments,
         })
     };
-    let song = Song {
+    Ok(Song {
         song_id,
         details,
         thumbnail,
@@ -122,8 +174,7 @@ pub fn build(manifest: &Path) -> Result<Vec<u8>, BuildError> {
         video: spec.video.as_ref().map(track).transpose()?,
         karaoke: track(&spec.karaoke)?,
         original: track(&spec.original)?,
-    };
-    song_file::write(&song).map_err(BuildError::SongFile)
+    })
 }
 
 /// Reads a song ID written as exactly 32 hex digits.

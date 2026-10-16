@@ -1,5 +1,9 @@
+import { execFile } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { Page } from '@playwright/test'
+
+const run = promisify(execFile)
 
 // scripts/e2e.sh builds the fixture song here with lyre-cli before the journeys run.
 export const fixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture.lyre', import.meta.url))
@@ -21,4 +25,19 @@ export async function chooseSongFile(page: Page, file: Choice): Promise<void> {
 export async function openSongFile(page: Page, file: Choice): Promise<void> {
   await page.goto('/')
   await chooseSongFile(page, file)
+}
+
+// Builds the fixture song as version 1, with an access file for `deviceCode`, into `dir`. Each call
+// makes a fresh content key, so the two files belong together. It runs lyre-cli as scripts/e2e.sh
+// does, so cargo may compile first.
+export async function buildForDevice(deviceCode: string, dir: string): Promise<{ song: string; access: string }> {
+  const song = `${dir}/fixture-v1.lyre`
+  const access = `${dir}/fixture-v1.lyrekey`
+  const manifest = fileURLToPath(new URL('../../fixtures/song/song.toml', import.meta.url))
+  await run(
+    'cargo',
+    ['run', '--locked', '-q', '-p', 'lyre-cli', '--', 'build', manifest, song, '--device-code', deviceCode, '--access', access],
+    { cwd: fileURLToPath(new URL('../../../core', import.meta.url)) },
+  )
+  return { song, access }
 }
