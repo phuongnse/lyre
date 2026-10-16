@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { expect, Locator, Page, test } from '@playwright/test'
-import { fixture, maleFixture, openSongFile } from './song-file'
+import { Manifest, openV1Fixture } from './song-file'
+
+// Chromium refuses WebAuthn on IP address origins, so these journeys use localhost.
+test.use({ baseURL: 'http://localhost:4173' })
+// Each journey builds its song with lyre-cli, so cargo may compile first.
+test.setTimeout(180_000)
 
 // The fixture's syllables, with their times in seconds from
 // tests/fixtures/song/timing.txt.
@@ -16,10 +21,10 @@ const timing: [string, number, number][] = [
   ['lên', 10.4, 11],
 ]
 
-// Opens the fixture song, or `file`, and waits until its video can seek. Returns
-// the Lyrics region and the video.
-async function openFixture(page: Page, file = fixture): Promise<{ region: Locator; video: Locator }> {
-  await openSongFile(page, file)
+// Opens the fixture song, or the one `manifest` names, and waits until its video
+// can seek. Returns the Lyrics region and the video.
+async function openFixture(page: Page, manifest?: Manifest): Promise<{ region: Locator; video: Locator }> {
+  await openV1Fixture(page, manifest)
   const video = page.getByLabel('Song video')
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(1)
   return { region: page.getByRole('region', { name: 'Lyrics' }), video }
@@ -184,7 +189,7 @@ test('sung syllables have the vocal role fill and a white outline, unsung ones w
 })
 
 test('in a male song, sung syllables are blue with a white outline', async ({ page }) => {
-  const { region, video } = await openFixture(page, maleFixture)
+  const { region, video } = await openFixture(page, 'male.toml')
   const syllable = syllableIn(region)
   await seek(video, 4)
   await expect(syllable('về')).toHaveAttribute('aria-current', 'true')

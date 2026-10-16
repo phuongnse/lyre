@@ -48,6 +48,8 @@ export const messages = {
   songFileNotASongFile: 'This file is not a song file.',
   songCannotOpen: 'This song cannot be opened on this device.',
   songFileDamaged: 'This song file is damaged or incomplete.',
+  songFileOldVersion: 'This song file is from an older version of Lyre and no longer plays.',
+  songNoLongerPlays: 'No longer plays',
   // Keyed by SongMedia.
   cannotPlay: {
     video: "This device cannot play this song's video.",

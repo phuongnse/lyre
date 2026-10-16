@@ -1,6 +1,21 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { expect, Page, test } from '@playwright/test'
-import { Choice, fixture, h265Fixture, openSongFile } from './song-file'
+import {
+  buildForDevice,
+  Choice,
+  chooseSongFile,
+  fixture,
+  openSongFile,
+  openV1Fixture,
+  unlockedDeviceCode,
+} from './song-file'
+
+// Chromium refuses WebAuthn on IP address origins, so these journeys use localhost.
+test.use({ baseURL: 'http://localhost:4173' })
+// Each journey builds its song with lyre-cli, so cargo may compile first.
+test.setTimeout(180_000)
+
+const OLD_VERSION = 'This song file is from an older version of Lyre and no longer plays.'
 
 function octets(name: string, buffer: Buffer): Choice {
   return { name, mimeType: 'application/octet-stream', buffer }
@@ -13,7 +28,7 @@ test('the Player plays the fixture song with its karaoke track', async ({ page }
   })
   page.on('pageerror', (error) => problems.push(error.message))
 
-  await openSongFile(page, fixture)
+  await openV1Fixture(page)
   const video = page.getByLabel('Song video')
   await expect(video).toBeVisible()
   await page.getByRole('button', { name: 'Play' }).click()
@@ -85,7 +100,7 @@ function watchProblems(page: Page): string[] {
 }
 
 test('the Player starts on Karaoke and shows which track is chosen', async ({ page }) => {
-  await openSongFile(page, fixture)
+  await openV1Fixture(page)
   const karaoke = page.getByRole('radio', { name: 'Karaoke' })
   const original = page.getByRole('radio', { name: 'Original' })
   await expect(karaoke).toBeChecked()
@@ -97,7 +112,7 @@ test('the Player starts on Karaoke and shows which track is chosen', async ({ pa
 
 test('switching to Original during playback keeps the position and changes only the sound', async ({ page }) => {
   const problems = watchProblems(page)
-  await openSongFile(page, fixture)
+  await openV1Fixture(page)
   await expect(page.getByLabel('Song video')).toBeVisible()
   await page.getByRole('button', { name: 'Play' }).click()
   await listen(page)
@@ -124,7 +139,7 @@ test('switching to Original during playback keeps the position and changes only 
 
 test('switching to Original while paused plays Original from the paused position', async ({ page }) => {
   const problems = watchProblems(page)
-  await openSongFile(page, fixture)
+  await openV1Fixture(page)
   await expect(page.getByLabel('Song video')).toBeVisible()
   await page.getByRole('button', { name: 'Play' }).click()
   await listen(page)
@@ -149,25 +164,39 @@ test('switching to Original while paused plays Original from the paused position
   expect(problems).toEqual([])
 })
 
-test('a truncated song file shows that it is damaged, and nothing plays', async ({ page }) => {
-  const file = readFileSync(fixture)
-  await openSongFile(page, octets('truncated.lyre', file.subarray(0, file.length - 1000)))
+test('a truncated song file shows that it is damaged, and nothing plays', async ({ page }, testInfo) => {
+  const code = await unlockedDeviceCode(page)
+  const { song, access } = await buildForDevice(code, testInfo.outputPath('v1'))
+  const file = readFileSync(song)
+  const truncated = testInfo.outputPath('v1/truncated.lyre')
+  writeFileSync(truncated, file.subarray(0, file.length - 1000))
+  await chooseSongFile(page, [truncated, access])
   await expect(page.getByRole('alert')).toHaveText('This song file is damaged or incomplete.')
   await expect(page.getByLabel('Song video')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Play' })).toHaveCount(0)
 })
 
 test('a song whose video this browser cannot play says so, and nothing plays', async ({ page }) => {
-  await page.goto('/')
+  await openV1Fixture(page, 'h265.toml')
   // The journey tests the message only while Playwright's Chromium has no H.265 decoder.
   const supported = await page.evaluate(() => MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L93.B0"'))
   expect(supported).toBe(false)
 
-  await openSongFile(page, h265Fixture)
   await expect(page.getByRole('alert')).toHaveText("This device cannot play this song's video.")
   await expect(page.getByLabel('Song video')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Play' })).toHaveCount(0)
   // The song is not kept in the library.
+  await expect(page.getByRole('list', { name: 'Library' })).toHaveCount(0)
+})
+
+test('a version-0 song file shows the old-version message, and nothing plays or is kept', async ({ page }) => {
+  await openSongFile(page, fixture)
+  await expect(page.getByRole('alert')).toHaveText(OLD_VERSION)
+  await expect(page.getByLabel('Song video')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Play' })).toHaveCount(0)
+  await expect(page.getByRole('list', { name: 'Library' })).toHaveCount(0)
+  // Nothing was kept, also after a reload.
+  await page.reload()
   await expect(page.getByRole('list', { name: 'Library' })).toHaveCount(0)
 })
 

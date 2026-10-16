@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, Page, test } from '@playwright/test'
-import { Choice, openSongFile } from './song-file'
+import { Choice } from './song-file'
 
 // scripts/e2e.sh makes these with tests/fixtures/source/make.sh before the journeys run.
 const source = (name: string) => fileURLToPath(new URL(`../../../artifacts/e2e/sources/${name}`, import.meta.url))
@@ -459,7 +459,19 @@ async function countSeeks(page: Page): Promise<void> {
 }
 const seeks = (page: Page) => page.evaluate(() => (window as unknown as { lyreSeeks: number }).lyreSeeks)
 
-test('song.webm makes a song file with video and a thumbnail, which the Player plays and switches', async ({
+// The made song is played from memory and never kept, so the main page has no Library list,
+// also after a reload.
+async function expectNotKept(page: Page): Promise<void> {
+  const library = page.getByRole('list', { name: 'Library' })
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Open a song file' })).toBeVisible()
+  await expect(library).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Open a song file' })).toBeVisible()
+  await expect(library).toHaveCount(0)
+}
+
+test('song.webm makes a song file with video and a thumbnail, which the Player under the link plays and switches', async ({
   page,
 }) => {
   const problems = watchProblems(page)
@@ -468,11 +480,9 @@ test('song.webm makes a song file with video and a thumbnail, which the Player p
   expect(name).toBe('song.lyre')
   expect(chunkTypes(bytes)).toEqual(expect.arrayContaining([THUMBNAIL, VIDEO_INIT, VIDEO_SEGMENT]))
 
-  await openSongFile(page, { name, mimeType: 'application/octet-stream', buffer: bytes })
+  // The made song plays from memory in the Player under the link. The downloaded file is version 0.
   const video = page.getByLabel('Song video')
   await expect(video).toBeVisible()
-  // song.webm has no title tag, so the title is its file name without the extension.
-  await expect(page.getByRole('list', { name: 'Library' }).getByRole('button', { name: 'song', exact: true })).toBeVisible()
   await countSeeks(page)
   await page.getByRole('button', { name: 'Play' }).click()
   const poll = { intervals: [50] }
@@ -494,9 +504,10 @@ test('song.webm makes a song file with video and a thumbnail, which the Player p
   expect(await seeks(page)).toBe(seeksBefore)
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(problems).toEqual([])
+  await expectNotKept(page)
 })
 
-test('song.mp3 makes a song file without video or a thumbnail, which the Player opens', async ({ page }) => {
+test('song.mp3 makes a song file without video or a thumbnail, which the Player under the link opens', async ({ page }) => {
   const problems = watchProblems(page)
   await makeSong(page, 'song.mp3', goodTiming)
   const { name, bytes } = await downloadSong(page)
@@ -504,18 +515,19 @@ test('song.mp3 makes a song file without video or a thumbnail, which the Player 
   const types = chunkTypes(bytes)
   for (const type of [THUMBNAIL, VIDEO_INIT, VIDEO_SEGMENT]) expect(types).not.toContain(type)
 
-  await openSongFile(page, { name, mimeType: 'application/octet-stream', buffer: bytes })
+  // The page's own MP3 source alert may show too, so the Player's message is picked by its text.
+  const playerAlert = page.getByRole('alert').filter({ hasText: "This device cannot play this song's original track." })
   // MP3 is stored as `audio/mp4; codecs="mp4a.6B"`, which Playwright's Chromium does not accept.
   const mp3 = await page.evaluate(() => MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.6B"'))
   if (mp3) {
     await page.getByRole('button', { name: 'Play' }).click()
     await expect.poll(() => songSeconds(page), { intervals: [50] }).toBeGreaterThan(0.5)
-    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect(playerAlert).toHaveCount(0)
   } else {
-    await expect(page.getByRole('alert')).toHaveText("This device cannot play this song's original track.")
-    await expect(page.getByRole('alert')).toHaveCount(1)
+    await expect(playerAlert).toHaveText("This device cannot play this song's original track.")
   }
   expect(problems).toEqual([])
+  await expectNotKept(page)
 })
 
 test('a timing that ends after the song shows the refusal and offers no song file', async ({ page }) => {

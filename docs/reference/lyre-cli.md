@@ -33,11 +33,10 @@ From the repository root, this builds the fixture song:
   the line. It never quotes lyric text.
 
 The built file is not committed. Tests build it from the fixtures when they
-run: `scripts/e2e.sh` builds it into `artifacts/e2e/fixture.lyre` for the
-Player journeys. It also builds `male.toml` into
-`artifacts/e2e/fixture-male.lyre`, and `h265.toml` into
-`artifacts/e2e/fixture-h265.lyre`. A journey that needs a version-1 file
-builds it during the test, with the helper `buildForDevice` in
+run: `scripts/e2e.sh` builds it into `artifacts/e2e/fixture.lyre`, a
+version-0 file, for the two journeys that check the Player refuses version 0.
+Every other Player journey builds a version-1 file during the test, from
+`song.toml`, `male.toml` or `h265.toml`, with the helper `buildForDevice` in
 `tests/e2e/journeys/song-file.ts`, because the device code exists only once
 the page has made it. The `inspect` command in the [repository
 layout](../architecture.md#repository-layout) is not built yet.
@@ -56,7 +55,8 @@ lyre-cli build <manifest.toml> <out.lyre> --device-code <code> --access <out.lyr
   is what selects version 1. With only one of them, or in another order, the
   command prints the usage and writes nothing. Without them it writes version
   0, as above. Version 0 stays the default while the web client still makes
-  version-0 songs and the version-0 journeys use them.
+  version-0 songs. Only the journeys that check the Player refuses version 0
+  use it.
 - Every build makes a fresh content key. The key is written only inside the
   access file, wrapped for the device. It is never printed or logged.
 - The access file holds one entry for the song, with the owner role.
@@ -155,12 +155,12 @@ from real media.
 - **Thumbnail.** A JPEG frame of the test pattern.
 - **Lyrics.** Three short made-up Vietnamese lines, not from any real song.
 - **Male variant.** `male.toml` is the same song with a male vocal role, for
-  the vocal role colour journey. A lyre-cli test keeps it equal to `song.toml`
+  the vocal role colour journey, which builds it as version 1. A lyre-cli test keeps it equal to `song.toml`
   apart from its header comment and vocal role.
 - **H.265 variant.** `h265.toml` is the same song with the video type
   `video/mp4; codecs="hvc1.1.6.L93.B0"`, an H.265 type. Playwright's
   Chromium cannot play it, so the Player journey checks the cannot-play
-  message with it. Its video bytes are still the VP9 fixture's, and are never
+  message with it, built as version 1. Its video bytes are still the VP9 fixture's, and are never
   read. A lyre-cli test keeps it equal to `song.toml` apart from its header
   comment and video type.
 - **Timing.** Written by hand for those lyrics. The first lyric line starts
@@ -204,8 +204,10 @@ report that it cannot encode Opus, and checks that making the audio tracks
 shows only the cannot-encode-audio message.
 
 The song file journeys make a song file on the source check page from a
-source, `karaoke.webm`, a one-line lyrics file and a timing file, and open it
-in the Player. `song.webm` gives a song file with video and a thumbnail,
+source, `karaoke.webm`, a one-line lyrics file and a timing file, and play it
+in the Player under the download link, from memory. The downloaded version-0
+file is not opened, because the main page's open button refuses it, and
+nothing is kept in the library. `song.webm` gives a song file with video and a thumbnail,
 which plays, and whose Karaoke and Original switch keeps the position while
 paused. `song.mp3` gives one with no video and no thumbnail. Playwright's
 Chromium refuses its original track's type, so its journey expects the

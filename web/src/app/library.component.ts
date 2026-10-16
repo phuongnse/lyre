@@ -5,7 +5,8 @@ import { Library } from './library'
 import { messages } from './messages'
 
 // Lists the songs kept on this device, with their details exactly as stored.
-// Choosing one emits it, for the Player to play.
+// A song kept without an access file is version 0 and is marked as no longer
+// playing. Choosing one emits it, for the Player to play or refuse.
 @Component({
   selector: 'lyre-library',
   imports: [MatButton],
@@ -19,6 +20,9 @@ import { messages } from './messages'
         @for (song of library.songs(); track song.songId) {
           <li>
             <button matButton type="button" (click)="choose.emit(song)">{{ song.title }}</button>
+            @if (!song.accessFile) {
+              <span>{{ messages.songNoLongerPlays }}</span>
+            }
             @if (song.artist) {
               <span>{{ messages.songArtist(song.artist) }}</span>
             }

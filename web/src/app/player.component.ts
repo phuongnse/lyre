@@ -35,8 +35,10 @@ type AudioTrackChoice = 'karaoke' | 'original'
 // library, and plays its video with the karaoke track or the original track,
 // with its lyrics over the bottom of the video. A song file that opens, and that
 // this browser can play, is kept in the library, with the access file that
-// opened it. Given a song through its input, it plays only that song: it keeps
-// nothing in the library, and has no open button or library list.
+// opened it. A version-0 file is refused, whether it is opened or kept. Given a
+// song through its input, or one made on this page, it plays only that song from
+// memory: it keeps nothing in the library, and has no open button or library
+// list.
 @Component({
   selector: 'lyre-player',
   imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, LibraryList, Lyrics],
@@ -136,7 +138,7 @@ export class Player {
         if (this.playback === playback) this.playback = undefined
       })
     })
-    // A song given through the input opens without a file, so the library never keeps it.
+    // A song given through the input opens from memory, so the library never keeps it.
     effect(() => {
       const song = this.song()
       if (song) untracked(() => void this.openSource(song))
@@ -152,12 +154,12 @@ export class Player {
     input.value = ''
     const isAccessFile = (file: File) => file.name.toLowerCase().endsWith('.lyrekey')
     const file = chosen.find((candidate) => !isAccessFile(candidate))
-    if (file) await this.openSource(file, file, chosen.filter(isAccessFile))
+    if (file) await this.openSource(file, { files: chosen.filter(isAccessFile), keep: file })
   }
 
   // Opens a song kept in the library, with the access file it was kept with.
   protected openKept(kept: KeptSong): Promise<void> {
-    return this.openSource(kept.file, undefined, kept.accessFile ? [kept.accessFile] : [])
+    return this.openSource(kept.file, { files: kept.accessFile ? [kept.accessFile] : [] })
   }
 
   protected problemMessage(problem: SongFileProblem): string {
@@ -166,23 +168,28 @@ export class Player {
         return messages.songFileNotASongFile
       case 'cannot-open':
         return messages.songCannotOpen
+      case 'old-version':
+        return messages.songFileOldVersion
       default:
         return messages.songFileDamaged
     }
   }
 
-  // Opens a song file made on this page, and keeps it in the library as an opened file is.
+  // Plays a song file made on this page from memory, without device access, so it
+  // may still be version 0. It is not kept in the library.
   openMade(file: Blob): Promise<void> {
-    return this.openSource(file, file)
+    return this.openSource(file)
   }
 
-  // Opens `source` with the chosen `accessFiles`. When it is a chosen `file`
-  // that opens, keeps it in the library.
-  protected async openSource(source: ByteSource, file?: Blob, accessFiles: readonly Blob[] = []): Promise<void> {
+  // Opens `source`. With `chosen`, the song opens with device access and the
+  // chosen access `files`, and when it opens and `keep` is set, `keep` goes
+  // into the library. Without `chosen`, the song is a made one: it opens
+  // without device access and is never kept.
+  protected async openSource(source: ByteSource, chosen?: { files: readonly Blob[]; keep?: Blob }): Promise<void> {
     const attempt = ++this.attempts
     this.leave({ status: 'opening' })
     try {
-      const song = await this.openSongFile(source, { files: accessFiles, key: this.deviceKey })
+      const song = await this.openSongFile(source, chosen && { files: chosen.files, key: this.deviceKey })
       if (attempt !== this.attempts || this.state().status !== 'opening') {
         song.close()
         return
@@ -196,7 +203,7 @@ export class Player {
       }
       this.leave({ status: 'ready', song })
       // Playback does not wait for the library, and never fails because of it.
-      if (file) void this.library.keep(song, file)
+      if (chosen?.keep) void this.library.keep(song, chosen.keep)
     } catch (error) {
       if (attempt !== this.attempts) return
       // The error's own text is never shown: it is not meant for users.

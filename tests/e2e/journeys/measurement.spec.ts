@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { expect, FileChooser, Locator, Page, test } from "@playwright/test";
-import { fixture, openSongFile } from "./song-file";
+import { openV1Fixture } from "./song-file";
 
 // Separating and running the test aligner on one WebAssembly thread takes a while.
 const RUN_TIMEOUT = 180_000;
@@ -438,63 +438,70 @@ async function syllableCurrent(page: Page): Promise<boolean> {
   return false;
 }
 
-test("after a WebAssembly measurement, the test aligner's timing, which the song file timing check accepts, plays the source in the Player with its lyrics highlighted, the Karaoke / Original switch keeps the position, and the library gets no new song", async ({
-  page,
-}) => {
-  await openSongFile(page, fixture);
-  const library = page.getByRole("list", { name: "Library" });
-  await expect(library.getByRole("listitem")).toHaveCount(1);
-  await page.goto(WASM_PAGE);
+// This journey opens a version-1 song, built with lyre-cli for the page's device code. Chromium refuses
+// WebAuthn on IP address origins, so it uses localhost. The build adds to the run's time.
+test.describe("with a version-1 song kept in the library", () => {
+  test.use({ baseURL: "http://localhost:4173" });
+  test.setTimeout(RUN_TIMEOUT + 90_000);
 
-  await measure(page);
+  test("after a WebAssembly measurement, the test aligner's timing, which the song file timing check accepts, plays the source in the Player with its lyrics highlighted, the Karaoke / Original switch keeps the position, and the library gets no new song", async ({
+    page,
+  }) => {
+    await openV1Fixture(page);
+    const library = page.getByRole("list", { name: "Library" });
+    await expect(library.getByRole("listitem")).toHaveCount(1);
+    await page.goto(WASM_PAGE);
 
-  await expect(page.getByText("The measurement is done.")).toBeVisible({
-    timeout: RUN_TIMEOUT,
+    await measure(page);
+
+    await expect(page.getByText("The measurement is done.")).toBeVisible({
+      timeout: RUN_TIMEOUT,
+    });
+    const poll = { intervals: [50], timeout: 10_000 };
+    for (const name of CANDIDATES) {
+      const result = `${name} on WebAssembly`;
+      await page
+        .getByRole("button", { name: `Play with this timing: ${result}` })
+        .click();
+      // The heading names the result only once its song is made.
+      await expect(
+        page.getByRole("heading", {
+          name: `Playing with the timing of ${result}`,
+        }),
+      ).toBeVisible({ timeout: 30_000 });
+      // The timing passed the song file's timing check.
+      await expect(
+        page.getByText("The song could not be made with this timing."),
+      ).toHaveCount(0);
+      await expect(page.getByLabel("Song video")).toBeVisible();
+      // The Player has no open button and no library list.
+      await expect(
+        page.getByRole("button", { name: "Open a song file" }),
+      ).toHaveCount(0);
+      await expect(library).toHaveCount(0);
+      await page.getByRole("button", { name: "Play", exact: true }).click();
+      await expect.poll(() => syllableCurrent(page), poll).toBe(true);
+    }
+
+    // The last song is still playing. It pauses after 0.3 s, then switches.
+    await countSeeks(page);
+    await expect.poll(() => songSeconds(page), poll).toBeGreaterThan(0.3);
+    await page.getByRole("button", { name: "Pause", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Play", exact: true }),
+    ).toBeVisible();
+    const paused = await songSeconds(page);
+    const seeksBefore = await seeks(page);
+    await page.getByRole("radio", { name: "Original" }).click();
+    await expect(page.getByRole("radio", { name: "Original" })).toBeChecked();
+    expect(await songSeconds(page)).toBe(paused);
+    expect(await seeks(page)).toBe(seeksBefore);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+
+    // The measured songs were never kept.
+    await page.goto("/");
+    await expect(library.getByRole("listitem")).toHaveCount(1);
   });
-  const poll = { intervals: [50], timeout: 10_000 };
-  for (const name of CANDIDATES) {
-    const result = `${name} on WebAssembly`;
-    await page
-      .getByRole("button", { name: `Play with this timing: ${result}` })
-      .click();
-    // The heading names the result only once its song is made.
-    await expect(
-      page.getByRole("heading", {
-        name: `Playing with the timing of ${result}`,
-      }),
-    ).toBeVisible({ timeout: 30_000 });
-    // The timing passed the song file's timing check.
-    await expect(
-      page.getByText("The song could not be made with this timing."),
-    ).toHaveCount(0);
-    await expect(page.getByLabel("Song video")).toBeVisible();
-    // The Player has no open button and no library list.
-    await expect(
-      page.getByRole("button", { name: "Open a song file" }),
-    ).toHaveCount(0);
-    await expect(library).toHaveCount(0);
-    await page.getByRole("button", { name: "Play", exact: true }).click();
-    await expect.poll(() => syllableCurrent(page), poll).toBe(true);
-  }
-
-  // The last song is still playing. It pauses after 0.3 s, then switches.
-  await countSeeks(page);
-  await expect.poll(() => songSeconds(page), poll).toBeGreaterThan(0.3);
-  await page.getByRole("button", { name: "Pause", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Play", exact: true }),
-  ).toBeVisible();
-  const paused = await songSeconds(page);
-  const seeksBefore = await seeks(page);
-  await page.getByRole("radio", { name: "Original" }).click();
-  await expect(page.getByRole("radio", { name: "Original" })).toBeChecked();
-  expect(await songSeconds(page)).toBe(paused);
-  expect(await seeks(page)).toBe(seeksBefore);
-  await expect(page.getByRole("alert")).toHaveCount(0);
-
-  // The measured songs were never kept.
-  await page.goto("/");
-  await expect(library.getByRole("listitem")).toHaveCount(1);
 });
 
 test("after a measurement with invalid lyrics, each result says the alignment was refused and has no Play with this timing button", async ({
