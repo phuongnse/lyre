@@ -124,8 +124,10 @@ From M3 every chunk is encrypted and authenticated with AES-256-GCM.
 HKDF-SHA256 derives the file's encryption keys from the song's content key
 and the per-write salt. A player can seek by decrypting only the chunks it
 needs, and a changed or truncated file is rejected. Format version 0, used
-in M1 and M2, is unencrypted, for development only, and is no longer accepted
-from M3. No version-0 file is ever published.
+in M1 and M2, is unencrypted, for development only. The web Player refuses
+opened and kept version-0 files. Songs made on the page are still version 0
+and play from memory, until making writes version 1 *(planned for M3)*. No
+version-0 file is ever published.
 
 The byte layout, limits and media codecs are specified in
 [song file format, version 0](reference/song-file-format-v0.md).
@@ -306,8 +308,9 @@ The song file's encrypted layout and recovery wrap are specified in
 - On the web, the main page's
   [Make a song](ui-conventions.md#making-a-song) section runs a task's real
   stages, from reading the source to writing the song file, with alignment in
-  place of the hand-written timing file. The finished song opens in the Player
-  and is kept in the library. Each stage also runs from its check page.
+  place of the hand-written timing file. The finished song plays in the Player
+  from memory and is not kept in the library until making writes version 1
+  *(planned for M3)*. Each stage also runs from its check page.
 - A client reports progress per stage, and a time left for the current stage
   only once that stage has run 1 s and reported some progress.
 - The task logic is TypeScript in the web client, not part of the core: it is

@@ -23,7 +23,7 @@ export interface ByteSource {
 }
 
 // Why a file was refused. The core's own messages are not meant for users.
-export type SongFileProblem = 'not-a-song-file' | 'damaged' | 'cannot-open'
+export type SongFileProblem = 'not-a-song-file' | 'damaged' | 'cannot-open' | 'old-version'
 
 // What a version-1 song file needs to open: the access files the owner chose,
 // and this page load's device key. `key` resolves to undefined when the device
@@ -135,14 +135,19 @@ export interface OpenedSong {
   close(): void
 }
 
-// Opens a song file. A version-0 file needs nothing else. A version-1 file
-// opens with the first of the `access` files that fits it and this device's key.
+// Opens a song file. A version-1 file opens with the first of the `access`
+// files that fits it and this device's key. A version-0 file is refused as
+// 'old-version' when `access` is given. Only a song made on this page, opened
+// without `access`, may still be version 0.
 export async function openSongFile(source: ByteSource, access?: DeviceAccess): Promise<OpenedSong> {
   let header = await readRange(source, 0, Math.min(HEADER_START_LENGTH, source.size))
   const headerLength = core(() => SongReader.headerLength(header))
   // A version-1 file cut short in its header or index cannot be opened, as it
   // cannot be told from one that fails its tag.
   const shortRead: SongFileProblem = headerLength === HEADER_START_LENGTH ? 'damaged' : 'cannot-open'
+  // Only a song made on this page, opened without device access, may still be
+  // version 0. The check comes before any access file is read or any unlock.
+  if (headerLength === HEADER_START_LENGTH && access) throw new SongFileError('old-version')
   if (headerLength > header.length) header = await readRange(source, 0, headerLength, shortRead)
   const indexLength = core(() => SongReader.indexLength(header))
   const index = await readRange(source, headerLength, headerLength + indexLength, shortRead)
@@ -336,5 +341,6 @@ function core<T>(call: () => T): T {
 
 function problemOf(fault: SongFileFault): SongFileProblem {
   if (fault.kind === SongFileFaultKind.CannotOpen) return 'cannot-open'
+  if (fault.kind === SongFileFaultKind.OldVersion) return 'old-version'
   return fault.notASongFile ? 'not-a-song-file' : 'damaged'
 }

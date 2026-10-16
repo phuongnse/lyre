@@ -329,11 +329,20 @@ test('a version-1 file cut short inside its header or its index is refused as ca
   key.free()
 })
 
-test('a version-0 file opens without the device key, even with access files chosen', async () => {
+test('a version-0 file is refused as old-version when opened with device access, without asking for the key', async () => {
   const key = vi.fn(() => Promise.resolve(undefined))
-  const song = await openSongFile(new Blob([example()]), { files: [new Blob([vectorAccessFile()])], key })
+  await expect(
+    openSongFile(new Blob([example()]), { files: [new Blob([vectorAccessFile()])], key }),
+  ).rejects.toMatchObject({ problem: 'old-version' })
+  await expect(openSongFile(new Blob([example()]), { files: [], key })).rejects.toMatchObject({
+    problem: 'old-version',
+  })
+  expect(key).not.toHaveBeenCalled()
+})
+
+test('a version-0 file still opens without device access, as a song made on the page does', async () => {
+  const song = await openSongFile(new Blob([example()]))
   expect(song.accessFile).toBeUndefined()
   expect(song.details.title).toBe('Mưa')
   song.close()
-  expect(key).not.toHaveBeenCalled()
 })

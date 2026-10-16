@@ -140,24 +140,80 @@ test('a song file that opens is kept in the library with its song ID and details
   fixture.destroy()
 })
 
-test('a song file made on the page is kept in the library as the same Blob', async () => {
+test('a song file made on the page plays from memory without device access and is not kept', async () => {
   const store = new FakeLibraryStore()
+  const calls: (DeviceAccess | undefined)[] = []
   TestBed.configureTestingModule({
     providers: [
       provideZonelessChangeDetection(),
-      { provide: SONG_FILE_OPENER, useValue: () => Promise.resolve(openedSong()) },
+      {
+        provide: SONG_FILE_OPENER,
+        useValue: (_source: ByteSource, access?: DeviceAccess) => {
+          calls.push(access)
+          return Promise.resolve(openedSong())
+        },
+      },
       { provide: LIBRARY_STORE, useValue: store },
       { provide: DEVICE_KEY, useValue: () => Promise.resolve(undefined) },
     ],
   })
   const fixture = TestBed.createComponent(Player)
   await fixture.whenStable()
-  const blob = new Blob(['song bytes'], { type: 'application/octet-stream' })
-  await fixture.componentInstance.openMade(blob)
-  await vi.waitFor(() => expect(store.songs.size).toBe(1))
-  expect(store.songs.get('00112233445566778899aabbccddeeff')?.file).toBe(blob)
+  await fixture.componentInstance.openMade(new Blob(['song bytes'], { type: 'application/octet-stream' }))
+  await fixture.whenStable()
+  const element = fixture.nativeElement as HTMLElement
+  expect(element.querySelector('[aria-label="Song video"]')).not.toBeNull()
+  expect(calls).toEqual([undefined])
+  expect(store.songs.size).toBe(0)
   // Stops the playback while the stand-ins are still in place.
   fixture.destroy()
+})
+
+test('a chosen version-0 file shows the old-version message, no video, and keeps nothing', async () => {
+  const store = new FakeLibraryStore()
+  const element = await chooseFile(() => Promise.reject(new SongFileError('old-version')), store)
+  expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+    'This song file is from an older version of Lyre and no longer plays.',
+  )
+  expect(element.querySelector('video')).toBeNull()
+  expect(element.querySelector('ul')).toBeNull()
+  expect(store.songs.size).toBe(0)
+})
+
+test('the library lists a song kept without an access file as no longer playing', async () => {
+  const store = new FakeLibraryStore()
+  const kept = (songId: string, accessFile?: Blob) => ({
+    songId,
+    title: songId,
+    artist: '',
+    composer: '',
+    openedAt: Date.now(),
+    file: new Blob(['song bytes']),
+    accessFile,
+  })
+  store.songs.set('old', kept('old'))
+  store.songs.set('current', kept('current', new Blob(['access bytes'])))
+  TestBed.configureTestingModule({
+    providers: [
+      provideZonelessChangeDetection(),
+      { provide: SONG_FILE_OPENER, useValue: () => Promise.reject(new SongFileError('old-version')) },
+      { provide: LIBRARY_STORE, useValue: store },
+      { provide: DEVICE_KEY, useValue: () => Promise.resolve(undefined) },
+    ],
+  })
+  const fixture = TestBed.createComponent(Player)
+  await fixture.whenStable()
+  await vi.waitFor(() => expect(fixture.nativeElement.querySelectorAll('ul[aria-label="Library"] li')).toHaveLength(2))
+  const items = [...(fixture.nativeElement as HTMLElement).querySelectorAll('ul[aria-label="Library"] li')]
+  const item = (title: string) => items.find((li) => li.querySelector('button')?.textContent?.trim() === title)
+  expect(item('old')?.textContent).toContain('No longer plays')
+  expect(item('current')?.textContent).not.toContain('No longer plays')
+
+  item('old')?.querySelector('button')?.click()
+  await fixture.whenStable()
+  expect((fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+    'This song file is from an older version of Lyre and no longer plays.',
+  )
 })
 
 test('a file that fails to open is not kept', async () => {

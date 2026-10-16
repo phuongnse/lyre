@@ -5,8 +5,10 @@ the timing, the song details and an optional thumbnail. The media is the
 karaoke track, the original track and, if there is one, the video. The source
 itself is not stored. Only what Lyre made from it is.
 
-Version 0 is unencrypted and for development only. It is used in M1 and M2,
-rejected from M3 and never published (see the
+Version 0 is unencrypted and for development only. It is used in M1 and M2
+and never published. The web Player refuses opened and kept version-0 files.
+Songs made on the page are still version 0 and play from memory, until making
+writes version 1 *(planned for M3)* (see the
 [architecture](../architecture.md#song-file-encrypted-from-m3)).
 It is not protection of any kind: anyone with the file can read every byte.
 
@@ -325,7 +327,7 @@ Version 0 leaves room for M3 to encrypt and authenticate the file without
 changing how a player reads it:
 
 - **The magic and the version stay at the same offsets in every version**, so
-  a reader can always tell which version it has, and reject version 0 from M3.
+  a reader can always tell which version it has, and refuse version 0 where it must.
 - **Each chunk is an independent unit.** M3 can encrypt and authenticate each
   chunk on its own, with its position in the index bound in, so chunks cannot
   be swapped or reordered. A chunk's stored length may grow by an

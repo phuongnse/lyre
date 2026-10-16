@@ -7,6 +7,7 @@ import { SegmentTimes, SongRefusal, VideoRefusal, VocalRole } from '../../origin
 import { SourceDetails, SourceError, SourceProblem, readSource } from '../../source'
 import { ALIGNMENT_FORMAT, AudioFormat, SEPARATION_FORMAT, decodeAudio } from '../../source-audio'
 import { messages } from '../messages'
+import { Player } from '../player.component'
 import { songDetailsFor, songFileName } from '../song-details'
 import { cannotPlayMessage, sourceProblemMessage } from '../source-messages'
 import {
@@ -51,10 +52,12 @@ interface AudioTracks {
   songDurationMs: number
 }
 
-// The song file made: its blob: URL and the name it downloads as.
+// The song file made: its blob: URL, the name it downloads as and the file
+// itself, which the Player plays from memory.
 interface SongDownload {
   url: string
   name: string
+  file: Blob
 }
 
 type State =
@@ -117,14 +120,15 @@ function isVideoRefusal(reason: VideoRefusal | SongRefusal | undefined): reason 
 // tracks, cut at the same times, and the video track, in the worker, or make
 // its thumbnail, also in the worker. With picked lyrics and timing files and
 // a vocal role, it can then write all of these into a song file through the
-// core, in the worker, stage 9, and offer it as a download. A source this
+// core, in the worker, stage 9, and offer it as a download, with a Player under
+// the link that plays the song from memory. A source this
 // browser cannot play shows the reason next to its details, and can still be
 // decoded and packaged, because this is a test page. Opened by its URL,
 // #/source-check.
 // The route is lazy, so Mediabunny stays out of the main app's initial load.
 @Component({
   selector: 'lyre-source-check',
-  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle],
+  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, Player],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
@@ -282,6 +286,7 @@ function isVideoRefusal(reason: VideoRefusal | SongRefusal | undefined): reason 
       } @else if (current.song !== undefined) {
         @let song = current.song;
         <a matButton="filled" [href]="song.url" [download]="song.name">{{ messages.downloadSongFile }}</a>
+        <lyre-player [song]="song.file" />
       } @else if (current.thumbnail === 'none') {
         <p role="status">{{ messages.noThumbnail }}</p>
       } @else if (current.thumbnail !== undefined) {
@@ -579,7 +584,7 @@ export class SourceCheck {
       const blob = new Blob([reply.bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
       this.songUrl = url
-      this.state.set({ status: 'ready', file, details, song: { url, name: songFileName(file.name) } })
+      this.state.set({ status: 'ready', file, details, song: { url, name: songFileName(file.name), file: blob } })
     } else {
       const reason = reply.type === 'failed' ? reply.reason : undefined
       this.state.set(

@@ -1,7 +1,6 @@
 import { expect, Page, test } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
-import { buildForDevice, chooseSongFile } from './song-file'
-import { openWith } from './webauthn'
+import { buildForDevice, chooseSongFile, unlockedDeviceCode } from './song-file'
 
 // Chromium refuses WebAuthn on IP address origins, so these journeys use localhost.
 test.use({ baseURL: 'http://localhost:4173' })
@@ -13,20 +12,6 @@ const CANNOT_OPEN = 'This song cannot be opened on this device.'
 const VECTOR_DEVICE_CODE = 'lyre1pq2czcfjxetpl79tc2t9k7l75l0xaevqdhv9g28pgd4qwvu0lqswqzflvara'
 
 const library = (page: Page) => page.getByRole('list', { name: 'Library' })
-
-// Opens the page with a device-bound passkey, and shows the device code, so the
-// device is unlocked and a refusal cannot come from a failed unlock.
-async function unlockedDeviceCode(page: Page): Promise<string> {
-  await openWith(page, '/', { hasPrf: true, backupEligible: false })
-  await page
-    .getByRole('region', { name: 'This device' })
-    .getByRole('button', { name: 'Show the device code' })
-    .click()
-  return page
-    .getByRole('region', { name: 'This device' })
-    .getByText(/^lyre1p[02-9ac-hj-np-z]{59}$/)
-    .innerText()
-}
 
 async function expectPlays(page: Page): Promise<void> {
   const video = page.getByLabel('Song video')

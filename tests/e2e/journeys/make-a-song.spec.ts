@@ -389,7 +389,7 @@ function chunkBytes(file: Buffer, type: number): Buffer | undefined {
 
 const LYRICS_CHUNK = 3
 
-test('a finished song is listed in the library with the entered details, plays with its lyrics, keeps the position on a switch and downloads as song.lyre with the supplied lyrics', async ({
+test('a finished song plays from memory with its lyrics, is not kept in the library, keeps the position on a switch and downloads as song.lyre with the supplied lyrics', async ({
   page,
 }) => {
   test.setTimeout(180_000)
@@ -407,10 +407,7 @@ test('a finished song is listed in the library with the entered details, plays w
 
   await expect(page.getByLabel('Song video')).toBeVisible({ timeout: 150_000 })
   const library = page.getByRole('list', { name: 'Library' })
-  await expect(library.getByRole('listitem')).toHaveCount(1)
-  await expect(library.getByRole('button', { name: 'Bài hát mới', exact: true })).toBeVisible()
-  await expect(library).toContainText('Artist: Nguyễn Thị Hà')
-  await expect(library).toContainText('Composer: Trần Văn Lê')
+  await expect(library).toHaveCount(0)
 
   await countSeeks(page)
   await page.getByRole('button', { name: 'Play', exact: true }).click()
@@ -437,4 +434,12 @@ test('a finished song is listed in the library with the entered details, plays w
 
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(problems).toEqual([])
+
+  // The made song was never kept, also after a reload.
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Open a song file' })).toBeVisible()
+  await expect(library).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Open a song file' })).toBeVisible()
+  await expect(library).toHaveCount(0)
 })

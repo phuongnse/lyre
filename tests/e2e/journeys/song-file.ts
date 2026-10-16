@@ -1,17 +1,15 @@
 import { execFile } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { FileChooser, Page } from '@playwright/test'
+import { FileChooser, Page, test } from '@playwright/test'
+import { openWith } from './webauthn'
 
 const run = promisify(execFile)
 
-// scripts/e2e.sh builds the fixture song here with lyre-cli before the journeys run.
+// scripts/e2e.sh builds the fixture song here with lyre-cli before the journeys run. It is a
+// version-0 file, which the Player no longer plays, so only the refusal journeys use it. The
+// other journeys build version-1 songs with `buildForDevice`.
 export const fixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture.lyre', import.meta.url))
-// The same song with a male vocal role, built from tests/fixtures/song/male.toml.
-export const maleFixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture-male.lyre', import.meta.url))
-// The same song with an H.265 video type, which Playwright's Chromium cannot play, built from
-// tests/fixtures/song/h265.toml.
-export const h265Fixture = fileURLToPath(new URL('../../../artifacts/e2e/fixture-h265.lyre', import.meta.url))
 
 // One file or several, as Playwright's `setFiles` takes them.
 export type Choice = Parameters<FileChooser['setFiles']>[0]
@@ -28,17 +26,49 @@ export async function openSongFile(page: Page, file: Choice): Promise<void> {
   await chooseSongFile(page, file)
 }
 
-// Builds the fixture song as version 1, with an access file for `deviceCode`, into `dir`. Each call
-// makes a fresh content key, so the two files belong together. It runs lyre-cli as scripts/e2e.sh
-// does, so cargo may compile first.
-export async function buildForDevice(deviceCode: string, dir: string): Promise<{ song: string; access: string }> {
-  const song = `${dir}/fixture-v1.lyre`
-  const access = `${dir}/fixture-v1.lyrekey`
-  const manifest = fileURLToPath(new URL('../../fixtures/song/song.toml', import.meta.url))
+// The manifests of tests/fixtures/song: the fixture song, the same song with a male vocal role, and
+// the same song with an H.265 video type, which Playwright's Chromium cannot play.
+export type Manifest = 'song.toml' | 'male.toml' | 'h265.toml'
+
+// Builds the fixture song from `manifest` as version 1, with an access file for `deviceCode`, into
+// `dir`. Each call makes a fresh content key, so the two files belong together. It runs lyre-cli as
+// scripts/e2e.sh does, so cargo may compile first.
+export async function buildForDevice(
+  deviceCode: string,
+  dir: string,
+  manifest: Manifest = 'song.toml',
+): Promise<{ song: string; access: string }> {
+  const name = manifest.replace(/\.toml$/, '')
+  const song = `${dir}/${name}-v1.lyre`
+  const access = `${dir}/${name}-v1.lyrekey`
+  const manifestPath = fileURLToPath(new URL(`../../fixtures/song/${manifest}`, import.meta.url))
   await run(
     'cargo',
-    ['run', '--locked', '-q', '-p', 'lyre-cli', '--', 'build', manifest, song, '--device-code', deviceCode, '--access', access],
+    ['run', '--locked', '-q', '-p', 'lyre-cli', '--', 'build', manifestPath, song, '--device-code', deviceCode, '--access', access],
     { cwd: fileURLToPath(new URL('../../../core', import.meta.url)) },
   )
   return { song, access }
+}
+
+// Opens the page with a device-bound passkey, and shows the device code, so the
+// device is unlocked and a refusal cannot come from a failed unlock. Chromium refuses
+// WebAuthn on IP address origins, so the journeys that call it use `localhost`.
+export async function unlockedDeviceCode(page: Page): Promise<string> {
+  await openWith(page, '/', { hasPrf: true, backupEligible: false })
+  await page
+    .getByRole('region', { name: 'This device' })
+    .getByRole('button', { name: 'Show the device code' })
+    .click()
+  return page
+    .getByRole('region', { name: 'This device' })
+    .getByText(/^lyre1p[02-9ac-hj-np-z]{59}$/)
+    .innerText()
+}
+
+// Opens the page, builds the fixture song of `manifest` for the page's device code and chooses it
+// with its access file. The files go into the running test's output directory.
+export async function openV1Fixture(page: Page, manifest: Manifest = 'song.toml'): Promise<void> {
+  const code = await unlockedDeviceCode(page)
+  const { song, access } = await buildForDevice(code, test.info().outputPath('v1'), manifest)
+  await chooseSongFile(page, [song, access])
 }

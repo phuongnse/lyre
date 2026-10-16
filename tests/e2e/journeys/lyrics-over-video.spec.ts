@@ -1,10 +1,15 @@
 import { expect, Locator, Page, test } from '@playwright/test'
-import { fixture, openSongFile } from './song-file'
+import { openV1Fixture } from './song-file'
+
+// Chromium refuses WebAuthn on IP address origins, so these journeys use localhost.
+test.use({ baseURL: 'http://localhost:4173' })
+// Each journey builds its song with lyre-cli, so cargo may compile first.
+test.setTimeout(180_000)
 
 // Opens the fixture song and waits until its video can seek. Returns the Lyrics
 // region and the video.
 async function openFixture(page: Page): Promise<{ region: Locator; video: Locator }> {
-  await openSongFile(page, fixture)
+  await openV1Fixture(page)
   const video = page.getByLabel('Song video')
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(1)
   return { region: page.getByRole('region', { name: 'Lyrics' }), video }

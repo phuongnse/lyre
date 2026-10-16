@@ -85,9 +85,13 @@ M4.
   `.lyrekey`), in one choice. The extension only sorts the files into two
   kinds. The core matches an access file to its song by song ID, never by file
   name ([D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed)).
-  It tries each access file and uses the one that opens the song. A version-0
-  song file opens as before, without any unlock, even when access files are
-  chosen with it.
+  It tries each access file and uses the one that opens the song.
+- A version-0 song file, opened or kept, shows one plain message, "This song
+  file is from an older version of Lyre and no longer plays.", and nothing
+  plays or is kept. Access files chosen with it make no difference, and the
+  Player asks for no unlock. A song made on the page plays from memory, may
+  still be version 0, and is never kept
+  ([Making a song](#making-a-song)).
 - A version-1 song file needs this page load's device unlock. The Player asks
   for it only when it opens such a file that has an access file chosen with
   it, and the [This device section](#device-code) shares the same unlock. The
@@ -129,6 +133,9 @@ M4.
   are known, exactly as the song file stores them. Choosing one plays it.
 - A version-1 song is kept with the access file that opened it. Choosing it
   after a reload asks for the device unlock again, then plays it.
+- An entry kept without an access file, from version 0, is listed with "No
+  longer plays" next to its title. Choosing it shows the old-version message.
+  The entry stays until a way to remove it exists.
 - It asks the browser for persistent storage when a song is kept, not when the
   page loads. When the browser refuses, the library says that the browser may
   clear these songs. See [why](domain/knowledge.md#running-on-the-users-device).
@@ -214,9 +221,9 @@ the section may refine them, and update this section when they do.
 - After a cancel or a failure, the picked files, the song details and the
   vocal role stay, so the owner can start again at once. A task always starts
   again from the beginning.
-- A finished song opens in the Player and is kept in the
-  [library](#library), under the library's rules. These include the
-  persistent storage request and the check that this device can play it.
+- A finished song plays in the Player from memory. It is not kept in the
+  [library](#library) until making writes version-1 song files
+  *(planned for M3)*.
 - A **Download the song file** link is offered as well, named after the
   source file with `.lyre` in place of its extension. It stays while songs
   are unencrypted version-0 files.
@@ -460,7 +467,9 @@ Compose uses the same three values *(planned for M4)*.
   composer are the source's tags, exactly as stored. Without a title tag, the
   title is the source's file name without its extension. The lyrics are stored exactly as supplied (D5). The
   page then shows a **Download the song file** link, named after the source
-  file with `.lyre` in place of its extension, which the Player opens. Each
+  file with `.lyre` in place of its extension. The made song plays from memory
+  in a Player under the link. The downloaded version-0 file is refused by the
+  main page's open button, and nothing is kept. Each
   refusal a user can fix has its own message, and none offers a download:
   "The lyrics file is not valid lyrics.", "The timing file does not match the
   lyrics." and "The timing ends after the song, so the song file was not
