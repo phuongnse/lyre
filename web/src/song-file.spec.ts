@@ -320,6 +320,15 @@ test('a version-1 file with one index byte changed is refused as cannot-open', a
   key.free()
 })
 
+test('a version-1 file cut short inside its header or its index is refused as cannot-open', async () => {
+  const key = vectorKey()
+  const files = [new Blob([vectorAccessFile()])]
+  const access = { files, key: () => Promise.resolve(key) }
+  expect(await problemOf(new Blob([exampleV1().slice(0, 200)]), access)).toBe('cannot-open')
+  expect(await problemOf(new Blob([exampleV1().slice(0, 100)]), access)).toBe('cannot-open')
+  key.free()
+})
+
 test('a version-0 file opens without the device key, even with access files chosen', async () => {
   const key = vi.fn(() => Promise.resolve(undefined))
   const song = await openSongFile(new Blob([example()]), { files: [new Blob([vectorAccessFile()])], key })

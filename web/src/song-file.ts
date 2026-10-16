@@ -140,9 +140,12 @@ export interface OpenedSong {
 export async function openSongFile(source: ByteSource, access?: DeviceAccess): Promise<OpenedSong> {
   let header = await readRange(source, 0, Math.min(HEADER_START_LENGTH, source.size))
   const headerLength = core(() => SongReader.headerLength(header))
-  if (headerLength > header.length) header = await readRange(source, 0, headerLength)
+  // A version-1 file cut short in its header or index cannot be opened, as it
+  // cannot be told from one that fails its tag.
+  const shortRead: SongFileProblem = headerLength === HEADER_START_LENGTH ? 'damaged' : 'cannot-open'
+  if (headerLength > header.length) header = await readRange(source, 0, headerLength, shortRead)
   const indexLength = core(() => SongReader.indexLength(header))
-  const index = await readRange(source, headerLength, headerLength + indexLength)
+  const index = await readRange(source, headerLength, headerLength + indexLength, shortRead)
   let reader: SongReader
   let accessFile: Blob | undefined
   if (headerLength === HEADER_START_LENGTH) {
@@ -302,15 +305,20 @@ async function openEncrypted(
 }
 
 // Reads the bytes in [start, end). A read error or a short read means the file
-// is damaged or incomplete.
-async function readRange(source: ByteSource, start: number, end: number): Promise<Uint8Array<ArrayBuffer>> {
+// is damaged or incomplete, unless the caller names another problem.
+async function readRange(
+  source: ByteSource,
+  start: number,
+  end: number,
+  problem: SongFileProblem = 'damaged',
+): Promise<Uint8Array<ArrayBuffer>> {
   let buffer: ArrayBuffer
   try {
     buffer = await source.slice(start, end).arrayBuffer()
   } catch {
-    throw new SongFileError('damaged')
+    throw new SongFileError(problem)
   }
-  if (buffer.byteLength !== end - start) throw new SongFileError('damaged')
+  if (buffer.byteLength !== end - start) throw new SongFileError(problem)
   return new Uint8Array(buffer)
 }
 
