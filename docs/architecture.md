@@ -153,14 +153,16 @@ The encrypted layout, keys and recovery wrap are specified in
 - **Device code.** The compressed P-256 public key in Bech32m with the `lyre`
   prefix and a version, as text and a QR code. A fingerprint from SHA-256 of
   the public key shows 20 digits in groups of 4, for checking by voice or eye.
-- **Wrapping.** *(planned for M3)* A song's content key is wrapped for a device with HPKE
+- **Wrapping.** The core wraps a song's content key for a device with HPKE
   (RFC 9180) base mode: DHKEM(P-256, HKDF-SHA256), HKDF-SHA256 and AES-256-GCM.
-  The song ID, device code and owner or recipient role are bound into the
-  HPKE info.
-- **Access file.** *(planned for M3)* A `.lyrekey` file is for one device and holds the wrapped
+  The song ID, device key and owner or recipient role are bound into the
+  HPKE info. Sharing in the clients is *(planned for M3)*.
+- **Access file.** A `.lyrekey` file is for one device and holds the wrapped
   content keys of one or more songs, each marked as the owner's or a
-  recipient's. Entries are matched to song files by song ID, never by file
-  name or folder. The song file does not change when it is shared (D6).
+  recipient's. The core writes a file with one entry and opens a file of up to
+  16,384 entries with this device's key. Entries are matched to song files by
+  song ID, never by file name or folder. The song file does not change when it
+  is shared (D6).
 - **Recovery key.** *(planned for M3)* Created before the first song, shown once as 24 BIP39
   English words and a QR code, and kept offline. The device keeps only the
   public part. Its wrap is stored inside each song file whenever the file is
