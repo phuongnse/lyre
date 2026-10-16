@@ -31,6 +31,22 @@ describe('readRecoveryPublicKey', () => {
     expect(readRecoveryPublicKey(storageWith('not base64!'))).toBeUndefined()
   })
 
+  it('returns undefined when the entry has whitespace or padding', () => {
+    const bytes = Uint8Array.from(KEY_HEX.match(/../g)!, (pair) => parseInt(pair, 16))
+    const stored = toBase64Url(bytes)
+    expect(readRecoveryPublicKey(storageWith(`${stored.slice(0, 20)} ${stored.slice(20)}`))).toBeUndefined()
+    expect(readRecoveryPublicKey(storageWith(`${stored}\n`))).toBeUndefined()
+    expect(readRecoveryPublicKey(storageWith(`${stored}=`))).toBeUndefined()
+  })
+
+  it('returns undefined when the entry uses the standard base64 characters', () => {
+    const bytes = new Uint8Array(33).fill(0xfb)
+    const standard = btoa(String.fromCharCode(...bytes))
+    expect(standard).toMatch(/[+/]/)
+    expect(readRecoveryPublicKey(storageWith(toBase64Url(bytes)))).toEqual(bytes)
+    expect(readRecoveryPublicKey(storageWith(standard))).toBeUndefined()
+  })
+
   it('returns undefined when the key is not 33 bytes long', () => {
     expect(readRecoveryPublicKey(storageWith(toBase64Url(new Uint8Array(32).fill(2))))).toBeUndefined()
     expect(readRecoveryPublicKey(storageWith(toBase64Url(new Uint8Array(34).fill(2))))).toBeUndefined()

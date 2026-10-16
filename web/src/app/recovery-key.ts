@@ -11,6 +11,10 @@ export const recoveryKeyStorageKey = 'lyre-recovery-public-key'
 // The compressed form of a public key on the curve.
 const KEY_BYTES = 33
 
+// base64url without padding. 33 bytes give exactly 44 characters and no
+// padding. `atob` alone is too lax: it skips whitespace and accepts '+' and '/'.
+const BASE64URL = /^[A-Za-z0-9_-]+$/
+
 // The stored recovery public key, or undefined when none is kept. An entry
 // that is not base64url, or not 33 bytes long, counts as none. The core checks
 // that the bytes are a point on the curve when it writes the song. Storage is
@@ -20,7 +24,7 @@ export function readRecoveryPublicKey(storage?: Storage): Uint8Array<ArrayBuffer
   try {
     storage ??= localStorage
     const stored = storage.getItem(recoveryKeyStorageKey)
-    if (stored === null) return undefined
+    if (stored === null || !BASE64URL.test(stored)) return undefined
     const key = fromBase64Url(stored)
     return key.length === KEY_BYTES ? key : undefined
   } catch {
