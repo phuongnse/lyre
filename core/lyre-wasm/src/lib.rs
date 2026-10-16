@@ -4,6 +4,7 @@ use lyre_core::aligner;
 use lyre_core::alignment::{self, AlignmentError, Emissions};
 use lyre_core::alignment_windows::{self, WindowError};
 use lyre_core::countdown;
+use lyre_core::device::{self, DeviceKeyError};
 use lyre_core::display_lines::{self, DisplayLine, MeasuredSyllable};
 use lyre_core::highlight;
 use lyre_core::lyrics::Lyrics;
@@ -16,6 +17,7 @@ use lyre_core::song_file::{
 };
 use lyre_core::timing_file::{self, TimingErrorKind, TimingFileError};
 use wasm_bindgen::prelude::wasm_bindgen;
+use zeroize::Zeroize;
 
 /// The version of the Lyre core.
 #[wasm_bindgen(js_name = coreVersion)]
@@ -1396,6 +1398,82 @@ impl Separation {
     }
 }
 
+/// Why a web device key could not be derived.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceKeyFaultKind {
+    /// The PRF output is not 32 bytes.
+    PrfLength,
+    /// The derived private scalar is zero.
+    ZeroScalar,
+}
+
+/// Why a web device key could not be derived. It holds no core message.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceKeyFault {
+    kind: DeviceKeyFaultKind,
+}
+
+#[wasm_bindgen]
+impl DeviceKeyFault {
+    #[wasm_bindgen(getter)]
+    pub fn kind(&self) -> DeviceKeyFaultKind {
+        self.kind
+    }
+}
+
+impl From<DeviceKeyError> for DeviceKeyFault {
+    fn from(error: DeviceKeyError) -> DeviceKeyFault {
+        let kind = match error {
+            DeviceKeyError::PrfLength => DeviceKeyFaultKind::PrfLength,
+            DeviceKeyError::ZeroScalar => DeviceKeyFaultKind::ZeroScalar,
+        };
+        DeviceKeyFault { kind }
+    }
+}
+
+/// This web device's key, as an opaque handle. It shows only the device code
+/// and the fingerprint. The private key stays in the core and cannot be read.
+#[wasm_bindgen]
+pub struct DeviceKey {
+    // Later M3 issues use the key to open access files.
+    #[allow(dead_code)]
+    key: device::DeviceKey,
+    device_code: String,
+    fingerprint: String,
+}
+
+#[wasm_bindgen]
+impl DeviceKey {
+    /// Derives the key from the passkey's PRF output, then overwrites
+    /// `prf_output` with zeros, whether or not the derivation worked.
+    #[wasm_bindgen(constructor)]
+    pub fn new(prf_output: &mut [u8]) -> Result<DeviceKey, DeviceKeyFault> {
+        let key = device::DeviceKey::from_prf_output(prf_output);
+        prf_output.zeroize();
+        let key = key?;
+        let public_key = key.public_key();
+        Ok(DeviceKey {
+            device_code: public_key.device_code(),
+            fingerprint: public_key.fingerprint(),
+            key,
+        })
+    }
+
+    /// The device code, 65 lowercase characters.
+    #[wasm_bindgen(getter, js_name = deviceCode)]
+    pub fn device_code(&self) -> String {
+        self.device_code.clone()
+    }
+
+    /// The fingerprint, 20 digits in five groups of four.
+    #[wasm_bindgen(getter)]
+    pub fn fingerprint(&self) -> String {
+        self.fingerprint.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -2148,5 +2226,25 @@ mod tests {
         let file = example();
         let mut reader = SongReader::new(&file[..32], &file[32..200], 307.0).expect("valid");
         assert_eq!(reader.read_chunk(4, b"k"), Err(DAMAGED));
+    }
+
+    #[test]
+    fn a_device_key_gives_the_vector_code_and_zeroes_the_prf_output() {
+        let mut prf: Vec<u8> = (0..32).collect();
+        let key = DeviceKey::new(&mut prf).expect("a valid PRF output");
+        assert_eq!(
+            key.device_code(),
+            "lyre1pq2czcfjxetpl79tc2t9k7l75l0xaevqdhv9g28pgd4qwvu0lqswqzflvara"
+        );
+        assert_eq!(key.fingerprint(), "1458 7998 1818 4050 3333");
+        assert_eq!(prf, vec![0; 32]);
+    }
+
+    #[test]
+    fn a_prf_output_of_the_wrong_length_is_a_fault_and_is_zeroed() {
+        let mut prf = vec![5u8; 31];
+        let fault = DeviceKey::new(&mut prf).err().expect("31 bytes");
+        assert_eq!(fault.kind(), DeviceKeyFaultKind::PrfLength);
+        assert_eq!(prf, vec![0; 31]);
     }
 }

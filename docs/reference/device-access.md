@@ -2,7 +2,8 @@
 
 This doc fixes the bytes and text of what moves between devices besides the
 song file: device codes, fingerprints, access files and recovery keys.
-All of it is *(planned for M3)*. The scheme is
+The web device key, the device code and the fingerprint are built. Access
+files and recovery keys are *(planned for M3)*. The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).
 
@@ -314,18 +315,59 @@ failure. The [access file](#access-file) section describes this limit.
 
 ## Known-answer vectors
 
-This doc has no checked vectors yet. The core changes add known inputs and
-expected outputs, including invalid variants, when each part is implemented.
+The web device key, the device code and the fingerprint have checked
+vectors. The core changes that implement access files and recovery keys add
+theirs, including invalid variants.
+
+The vectors were worked out with an independent script that uses only
+Python's standard library. The core's tests read the tables below. Each
+`d` is the private scalar of a public test input. Do not use these PRF outputs
+for real keys.
 
 ### Web device key
 
-The core change implementing web device key derivation adds its vectors
-here *(planned for M3)*.
+Each row gives a 32-byte PRF output, the private scalar `d` that the
+[derivation](#web-device-key) gives for it, and the compressed public key
+`d × G`.
+
+| PRF output | `d` | Compressed public key |
+| --- | --- | --- |
+| `0000000000000000000000000000000000000000000000000000000000000000` | `daacda402b66a5b204063161002f9ceb915601223a40f9f5f6c049c03e67681d` | `037deea1f3fb8529f4d6938854578ebb0fab45139c57f945614748b160471f2adb` |
+| `000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f` | `3e2b6b111b520f4e92288a42c330f18395abb8967c3d68d26e076b9ed761954f` | `02b02c2646cac3ff157852cb6f7fd4fbcddcb00dbb0a851c286d40e671ff041c01` |
+| `ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff` | `6e6becdbe85b115e94f0883efaa552525e41121f7623ef2d0b6751c399e43453` | `03c540eb03806db84b0a7f90e534ed6a4788d49769b3c36aaeafe1561ed08796b2` |
+
+A PRF output of 31 or 33 bytes is rejected with `PrfLength`. A reduced
+scalar of zero is rejected with `ZeroScalar`. No real PRF output is known to
+reduce to zero, so the core tests that rule with the value `n` itself.
 
 ### Device code and fingerprint
 
-The core change implementing device codes and fingerprints adds its vectors
-here *(planned for M3)*.
+Each valid row gives a compressed public key from the table above, its
+device code and its fingerprint. A reader gives the same key for the code in
+lowercase, in uppercase and with whitespace around it.
+
+| Compressed public key | Device code | Fingerprint |
+| --- | --- | --- |
+| `037deea1f3fb8529f4d6938854578ebb0fab45139c57f945614748b160471f2adb` | `lyre1pqd77ag0nlwzjnaxkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dkpfn6rh` | `8777 6713 0488 7316 7196` |
+| `02b02c2646cac3ff157852cb6f7fd4fbcddcb00dbb0a851c286d40e671ff041c01` | `lyre1pq2czcfjxetpl79tc2t9k7l75l0xaevqdhv9g28pgd4qwvu0lqswqzflvara` | `1458 7998 1818 4050 3333` |
+| `03c540eb03806db84b0a7f90e534ed6a4788d49769b3c36aaeafe1561ed08796b2` | `lyre1pq0z5p6crspkmsjc207gw2d8ddfrc34yhdxeux64w4ls4v8kss7ttyf6nm2p` | `2627 9927 1972 9177 1269` |
+
+Each invalid row is rejected with its reason. The reasons are the names of
+the core's `DeviceCodeError` variants. Rows with a checksum that is
+otherwise valid isolate the one rule they break.
+
+| Case | Device code | Reason |
+| --- | --- | --- |
+| One data character changed | `lyre1pqd77ag0nlwzjnaqkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dkpfn6rh` | `Checksum` |
+| Bech32 checksum, not Bech32m | `lyre1pqd77ag0nlwzjnaxkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dk54rkx4` | `Checksum` |
+| Prefix `02`, x = 1, not on the curve | `lyre1pqgqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqza0yfpn` | `Key` |
+| Prefix `02`, x = `p` | `lyre1pqtllllllqqqqqqgqqqqqqqqqqqqqqqqqqrllllllllllllllllll7n54t3s` | `Key` |
+| Prefix `04` | `lyre1pq377ag0nlwzjnaxkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dk4xr42f` | `Key` |
+| Version 0 | `lyre1qqd77ag0nlwzjnaxkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dkq4drhu` | `Version` |
+| Padding bit set | `lyre1pqd77ag0nlwzjnaxkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dhul8079` | `Padding` |
+| Mixed case | `LYRE1PQD77ag0nlwzjnaxkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dkpfn6rh` | `Text` |
+| HRP `lyrf` | `lyrf1pqd77ag0nlwzjnaxkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dkz3yesg` | `Text` |
+| One data group too few | `lyre1pqd77ag0nlwzjnaxkjwy9g4uwhv86k3gnn3tlj3tpgaytzcz8ru4dlv6ppp` | `Length` |
 
 ### Access file
 

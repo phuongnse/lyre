@@ -3,7 +3,9 @@
 pub mod aligner;
 pub mod alignment;
 pub mod alignment_windows;
+mod bech32m;
 pub mod countdown;
+pub mod device;
 pub mod display_lines;
 mod fft;
 pub mod highlight;
