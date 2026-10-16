@@ -102,7 +102,7 @@ pub(crate) fn seed_from_words(text: &str) -> Result<Zeroizing<[u8; SEED_LEN]>, R
     }
     let mut seed = Zeroizing::new([0u8; SEED_LEN]);
     seed.copy_from_slice(&checked[..SEED_LEN]);
-    if checked[SEED_LEN] != Sha256::digest(*seed)[0] {
+    if checked[SEED_LEN] != Sha256::digest(seed.as_slice())[0] {
         return Err(RecoveryWordsError::Checksum);
     }
     Ok(seed)
