@@ -2,11 +2,12 @@
 
 `lyre-cli` is a developer tool in the core workspace. It builds a
 [version 0](song-file-format-v0.md) song file from small fixtures, with the
-timing written by hand. The Player can then be built and tested before Lyre
-can make songs itself.
+timing written by hand. Given a device code, it builds an encrypted
+[version 1](song-file-format-v1.md) song file and an access file instead. The
+Player can then be built and tested before Lyre can make songs itself.
 
-Version 0 is for development only. The files it writes are unencrypted, and
-anyone with one can read every byte.
+Version 0 is the default and is for development only. The files it writes are
+unencrypted, and anyone with one can read every byte.
 
 The terms in this doc are defined in the [concepts](../domain/concepts.md).
 
@@ -35,8 +36,39 @@ The built file is not committed. Tests build it from the fixtures when they
 run: `scripts/e2e.sh` builds it into `artifacts/e2e/fixture.lyre` for the
 Player journeys. It also builds `male.toml` into
 `artifacts/e2e/fixture-male.lyre`, and `h265.toml` into
-`artifacts/e2e/fixture-h265.lyre`. The `inspect` command in the [repository
+`artifacts/e2e/fixture-h265.lyre`. A journey that needs a version-1 file
+builds it during the test, with the helper `buildForDevice` in
+`tests/e2e/journeys/song-file.ts`, because the device code exists only once
+the page has made it. The `inspect` command in the [repository
 layout](../architecture.md#repository-layout) is not built yet.
+
+## Building an encrypted song file
+
+```sh
+lyre-cli build <manifest.toml> <out.lyre> --device-code <code> --access <out.lyrekey>
+```
+
+- The command writes a version-1 song file and an
+  [access file](device-access.md#access-file) for the device with that
+  [device code](../domain/concepts.md). Anyone with a different device key
+  cannot open the access file.
+- The two options go together, in this order, after the two paths. Giving them
+  is what selects version 1. With only one of them, or in another order, the
+  command prints the usage and writes nothing. Without them it writes version
+  0, as above. Version 0 stays the default until the web Player reads
+  version 1.
+- Every build makes a fresh content key. The key is written only inside the
+  access file, wrapped for the device. It is never printed or logged.
+- The access file holds one entry for the song, with the owner role.
+- The [format](song-file-format-v1.md) needs a recovery wrap. The tool seals
+  it to a random recovery key that it makes and drops. So these files cannot
+  be recovered with a recovery key.
+- Both files are built before either is written. The song file is written
+  first. If writing the access file then fails, the song file stays without
+  one.
+- It exits with 0 on success, 1 when the song is rejected or a file cannot be
+  written, and 2 when the arguments or the device code are wrong. With exit 2
+  nothing is written.
 
 ## Manifest
 
