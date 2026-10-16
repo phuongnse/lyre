@@ -67,6 +67,15 @@
       "key_files": [
         "tests/e2e/package-lock.json"
       ]
+    },
+    {
+      "name": "android-system-images",
+      "paths": [
+        "/usr/local/lib/android/sdk/system-images"
+      ],
+      "key_files": [
+        "android/gradle/libs.versions.toml"
+      ]
     }
   ],
   "checks": [
