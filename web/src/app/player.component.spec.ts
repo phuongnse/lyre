@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { afterEach, expect, test, vi } from 'vitest'
 import { SONG_FILE_OPENER } from '../core'
 import { FakeLibraryStore } from '../fake-library-store'
-import { ByteSource, DeviceAccess, OpenedSong, SongFileError } from '../song-file'
+import { ByteSource, DeviceAccess, OpenedSong, ShareError, SharedAccess, SongFileError } from '../song-file'
 import { DEVICE_KEY } from './device-passkey'
 import { LIBRARY_STORE } from './library'
 import { Player } from './player.component'
@@ -388,5 +388,138 @@ test('the library keeps the access file that opened a song, and choosing it pass
   await vi.waitFor(() => expect(calls).toHaveLength(2))
   expect(calls[1]?.files).toEqual([access])
   // Stops the playback while the stand-ins are still in place.
+  fixture.destroy()
+})
+
+const shareButton = (element: HTMLElement) =>
+  [...element.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Share')
+const makeButton = (element: HTMLElement) =>
+  [...element.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Make the access file')
+
+// Opens a song with `share`, then presses Share, types `code` and presses Make the access file.
+async function shareWith(
+  share: (deviceCode: string) => Promise<SharedAccess>,
+  code: string,
+): Promise<{ fixture: ComponentFixture<Player>; element: HTMLElement }> {
+  const fixture = await chooseFileIn(() => Promise.resolve({ ...openedSong(), share }), new FakeLibraryStore(), [
+    new File(['song'], 'song.lyre'),
+  ])
+  const element = fixture.nativeElement as HTMLElement
+  await vi.waitFor(() => expect(shareButton(element)).toBeDefined())
+  shareButton(element)?.click()
+  await fixture.whenStable()
+  const input = element.querySelector('input[matInput], input.mat-mdc-input-element') as HTMLInputElement
+  input.value = code
+  input.dispatchEvent(new Event('input'))
+  makeButton(element)?.click()
+  await fixture.whenStable()
+  return { fixture, element }
+}
+
+test('a song opened with an owner access file offers Share, and one without it offers none', async () => {
+  const owner = await chooseFileIn(
+    () => Promise.resolve({ ...openedSong(), share: () => Promise.reject() }),
+    new FakeLibraryStore(),
+    [new File(['song'], 'song.lyre')],
+  )
+  const element = owner.nativeElement as HTMLElement
+  await vi.waitFor(() => expect(shareButton(element)).toBeDefined())
+  owner.destroy()
+  TestBed.resetTestingModule()
+
+  const recipient = await chooseFileIn(() => Promise.resolve(openedSong()), new FakeLibraryStore(), [
+    new File(['song'], 'song.lyre'),
+  ])
+  const other = recipient.nativeElement as HTMLElement
+  await vi.waitFor(() => expect(other.querySelector('video')).not.toBeNull())
+  expect(shareButton(other)).toBeUndefined()
+  recipient.destroy()
+})
+
+test('Share opens a form that says a share cannot be undone', async () => {
+  const fixture = await chooseFileIn(
+    () => Promise.resolve({ ...openedSong(), share: () => Promise.reject() }),
+    new FakeLibraryStore(),
+    [new File(['song'], 'song.lyre')],
+  )
+  const element = fixture.nativeElement as HTMLElement
+  await vi.waitFor(() => expect(shareButton(element)).toBeDefined())
+  shareButton(element)?.click()
+  await fixture.whenStable()
+  const section = element.querySelector('section[aria-labelledby="share-heading"]')
+  expect(section?.querySelector('h2')?.textContent?.trim()).toBe('Share this song')
+  expect(section?.textContent).toContain('A share cannot be undone. The device you share with keeps this song.')
+  expect(section?.textContent).toContain('Device code')
+  expect(makeButton(element)).toBeDefined()
+  fixture.destroy()
+})
+
+test('an invalid device code shows one message, no fingerprint and no download link', async () => {
+  const { fixture, element } = await shareWith(() => Promise.reject(new ShareError('invalid-code')), 'lyre1nope')
+  const alerts = element.querySelectorAll('[role="alert"]')
+  expect(alerts).toHaveLength(1)
+  expect(alerts[0].textContent?.trim()).toBe('This is not a valid device code.')
+  expect(element.textContent).not.toContain('Fingerprint')
+  expect(element.querySelector('a[download]')).toBeNull()
+  fixture.destroy()
+})
+
+test('a share the core could not make says so and offers no link', async () => {
+  const { fixture, element } = await shareWith(() => Promise.reject(new ShareError('failed')), 'lyre1code')
+  expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe('The access file could not be made.')
+  expect(element.querySelector('a[download]')).toBeNull()
+  fixture.destroy()
+})
+
+test('a valid device code shows its fingerprint, the compare line and a .lyrekey download', async () => {
+  const share = vi.fn<(deviceCode: string) => Promise<SharedAccess>>(() =>
+    Promise.resolve({ fingerprint: 'AB12 CD34', accessFile: new Blob(['access']) }),
+  )
+  const { fixture, element } = await shareWith(share, ' lyre1code ')
+  expect(share).toHaveBeenCalledWith('lyre1code')
+  expect(element.querySelector('[role="alert"]')).toBeNull()
+  expect(element.querySelector('dd')?.textContent?.trim()).toBe('AB12 CD34')
+  expect(element.textContent).toContain('Check that this fingerprint matches the one on the other device')
+  const link = element.querySelector('a[download]') as HTMLAnchorElement
+  expect(link.textContent?.trim()).toBe('Download the access file')
+  expect(link.getAttribute('download')).toBe('Mưa rơi nhẹ.lyrekey')
+  expect(link.getAttribute('href')).toBe('blob:song')
+  fixture.destroy()
+})
+
+const typeCode = (element: HTMLElement, code: string) => {
+  const input = element.querySelector('input.mat-mdc-input-element') as HTMLInputElement
+  input.value = code
+  input.dispatchEvent(new Event('input'))
+}
+
+test('a share still pending when the code is edited shows nothing when it finishes', async () => {
+  let finish: (shared: SharedAccess) => void = () => undefined
+  const share = () => new Promise<SharedAccess>((resolve) => (finish = resolve))
+  const { fixture, element } = await shareWith(share, 'lyre1old')
+  typeCode(element, 'lyre1new')
+  finish({ fingerprint: 'AB12 CD34', accessFile: new Blob(['access']) })
+  await fixture.whenStable()
+  expect(element.textContent).not.toContain('Fingerprint')
+  expect(element.querySelector('a[download]')).toBeNull()
+  fixture.destroy()
+})
+
+test('an older share that finishes late does not overwrite a newer invalid-code error', async () => {
+  let finishOld: (shared: SharedAccess) => void = () => undefined
+  const share = vi
+    .fn<(deviceCode: string) => Promise<SharedAccess>>()
+    .mockImplementationOnce(() => new Promise<SharedAccess>((resolve) => (finishOld = resolve)))
+    .mockRejectedValueOnce(new ShareError('invalid-code'))
+  const { fixture, element } = await shareWith(share, 'lyre1old')
+  typeCode(element, 'lyre1new')
+  makeButton(element)?.click()
+  await fixture.whenStable()
+  expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe('This is not a valid device code.')
+  finishOld({ fingerprint: 'AB12 CD34', accessFile: new Blob(['access']) })
+  await fixture.whenStable()
+  expect(element.querySelector('[role="alert"]')?.textContent?.trim()).toBe('This is not a valid device code.')
+  expect(element.textContent).not.toContain('Fingerprint')
+  expect(element.querySelector('a[download]')).toBeNull()
   fixture.destroy()
 })

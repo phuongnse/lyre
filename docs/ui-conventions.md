@@ -104,6 +104,22 @@ M4.
   no access file chosen, an access file for another device or another song, a
   changed song file or access file, and an unlock that is cancelled or
   refused. The This device section explains an unlock problem in more detail.
+- A song opened with an owner access file shows a **Share** button under the
+  Player. This covers a song chosen from the library and a song just made. A
+  song opened with a recipient access file shows no Share
+  ([D13](decisions.md#d13-only-the-owner-shares-a-song--agreed)), and neither
+  does a Player given its song through its input, as the check pages do.
+- Share opens a short form with a "Device code" field and a **Make the access
+  file** button. It says plainly that a share cannot be undone and that the
+  device shared with keeps the song
+  ([D9](decisions.md#d9-lyre-has-no-server--agreed)).
+- For a valid device code, the form shows that code's fingerprint, asks the
+  owner to check it against the one on the other device before sending the
+  file, and offers **Download the access file**, named after the song's title
+  with `.lyrekey`. Changing the code clears the result.
+- An invalid or changed device code shows one message, "This is not a valid
+  device code.", and no fingerprint and no download. The core checks the code
+  before it reads anything else.
 - A song whose stored media type the device cannot play shows one plain
   message naming the track: "This device cannot play this song's video.", or
   its karaoke track or its original track. Nothing plays, and the song is not

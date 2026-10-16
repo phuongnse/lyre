@@ -12,9 +12,11 @@ import {
 } from '@angular/core'
 import { MatButton } from '@angular/material/button'
 import { MatButtonToggle, MatButtonToggleGroup } from '@angular/material/button-toggle'
+import { MatFormField, MatLabel } from '@angular/material/form-field'
+import { MatInput } from '@angular/material/input'
 import { SONG_FILE_OPENER } from '../core'
 import { KeptSong } from '../library-store'
-import { ByteSource, OpenedSong, SongFileError, SongFileProblem } from '../song-file'
+import { ByteSource, OpenedSong, ShareError, SongFileError, SongFileProblem } from '../song-file'
 import { DEVICE_KEY } from './device-passkey'
 import { Library } from './library'
 import { LibraryList } from './library.component'
@@ -29,6 +31,14 @@ type State =
   | { status: 'failed'; problem: SongFileProblem }
   | { status: 'unplayable'; media: SongMedia }
 
+// The share form: nothing asked yet, a refusal, or the other device's
+// fingerprint with the access file to download.
+type ShareState =
+  | { status: 'idle' }
+  | { status: 'invalid' }
+  | { status: 'failed' }
+  | { status: 'done'; fingerprint: string; url: string; name: string }
+
 type AudioTrackChoice = 'karaoke' | 'original'
 
 // The Player: opens a song file with its access files, or a song from the
@@ -40,10 +50,13 @@ type AudioTrackChoice = 'karaoke' | 'original'
 // a song through its input, as the check pages do, it plays only that song: it
 // keeps nothing in the library, and has no open button or library list. With an
 // access file through its input too, the song opens with device access, like a
-// version-1 song the owner opens. Without one, it plays from memory.
+// version-1 song the owner opens. Without one, it plays from memory. A song
+// the owner opened with an owner access file offers Share, which gives a
+// recipient access file for another device's code. A song opened with a
+// recipient access file, or given through the input, offers none.
 @Component({
   selector: 'lyre-player',
-  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, LibraryList, Lyrics],
+  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, MatFormField, MatLabel, MatInput, LibraryList, Lyrics],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
@@ -88,6 +101,42 @@ type AudioTrackChoice = 'karaoke' | 'original'
           <mat-button-toggle value="karaoke">{{ messages.karaoke }}</mat-button-toggle>
           <mat-button-toggle value="original">{{ messages.original }}</mat-button-toggle>
         </mat-button-toggle-group>
+        @if (!song() && current.song.share) {
+          @if (!sharing()) {
+            <button matButton="tonal" type="button" (click)="sharing.set(true)">{{ messages.share }}</button>
+          } @else {
+            <section aria-labelledby="share-heading">
+              <h2 id="share-heading">{{ messages.shareTitle }}</h2>
+              <p>{{ messages.shareCannotUndo }}</p>
+              <mat-form-field>
+                <mat-label>{{ messages.shareDeviceCode }}</mat-label>
+                <input matInput #codeInput autocomplete="off" spellcheck="false" (input)="editCode()" />
+              </mat-form-field>
+              <button matButton="filled" type="button" (click)="share(current.song, codeInput.value)">
+                {{ messages.makeAccessFile }}
+              </button>
+              @let result = shareState();
+              @switch (result.status) {
+                @case ('invalid') {
+                  <p role="alert">{{ messages.shareInvalidCode }}</p>
+                }
+                @case ('failed') {
+                  <p role="alert">{{ messages.shareFailed }}</p>
+                }
+                @case ('done') {
+                  <dl>
+                    <dt>{{ messages.fingerprintLabel }}</dt>
+                    <dd>{{ result.fingerprint }}</dd>
+                  </dl>
+                  <p>{{ messages.shareCompare }}</p>
+                  <a matButton="filled" [href]="result.url" [download]="result.name">{{
+                    messages.downloadAccessFile
+                  }}</a>
+                }
+              }
+            </section>
+          }
+        }
       }
     }
   `,
@@ -119,11 +168,15 @@ export class Player {
   protected readonly state = signal<State>({ status: 'empty' })
   protected readonly playing = signal(false)
   protected readonly track = signal<AudioTrackChoice>('karaoke')
+  protected readonly sharing = signal(false)
+  protected readonly shareState = signal<ShareState>({ status: 'idle' })
   private readonly openSongFile = inject(SONG_FILE_OPENER)
   private readonly library = inject(Library)
   private readonly deviceKey = inject(DEVICE_KEY)
   // Counts the songs asked for, so only the latest one opens.
   private attempts = 0
+  // Counts the shares asked for, so only the latest one shows its result.
+  private shareAttempts = 0
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video')
   private playback?: Playback
 
@@ -217,6 +270,36 @@ export class Player {
     }
   }
 
+  // Shares `song` with the device that has `deviceCode`. The core checks the
+  // code and makes the access file. Nothing is offered for a code it refuses.
+  protected async share(song: OpenedSong, deviceCode: string): Promise<void> {
+    if (!song.share) return
+    this.setShare({ status: 'idle' })
+    const attempt = ++this.shareAttempts
+    try {
+      const shared = await song.share(deviceCode.trim())
+      const current = this.state()
+      if (attempt !== this.shareAttempts || current.status !== 'ready' || current.song !== song) return
+      const name = `${song.details.title.trim() || 'song'}.lyrekey`
+      this.setShare({
+        status: 'done',
+        fingerprint: shared.fingerprint,
+        url: URL.createObjectURL(shared.accessFile),
+        name,
+      })
+    } catch (error) {
+      const current = this.state()
+      if (attempt !== this.shareAttempts || current.status !== 'ready' || current.song !== song) return
+      this.setShare({ status: error instanceof ShareError && error.problem === 'invalid-code' ? 'invalid' : 'failed' })
+    }
+  }
+
+  // A changed code drops the last result, and any share still pending.
+  protected editCode(): void {
+    this.shareAttempts++
+    this.setShare({ status: 'idle' })
+  }
+
   protected togglePlay(): void {
     const video = this.video()?.nativeElement
     if (!video) return
@@ -246,6 +329,16 @@ export class Player {
     if (current.status === 'ready') current.song.close()
     this.playing.set(false)
     this.track.set('karaoke')
+    this.sharing.set(false)
+    this.shareAttempts++
+    this.setShare({ status: 'idle' })
     if (next) this.state.set(next)
+  }
+
+  // Replaces the share state and revokes the earlier download's blob URL.
+  private setShare(next: ShareState): void {
+    const previous = this.shareState()
+    if (previous.status === 'done') URL.revokeObjectURL(previous.url)
+    this.shareState.set(next)
   }
 }
