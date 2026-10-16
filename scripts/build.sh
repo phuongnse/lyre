@@ -46,17 +46,19 @@ if [[ -f android/settings.gradle.kts ]] && needs android; then
   # and the uniffi-bindgen tool that reads it.
   (
     cd core
-    cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build -p lyre-ffi --release --locked --no-default-features
+    cargo ndk -t arm64-v8a -t x86_64 -o ../android/app/src/main/jniLibs build -p lyre-ffi --release --locked --no-default-features
     target/debug/uniffi-bindgen generate --library target/debug/liblyre_ffi.so --language kotlin --no-format \
       --out-dir ../android/app/src/main/java
   )
   (cd android && ./gradlew --console=plain assembleDebug)
   # Read the whole listing first: grep -q would close the pipe early and fail the pipeline.
   apk_files=$(unzip -l android/app/build/outputs/apk/debug/app-debug.apk)
-  if ! grep -q 'lib/arm64-v8a/liblyre_ffi.so' <<<"$apk_files"; then
-    echo "liblyre_ffi.so is missing from the APK." >&2
-    exit 1
-  fi
+  for abi in arm64-v8a x86_64; do
+    if ! grep -q "lib/$abi/liblyre_ffi.so" <<<"$apk_files"; then
+      echo "liblyre_ffi.so for $abi is missing from the APK." >&2
+      exit 1
+    fi
+  done
   built=1
 fi
 

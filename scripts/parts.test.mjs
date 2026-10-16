@@ -32,8 +32,8 @@ describe('parts picked from changed paths', () => {
     assert.deepEqual(checkedParts(['web/src/main.ts']), ['web', 'e2e'])
   })
 
-  test('android picks the Android app', () => {
-    assert.deepEqual(checkedParts(['android/app/build.gradle.kts']), ['android'])
+  test('android picks the Android app and its device tests', () => {
+    assert.deepEqual(checkedParts(['android/app/build.gradle.kts']), ['android', 'device'])
   })
 
   test('tests/e2e picks the journeys', () => {
@@ -41,11 +41,11 @@ describe('parts picked from changed paths', () => {
   })
 
   test('core picks every part but the model tool', () => {
-    assert.deepEqual(checkedParts(['core/Cargo.toml']), ['core', 'web', 'e2e', 'android'])
+    assert.deepEqual(checkedParts(['core/Cargo.toml']), ['core', 'web', 'e2e', 'android', 'device'])
   })
 
   test('scripts pick every part', () => {
-    assert.deepEqual(checkedParts(['scripts/lint.sh']), ['core', 'web', 'e2e', 'android', 'models'])
+    assert.deepEqual(checkedParts(['scripts/lint.sh']), ['core', 'web', 'e2e', 'android', 'device', 'models'])
   })
 
   test('tools/model-tool picks the model tool', () => {
@@ -62,7 +62,7 @@ describe('parts picked from changed paths', () => {
   })
 
   test('lyre-cli picks the same parts as the rest of the core', () => {
-    const core = ['core', 'web', 'e2e', 'android']
+    const core = ['core', 'web', 'e2e', 'android', 'device']
     assert.deepEqual(checkedParts(['core/lyre-cli/src/main.rs']), core)
   })
 
@@ -70,6 +70,7 @@ describe('parts picked from changed paths', () => {
     assert.deepEqual(checkedParts(['docs/a.md', 'android/x.kt', 'tests/e2e/b.ts']), [
       'e2e',
       'android',
+      'device',
     ])
   })
 
@@ -77,6 +78,7 @@ describe('parts picked from changed paths', () => {
     assert.deepEqual(neededParts(checkedParts(['web/x.ts'])), ['core'])
     assert.deepEqual(neededParts(checkedParts(['tests/e2e/x.ts'])), ['core', 'web'])
     assert.deepEqual(neededParts(checkedParts(['android/x.kt'])), ['core'])
+    assert.deepEqual(neededParts(['device']), ['core', 'android'])
     assert.deepEqual(neededParts([]), [])
     assert.deepEqual(neededParts(checkedParts(['core/x.rs'])), [])
   })
@@ -187,6 +189,7 @@ describe('scripts in a repository', () => {
       assert.equal(stubCalls(), '', `${script} called a tool`)
       if (script === 'e2e.sh') {
         assert.match(result.stdout, new RegExp(`Skipping the Playwright journeys: .*${base}`))
+        assert.match(result.stdout, new RegExp(`Skipping the Android device tests: .*${base}`))
       } else {
         assert.match(result.stdout, new RegExp(`Skipping the Android app: .*${base}`))
       }
@@ -206,15 +209,52 @@ describe('scripts in a repository', () => {
       const result = run('node', ['scripts/parts.mjs'], { NEXKIT_BASE_SHA: base })
       assert.equal(result.status, 0, result.stderr)
       const states = result.stdout.split('\n').map((line) => line.split(' ').slice(0, 2).join(' '))
-      assert.deepEqual(states.slice(1, 6), [
+      assert.deepEqual(states.slice(1, 7), [
         'core needed',
         'web checked',
         'e2e checked',
         'android skipped',
+        'device skipped',
         'models skipped',
       ])
     } finally {
       rmSync(file)
+    }
+  })
+
+  test('e2e.sh fails when the emulator does not boot', () => {
+    const sdk = path.join(root, '..', `${path.basename(root)}-sdk`)
+    const files = {
+      'android/gradle/libs.versions.toml': 'systemImage = "system-images;android-35;google_apis;x86_64"\n',
+      'android/app/src/main/jniLibs/x86_64/liblyre_ffi.so': '',
+    }
+    const stubs = {
+      'emulator/emulator': 'exit 1',
+      'platform-tools/adb': 'echo "adb $*" >> "$STUB_LOG"',
+      'cmdline-tools/latest/bin/avdmanager': 'echo "avdmanager $*" >> "$STUB_LOG"',
+    }
+    for (const [file, content] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(root, file)), { recursive: true })
+      writeFileSync(path.join(root, file), content)
+    }
+    for (const [file, content] of Object.entries(stubs)) {
+      const stub = path.join(sdk, file)
+      mkdirSync(path.dirname(stub), { recursive: true })
+      writeFileSync(stub, `#!/usr/bin/env bash\n${content}\n`)
+      chmodSync(stub, 0o755)
+    }
+    try {
+      writeFileSync(log, '')
+      const result = run('bash', ['scripts/e2e.sh'], { NEXKIT_BASE_SHA: base, ANDROID_HOME: sdk })
+      assert.notEqual(result.status, 0, result.stdout)
+      assert.match(result.stderr, /did not boot/)
+      assert.match(stubCalls(), /avdmanager create avd -n lyre -k system-images;android-35;google_apis;x86_64/)
+    } finally {
+      for (const file of Object.keys(files)) {
+        rmSync(path.join(root, file))
+      }
+      rmSync(path.join(root, 'android', 'app'), { recursive: true, force: true })
+      rmSync(sdk, { recursive: true, force: true })
     }
   })
 
@@ -223,8 +263,8 @@ describe('scripts in a repository', () => {
     for (const env of [{}, { NEXKIT_BASE_SHA: unknown }]) {
       const parts = run('node', ['scripts/parts.mjs'], env)
       assert.equal(parts.status, 0, parts.stderr)
-      const states = parts.stdout.split('\n').slice(1, 6).map((line) => line.split(' ')[1])
-      assert.deepEqual(states, ['checked', 'checked', 'checked', 'checked', 'checked'])
+      const states = parts.stdout.split('\n').slice(1, 7).map((line) => line.split(' ')[1])
+      assert.deepEqual(states, ['checked', 'checked', 'checked', 'checked', 'checked', 'checked'])
       if (env.NEXKIT_BASE_SHA) {
         assert.match(parts.stderr, /is not a commit here: checking every part/)
       }
