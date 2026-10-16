@@ -71,7 +71,8 @@
     {
       "name": "android-system-images",
       "paths": [
-        "/usr/local/lib/android/sdk/system-images"
+        "/usr/local/lib/android/sdk/system-images",
+        "~/.cache/lyre/emulator"
       ],
       "key_files": [
         "android/gradle/libs.versions.toml"

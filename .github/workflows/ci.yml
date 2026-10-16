@@ -53,10 +53,13 @@ jobs:
           path: ~/.cache/ms-playwright
           key: nexkit-${{ runner.os }}-playwright-${{ hashFiles('tests/e2e/package-lock.json') }}
           restore-keys: nexkit-${{ runner.os }}-playwright-
-      # The emulator's system image, which setup installs into the runner's preinstalled SDK.
+      # The emulator's system image, which setup installs into the runner's preinstalled SDK,
+      # and the pinned emulator's zip, which setup keeps to check and reuse.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: /usr/local/lib/android/sdk/system-images
+          path: |
+            /usr/local/lib/android/sdk/system-images
+            ~/.cache/lyre/emulator
           key: nexkit-${{ runner.os }}-android-system-images-${{ hashFiles('android/gradle/libs.versions.toml') }}
           restore-keys: nexkit-${{ runner.os }}-android-system-images-
       - name: Setup
