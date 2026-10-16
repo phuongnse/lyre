@@ -1433,8 +1433,28 @@ impl From<DeviceKeyError> for DeviceKeyFault {
     }
 }
 
+/// The QR code of a device code: the modules of a square symbol, without the
+/// quiet zone.
+#[wasm_bindgen]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceCodeQr {
+    /// The side of the symbol, in modules.
+    pub size: u32,
+    /// The modules row by row from the top left: 1 for dark, 0 for light.
+    #[wasm_bindgen(getter_with_clone)]
+    pub modules: Vec<u8>,
+}
+
+/// The fixed Lyre PRF salt, as UTF-8 bytes. The client passes it as the
+/// WebAuthn PRF `eval.first` input.
+#[wasm_bindgen(js_name = devicePrfSalt)]
+pub fn device_prf_salt() -> Vec<u8> {
+    device::PRF_SALT.as_bytes().to_vec()
+}
+
 /// This web device's key, as an opaque handle. It shows only the device code
-/// and the fingerprint. The private key stays in the core and cannot be read.
+/// the fingerprint and the QR code. The private key stays in the core and
+/// cannot be read.
 #[wasm_bindgen]
 pub struct DeviceKey {
     // Later M3 issues use the key to open access files.
@@ -1442,6 +1462,7 @@ pub struct DeviceKey {
     key: device::DeviceKey,
     device_code: String,
     fingerprint: String,
+    qr_code: DeviceCodeQr,
 }
 
 #[wasm_bindgen]
@@ -1454,9 +1475,14 @@ impl DeviceKey {
         prf_output.zeroize();
         let key = key?;
         let public_key = key.public_key();
+        let qr = public_key.qr_code();
         Ok(DeviceKey {
             device_code: public_key.device_code(),
             fingerprint: public_key.fingerprint(),
+            qr_code: DeviceCodeQr {
+                size: qr.size as u32,
+                modules: qr.dark.iter().map(|&dark| u8::from(dark)).collect(),
+            },
             key,
         })
     }
@@ -1471,6 +1497,12 @@ impl DeviceKey {
     #[wasm_bindgen(getter)]
     pub fn fingerprint(&self) -> String {
         self.fingerprint.clone()
+    }
+
+    /// The QR code of the device code.
+    #[wasm_bindgen(getter, js_name = qrCode)]
+    pub fn qr_code(&self) -> DeviceCodeQr {
+        self.qr_code.clone()
     }
 }
 
@@ -2238,6 +2270,21 @@ mod tests {
         );
         assert_eq!(key.fingerprint(), "1458 7998 1818 4050 3333");
         assert_eq!(prf, vec![0; 32]);
+    }
+
+    #[test]
+    fn a_device_key_gives_a_33_by_33_qr_code_of_zeros_and_ones() {
+        let mut prf: Vec<u8> = (0..32).collect();
+        let qr = DeviceKey::new(&mut prf).expect("valid").qr_code();
+        assert_eq!(qr.size, 33);
+        assert_eq!(qr.modules.len(), 33 * 33);
+        assert!(qr.modules.iter().all(|&m| m <= 1));
+        assert!(qr.modules.contains(&1));
+    }
+
+    #[test]
+    fn the_prf_salt_is_the_core_salt() {
+        assert_eq!(device_prf_salt(), b"lyre/v1/device-key/prf");
     }
 
     #[test]

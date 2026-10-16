@@ -211,8 +211,8 @@ must settle:
   [the devices and access reference](reference/device-access.md).
   The encrypted format's byte layout is specified in
   [song file format, version 1](reference/song-file-format-v1.md).
-  What the web client tells a user whose passkey was refused
-  because it can sync.
+  The web client's device code section says why a passkey was refused (see
+  [device code](ui-conventions.md#device-code)).
 - **M4:** Android playback and device keys
   ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed));
   the lowest Android version, and emulator tests in CI.

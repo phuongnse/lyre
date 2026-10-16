@@ -2,8 +2,8 @@
 
 This doc fixes the bytes and text of what moves between devices besides the
 song file: device codes, fingerprints, access files and recovery keys.
-The web device key, the device code and the fingerprint are built. Access
-files and recovery keys are *(planned for M3)*. The scheme is
+The web device key, the device code, its QR code and the fingerprint are
+built. Access files and recovery keys are *(planned for M3)*. The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).
 
@@ -81,6 +81,19 @@ only. Internal whitespace is invalid.
 The QR content is exactly the device code in uppercase, without a URI
 scheme or any extra text. It uses QR alphanumeric mode. Typed and scanned
 codes use the same parser.
+
+The core builds the QR code, for both clients, with these settings:
+
+| Setting | Value |
+| --- | --- |
+| Segment | One alphanumeric segment of the 65 uppercase characters |
+| Error correction level | M, with no automatic raise to a higher level |
+| Version | 4, always, because the 65 characters do not fit version 3 at level M |
+| Size | 33 × 33 modules |
+| Quiet zone | 4 modules of blank border on every side, added by the client |
+
+A core test decodes the QR code and checks the content, the version and the
+level. The QR code is always drawn black on white, whatever the theme.
 
 *Why Bech32m:* its checksum catches typing errors. The uppercase form fits
 compactly in QR alphanumeric mode. Version 1 leaves version 0 distinct from

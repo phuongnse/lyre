@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core'
 import { MatButton } from '@angular/material/button'
 import { CoreVersion } from './core-version.component'
+import { DeviceCode } from './device-code.component'
 import { MakeSong } from './make-song/make-song.component'
 import { messages } from './messages'
 import { Player } from './player.component'
@@ -11,11 +12,12 @@ import { Player } from './player.component'
 // it out of the page's initial load.
 @Component({
   selector: 'lyre-home',
-  imports: [CoreVersion, Player, MatButton, MakeSong],
+  imports: [CoreVersion, Player, DeviceCode, MatButton, MakeSong],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <lyre-core-version />
     <lyre-player #player />
+    <lyre-device-code />
     @if (makingSong()) {
       @defer (on immediate) {
         <lyre-make-song (made)="player.openMade($event)" />

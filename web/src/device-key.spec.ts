@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { DeviceKey, DeviceKeyFault, DeviceKeyFaultKind, initSync } from './lyre-wasm/lyre_wasm.js'
+import { DeviceKey, DeviceKeyFault, DeviceKeyFaultKind, devicePrfSalt, initSync } from './lyre-wasm/lyre_wasm.js'
 
 beforeAll(() => {
   initSync({ module: readFileSync(new URL('./lyre-wasm/lyre_wasm_bg.wasm', import.meta.url)) })
@@ -40,11 +40,30 @@ describe('the web device key', () => {
     refused.free()
   })
 
-  test('shows only the device code and the fingerprint', () => {
+  test('gives a 33 by 33 QR code of 1089 modules', () => {
+    const key = new DeviceKey(PRF_OUTPUT.slice())
+    const qr = key.qrCode
+    expect(qr.size).toBe(33)
+    expect(qr.modules).toBeInstanceOf(Uint8Array)
+    expect(qr.modules).toHaveLength(1089)
+    expect(qr.modules.every((module) => module <= 1)).toBe(true)
+    // The top left finder pattern: a dark ring around a dark centre.
+    expect(Array.from(qr.modules.slice(0, 7))).toEqual([1, 1, 1, 1, 1, 1, 1])
+    qr.free()
+    key.free()
+  })
+
+  test('shows only the device code, the fingerprint and the QR code', () => {
     const members = Object.getOwnPropertyNames(DeviceKey.prototype).sort()
-    expect(members).toEqual(['__destroy_into_raw', 'constructor', 'deviceCode', 'fingerprint', 'free'])
+    expect(members).toEqual(['__destroy_into_raw', 'constructor', 'deviceCode', 'fingerprint', 'free', 'qrCode'])
     const key = new DeviceKey(PRF_OUTPUT.slice())
     expect(Object.getOwnPropertyNames(key)).toEqual(['__wbg_ptr'])
     key.free()
+  })
+})
+
+describe('the PRF salt', () => {
+  test('is the fixed Lyre salt as UTF-8', () => {
+    expect(new TextDecoder().decode(devicePrfSalt())).toBe('lyre/v1/device-key/prf')
   })
 })
