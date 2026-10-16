@@ -14,6 +14,9 @@ if [[ -f core/Cargo.toml ]] && checks core; then
     cd core
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
+    # The fuzz targets are a workspace of their own. They are checked on the stable toolchain.
+    cargo fmt --check --manifest-path fuzz/Cargo.toml
+    cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
   )
 fi
 
