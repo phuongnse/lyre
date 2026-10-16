@@ -3,18 +3,25 @@
 //! The bytes are in `docs/reference/device-access.md#access-file`. [`wrap`]
 //! writes a file with one entry for one device. [`open`] opens a file with
 //! this device's key, for one song. [`share`] turns an owner's entry into a
-//! recipient's file. The content key comes back only as a
+//! recipient's file. [`open_with_agreement`] opens a file for a device whose
+//! private key the core cannot read: the platform does the key agreement. The
+//! content key comes back only as a
 //! [`ContentKey`] handle, together with the role. No function returns key
 //! bytes, and no error names any.
 
 use std::fmt;
 
+use aes_gcm::aead::consts::U12;
+use aes_gcm::aead::{Aead, Payload};
+use aes_gcm::{Aes256Gcm, Key, KeyInit};
+use hkdf::Hkdf;
 use hpke::aead::AesGcm256;
 use hpke::kdf::HkdfSha256;
 use hpke::kem::DhP256HkdfSha256;
 use hpke::{Deserializable, OpModeR, OpModeS, Serializable, single_shot_open, single_shot_seal};
 use rand_core::{CryptoRng, OsRng, RngCore};
-use zeroize::Zeroizing;
+use sha2::Sha256;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::content_key::{ContentKey, KEY_LEN};
 use crate::device::{DeviceKey, PublicKey};
@@ -102,6 +109,10 @@ pub enum AccessFileError {
     OtherSong,
     /// The entry did not open.
     Open,
+    /// The platform gave no key agreement result.
+    KeyAgreement,
+    /// The platform's key agreement result is not 32 bytes.
+    AgreementLength,
 }
 
 impl fmt::Display for AccessFileError {
@@ -119,6 +130,10 @@ impl fmt::Display for AccessFileError {
             AccessFileError::OtherDevice => "the access file is for another device",
             AccessFileError::OtherSong => "the access file has no entry for this song",
             AccessFileError::Open => "the access file entry did not open",
+            AccessFileError::KeyAgreement => "the platform gave no key agreement result",
+            AccessFileError::AgreementLength => {
+                "the platform's key agreement result has the wrong size"
+            }
         };
         write!(f, "{reason}")
     }
@@ -242,15 +257,13 @@ pub(crate) fn wrap_with_rng<R: RngCore + CryptoRng>(
     file
 }
 
-/// Opens an access file for one song with this device's key. The whole file
-/// is checked first, with nothing allocated by its entry count. Then the
-/// song's entry is opened, and only a successful open gives the content key
-/// and the role.
-pub fn open(
-    file: &[u8],
-    device_key: &DeviceKey,
+/// Checks the whole file and the device match, then finds the song's entry.
+/// Nothing is allocated by the entry count. Gives the entry and its role.
+fn find_entry<'a>(
+    file: &'a [u8],
+    device: &[u8; COMPRESSED_LEN],
     song_id: &[u8; SONG_ID_LEN],
-) -> Result<Access, AccessFileError> {
+) -> Result<(&'a [u8], Role), AccessFileError> {
     if file.len() < HEADER_LEN {
         return Err(AccessFileError::Size);
     }
@@ -297,12 +310,25 @@ pub fn open(
             found = Some(entry);
         }
     }
-    let device = device_key.public_key().to_compressed();
     if header_key != device {
         return Err(AccessFileError::OtherDevice);
     }
     let entry = found.ok_or(AccessFileError::OtherSong)?;
     let role = Role::from_byte(entry[16]).ok_or(AccessFileError::Role)?;
+    Ok((entry, role))
+}
+
+/// Opens an access file for one song with this device's key. The whole file
+/// is checked first, with nothing allocated by its entry count. Then the
+/// song's entry is opened, and only a successful open gives the content key
+/// and the role.
+pub fn open(
+    file: &[u8],
+    device_key: &DeviceKey,
+    song_id: &[u8; SONG_ID_LEN],
+) -> Result<Access, AccessFileError> {
+    let device = device_key.public_key().to_compressed();
+    let (entry, role) = find_entry(file, &device, song_id)?;
     let enc = <Kem as hpke::Kem>::EncappedKey::from_bytes(&entry[17..17 + ENC_LEN])
         .map_err(|_| AccessFileError::Enc)?;
     let secret = device_key.secret_bytes();
@@ -323,6 +349,150 @@ pub fn open(
         <[u8; KEY_LEN]>::try_from(plaintext.as_slice()).map_err(|_| AccessFileError::Open)?;
     Ok(Access {
         content_key: ContentKey::from_bytes(bytes),
+        role,
+    })
+}
+
+/// The platform's half of an open: the ECDH of the device's private key with
+/// `enc`, as the 32-byte big-endian x coordinate. None when it failed, for
+/// example while the device is locked. The core asks once per open and zeroes
+/// its copy of the result.
+pub trait KeyAgreement {
+    fn agree(&self, enc: &[u8; ENC_LEN]) -> Option<Vec<u8>>;
+}
+
+/// The size of an ECDH result, in bytes.
+const AGREEMENT_LEN: usize = 32;
+
+/// The size of an AES-GCM nonce, in bytes.
+const NONCE_LEN: usize = 12;
+
+/// `"KEM" || I2OSP(0x0010, 2)`: the suite ID of DHKEM(P-256, HKDF-SHA256).
+const KEM_ID: &[u8] = b"KEM\x00\x10";
+
+/// `"HPKE" || kem_id || kdf_id || aead_id`: the suite ID of the key schedule.
+const HPKE_ID: &[u8] = b"HPKE\x00\x10\x00\x01\x00\x02";
+
+/// RFC 9180's `LabeledExtract` with HKDF-SHA256. Everything that holds
+/// `ikm` is zeroed.
+fn labeled_extract(salt: &[u8], suite: &[u8], label: &[u8], ikm: &[u8]) -> Zeroizing<[u8; 32]> {
+    let mut labeled = Zeroizing::new(Vec::with_capacity(
+        7 + suite.len() + label.len() + ikm.len(),
+    ));
+    labeled.extend_from_slice(b"HPKE-v1");
+    labeled.extend_from_slice(suite);
+    labeled.extend_from_slice(label);
+    labeled.extend_from_slice(ikm);
+    let (mut prk, _) = Hkdf::<Sha256>::extract(Some(salt), &labeled);
+    let mut out = Zeroizing::new([0u8; 32]);
+    out.copy_from_slice(&prk);
+    prk.as_mut_slice().zeroize();
+    out
+}
+
+/// RFC 9180's `LabeledExpand` with HKDF-SHA256, for an output of `N` bytes.
+fn labeled_expand<const N: usize>(
+    prk: &[u8; 32],
+    suite: &[u8],
+    label: &[u8],
+    info: &[u8],
+) -> Zeroizing<[u8; N]> {
+    let mut labeled = Vec::with_capacity(2 + 7 + suite.len() + label.len() + info.len());
+    labeled.extend_from_slice(&(N as u16).to_be_bytes());
+    labeled.extend_from_slice(b"HPKE-v1");
+    labeled.extend_from_slice(suite);
+    labeled.extend_from_slice(label);
+    labeled.extend_from_slice(info);
+    let mut out = Zeroizing::new([0u8; N]);
+    Hkdf::<Sha256>::from_prk(prk)
+        .expect("a 32-byte key is a valid HKDF-SHA256 PRK")
+        .expand(&labeled, out.as_mut_slice())
+        .expect("the output is far below HKDF's limit");
+    out
+}
+
+/// What RFC 9180's base-mode key schedule gives from a DH result.
+pub(crate) struct Schedule {
+    /// Only the tests read it, to check it against the vector.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) shared_secret: Zeroizing<[u8; 32]>,
+    pub(crate) key: Zeroizing<[u8; KEY_LEN]>,
+    pub(crate) base_nonce: Zeroizing<[u8; NONCE_LEN]>,
+}
+
+/// RFC 9180's `ExtractAndExpand` and base-mode `KeySchedule` for
+/// DHKEM(P-256, HKDF-SHA256), HKDF-SHA256 and AES-256-GCM. `pk_rm` is the
+/// recipient's uncompressed public key.
+pub(crate) fn key_schedule(
+    dh: &[u8; AGREEMENT_LEN],
+    enc: &[u8; ENC_LEN],
+    pk_rm: &[u8; 65],
+    info: &[u8],
+) -> Schedule {
+    let eae_prk = labeled_extract(&[], KEM_ID, b"eae_prk", dh);
+    let kem_context = [enc.as_slice(), pk_rm.as_slice()].concat();
+    let shared_secret = labeled_expand::<32>(&eae_prk, KEM_ID, b"shared_secret", &kem_context);
+    let psk_id_hash = labeled_extract(&[], HPKE_ID, b"psk_id_hash", &[]);
+    let info_hash = labeled_extract(&[], HPKE_ID, b"info_hash", info);
+    let mut context = Zeroizing::new(Vec::with_capacity(65));
+    context.push(0x00);
+    context.extend_from_slice(psk_id_hash.as_slice());
+    context.extend_from_slice(info_hash.as_slice());
+    let secret = labeled_extract(shared_secret.as_slice(), HPKE_ID, b"secret", &[]);
+    Schedule {
+        key: labeled_expand::<KEY_LEN>(&secret, HPKE_ID, b"key", &context),
+        base_nonce: labeled_expand::<NONCE_LEN>(&secret, HPKE_ID, b"base_nonce", &context),
+        shared_secret,
+    }
+}
+
+/// The base-mode open of RFC 9180 from a DH result, at sequence 0 with an
+/// empty `aad`. Gives the plaintext, or None when it does not open.
+fn open_from_dh(
+    dh: &[u8; AGREEMENT_LEN],
+    enc: &[u8; ENC_LEN],
+    pk_rm: &[u8; 65],
+    info: &[u8],
+    ct: &[u8],
+) -> Option<Zeroizing<Vec<u8>>> {
+    let schedule = key_schedule(dh, enc, pk_rm, info);
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(schedule.key.as_slice()));
+    let nonce = aes_gcm::Nonce::<U12>::from(*schedule.base_nonce);
+    let plaintext = cipher.decrypt(&nonce, Payload { msg: ct, aad: &[] }).ok()?;
+    Some(Zeroizing::new(plaintext))
+}
+
+/// Opens an access file for one song for a device whose private key the core
+/// cannot read. The whole file and the device match are checked first, as in
+/// [`open`]. Then the platform is asked once for the ECDH of its key with the
+/// entry's `enc`, and the core finishes the open. The result must be 32 bytes.
+/// It is used once and zeroed.
+pub fn open_with_agreement(
+    file: &[u8],
+    device: &PublicKey,
+    song_id: &[u8; SONG_ID_LEN],
+    agreement: &impl KeyAgreement,
+) -> Result<Access, AccessFileError> {
+    let compressed = device.to_compressed();
+    let (entry, role) = find_entry(file, &compressed, song_id)?;
+    let enc =
+        <[u8; ENC_LEN]>::try_from(&entry[17..17 + ENC_LEN]).expect("an entry holds a 65-byte enc");
+    let dh = Zeroizing::new(agreement.agree(&enc).ok_or(AccessFileError::KeyAgreement)?);
+    let dh = <&[u8; AGREEMENT_LEN]>::try_from(dh.as_slice())
+        .map_err(|_| AccessFileError::AgreementLength)?;
+    let plaintext = open_from_dh(
+        dh,
+        &enc,
+        &device.to_uncompressed(),
+        &info(song_id, &compressed, role.to_byte()),
+        &entry[17 + ENC_LEN..],
+    )
+    .ok_or(AccessFileError::Open)?;
+    let bytes = Zeroizing::new(
+        <[u8; KEY_LEN]>::try_from(plaintext.as_slice()).map_err(|_| AccessFileError::Open)?,
+    );
+    Ok(Access {
+        content_key: ContentKey::from_bytes(*bytes),
         role,
     })
 }
@@ -779,6 +949,285 @@ mod tests {
         );
     }
 
+    /// A software stand-in for Keystore: the ECDH of a key with `enc`. It counts
+    /// its calls. `len` cuts or pads the result, and `fail` gives none.
+    struct Software {
+        key: DeviceKey,
+        calls: std::cell::Cell<usize>,
+        len: Option<usize>,
+        fail: bool,
+    }
+
+    impl Software {
+        fn new(key: DeviceKey) -> Software {
+            Software {
+                key,
+                calls: std::cell::Cell::new(0),
+                len: None,
+                fail: false,
+            }
+        }
+
+        fn dh(&self, enc: &[u8; ENC_LEN]) -> Vec<u8> {
+            use p256::elliptic_curve::point::AffineCoordinates;
+            let point = p256::PublicKey::from_sec1_bytes(enc).expect("a valid point");
+            let secret = self.key.secret_bytes();
+            let scalar = p256::NonZeroScalar::try_from(secret.as_slice()).expect("a valid scalar");
+            let shared = (point.to_projective() * *scalar).to_affine();
+            shared.x().to_vec()
+        }
+    }
+
+    impl KeyAgreement for Software {
+        fn agree(&self, enc: &[u8; ENC_LEN]) -> Option<Vec<u8>> {
+            self.calls.set(self.calls.get() + 1);
+            if self.fail {
+                return None;
+            }
+            let mut dh = self.dh(enc);
+            if let Some(len) = self.len {
+                dh.resize(len, 0x5a);
+            }
+            Some(dh)
+        }
+    }
+
+    /// An agreement that gives fixed bytes and counts its calls.
+    struct Fixed(Vec<u8>, std::cell::Cell<usize>);
+
+    impl KeyAgreement for Fixed {
+        fn agree(&self, _: &[u8; ENC_LEN]) -> Option<Vec<u8>> {
+            self.1.set(self.1.get() + 1);
+            Some(self.0.clone())
+        }
+    }
+
+    fn agree_documented(
+        file: &[u8],
+        agreement: &impl KeyAgreement,
+    ) -> Result<Access, AccessFileError> {
+        open_with_agreement(file, &device_key().public_key(), &song_id(), agreement)
+    }
+
+    #[test]
+    fn the_agreement_open_gives_the_content_key_and_role_of_the_web_open() {
+        let device = device_key();
+        let key = ContentKey::generate();
+        for role in [Role::Owner, Role::Recipient] {
+            for _ in 0..8 {
+                let file = wrap(&key, &song_id(), &device.public_key(), role);
+                let software = Software::new(device_key());
+                let access =
+                    open_with_agreement(&file, &device.public_key(), &song_id(), &software)
+                        .expect("the file opens");
+                let web = open(&file, &device, &song_id()).expect("the file opens");
+                assert_eq!(access.role, role);
+                assert_eq!(access.role, web.role);
+                assert_eq!(access.content_key.expose(), key.expose());
+                assert_eq!(access.content_key.expose(), web.content_key.expose());
+                assert_eq!(software.calls.get(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn the_agreement_open_reads_a_public_key_from_either_sec1_form() {
+        let device = device_key();
+        let file = wrap(
+            &content_key(),
+            &song_id(),
+            &device.public_key(),
+            Role::Owner,
+        );
+        let uncompressed = device.public_key().to_uncompressed();
+        let public = PublicKey::from_sec1(&uncompressed).expect("a valid key");
+        let access = open_with_agreement(&file, &public, &song_id(), &Software::new(device_key()))
+            .expect("the file opens");
+        assert_eq!(access.content_key.expose(), content_key().expose());
+    }
+
+    #[test]
+    fn the_agreement_open_opens_either_song_of_a_two_entry_file() {
+        let device = device_key();
+        let first = ContentKey::from_bytes([1; 32]);
+        let second = ContentKey::from_bytes([2; 32]);
+        let one = wrap(&first, &[3; 16], &device.public_key(), Role::Owner);
+        let two = wrap(&second, &[9; 16], &device.public_key(), Role::Recipient);
+        let mut file = one.clone();
+        file.extend_from_slice(&two[HEADER_LEN..]);
+        file[12] = 2;
+        for (id, key, role) in [
+            ([3; 16], &first, Role::Owner),
+            ([9; 16], &second, Role::Recipient),
+        ] {
+            let software = Software::new(device_key());
+            let access = open_with_agreement(&file, &device.public_key(), &id, &software)
+                .expect("the song opens");
+            assert_eq!(
+                (access.role, access.content_key.expose()),
+                (role, key.expose())
+            );
+            assert_eq!(software.calls.get(), 1);
+        }
+        let software = Software::new(device_key());
+        assert_eq!(
+            open_with_agreement(&file, &device.public_key(), &[5; 16], &software).err(),
+            Some(AccessFileError::OtherSong)
+        );
+        assert_eq!(software.calls.get(), 0);
+    }
+
+    #[test]
+    fn every_invalid_row_is_refused_through_the_agreement_without_asking_the_platform() {
+        for row in invalid_rows() {
+            let file = variant(&row[0]);
+            let software = Software::new(device_key());
+            let error = agree_documented(&file, &software).expect_err(&row[0]);
+            assert_eq!(format!("{error:?}"), row[2], "{}", row[0]);
+            assert_eq!(software.calls.get(), 0, "{}", row[0]);
+        }
+    }
+
+    #[test]
+    fn another_devices_file_is_refused_through_the_agreement_without_asking_the_platform() {
+        for byte in [0x00, 0xff] {
+            let other = other_key(byte);
+            let software = Software::new(other_key(byte));
+            assert_eq!(
+                open_with_agreement(&documented(), &other.public_key(), &song_id(), &software)
+                    .err(),
+                Some(AccessFileError::OtherDevice)
+            );
+            assert_eq!(software.calls.get(), 0);
+        }
+        let mut other = song_id();
+        other[15] ^= 1;
+        let software = Software::new(device_key());
+        assert_eq!(
+            open_with_agreement(&documented(), &device_key().public_key(), &other, &software).err(),
+            Some(AccessFileError::OtherSong)
+        );
+        assert_eq!(software.calls.get(), 0);
+    }
+
+    #[test]
+    fn a_changed_entry_fails_the_agreement_open() {
+        let mut changed = Vec::new();
+        for offset in [131, 150, 162, 178] {
+            let mut file = documented();
+            file[offset] ^= 1;
+            changed.push((format!("ciphertext byte {offset}"), file));
+        }
+        let mut file = documented();
+        file[65] = 2;
+        changed.push(("role".to_owned(), file));
+        let (_, public) = <Kem as hpke::Kem>::derive_keypair(&[9; 32]);
+        let mut file = documented();
+        file[66..131].copy_from_slice(public.to_bytes().as_slice());
+        changed.push(("enc".to_owned(), file));
+        for (name, file) in changed {
+            let software = Software::new(device_key());
+            assert_eq!(
+                agree_documented(&file, &software).err(),
+                Some(AccessFileError::Open),
+                "{name}"
+            );
+            assert_eq!(software.calls.get(), 1, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_result_of_the_wrong_size_is_refused() {
+        for len in [0, 31, 33] {
+            let mut software = Software::new(device_key());
+            software.len = Some(len);
+            assert_eq!(
+                agree_documented(&documented(), &software).err(),
+                Some(AccessFileError::AgreementLength),
+                "{len} bytes"
+            );
+            assert_eq!(software.calls.get(), 1);
+        }
+    }
+
+    #[test]
+    fn a_platform_with_no_result_is_refused() {
+        let mut software = Software::new(device_key());
+        software.fail = true;
+        assert_eq!(
+            agree_documented(&documented(), &software).err(),
+            Some(AccessFileError::KeyAgreement)
+        );
+        assert_eq!(software.calls.get(), 1);
+    }
+
+    #[test]
+    fn a_wrong_result_of_the_right_size_fails_the_open() {
+        let fixed = Fixed(vec![7; 32], std::cell::Cell::new(0));
+        assert_eq!(
+            agree_documented(&documented(), &fixed).err(),
+            Some(AccessFileError::Open)
+        );
+        assert_eq!(fixed.1.get(), 1);
+    }
+
+    /// The value of the row named `item` of the platform key agreement vector.
+    fn agreement_vector(item: &str) -> String {
+        table(DOC, "### Platform key agreement\n\nThe vector opens")
+            .into_iter()
+            .find(|row| row[0] == item)
+            .unwrap_or_else(|| panic!("the vector has a row {item}"))[1]
+            .clone()
+    }
+
+    #[test]
+    fn the_platform_key_agreement_vector_opens_the_documented_file() {
+        assert_eq!(
+            table(DOC, "### Platform key agreement\n\nThe vector opens").len(),
+            9
+        );
+        let device = device_key();
+        let uncompressed = device.public_key().to_uncompressed();
+        assert_eq!(
+            hex(&uncompressed),
+            agreement_vector("Device public key (uncompressed)")
+        );
+        assert_eq!(hex(&documented()[66..131]), agreement_vector("enc"));
+        let web = &table(DOC, "### Web device key\n\nEach row")[1];
+        assert_eq!(agreement_vector("d"), web[1]);
+        assert_eq!(agreement_vector("role"), "01");
+
+        // The documented d times enc gives the documented dh.
+        let enc: [u8; ENC_LEN] = bytes(&agreement_vector("enc"));
+        let software = Software::new(device_key());
+        assert_eq!(hex(&software.dh(&enc)), agreement_vector("dh"));
+
+        // The intermediate values match.
+        let dh: [u8; 32] = bytes(&agreement_vector("dh"));
+        let compressed = device.public_key().to_compressed();
+        let schedule = key_schedule(&dh, &enc, &uncompressed, &info(&song_id(), &compressed, 1));
+        assert_eq!(
+            hex(schedule.shared_secret.as_slice()),
+            agreement_vector("shared_secret")
+        );
+        assert_eq!(hex(schedule.key.as_slice()), agreement_vector("key"));
+        assert_eq!(
+            hex(schedule.base_nonce.as_slice()),
+            agreement_vector("base_nonce")
+        );
+
+        // The documented dh opens the documented file.
+        let fixed = Fixed(dh.to_vec(), std::cell::Cell::new(0));
+        let access = agree_documented(&documented(), &fixed).expect("the file opens");
+        assert_eq!(access.role, Role::Owner);
+        assert_eq!(
+            hex(access.content_key.expose()),
+            agreement_vector("Content key")
+        );
+        assert_eq!(access.content_key.expose(), content_key().expose());
+        assert_eq!(fixed.1.get(), 1);
+    }
+
     #[test]
     fn debug_and_error_text_hold_no_key_hex() {
         let key_hex = hex(content_key().expose());
@@ -798,6 +1247,8 @@ mod tests {
             AccessFileError::OtherDevice,
             AccessFileError::OtherSong,
             AccessFileError::Open,
+            AccessFileError::KeyAgreement,
+            AccessFileError::AgreementLength,
         ] {
             texts.push(format!("{error:?} {error}"));
         }

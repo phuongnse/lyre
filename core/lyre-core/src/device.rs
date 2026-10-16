@@ -95,6 +95,26 @@ impl fmt::Display for DeviceCodeError {
 
 impl std::error::Error for DeviceCodeError {}
 
+/// Why a public key could not be read from SEC1 bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PublicKeyError {
+    /// The bytes are not 33 or 65 long.
+    Length,
+    /// The prefix does not fit the length, or the point is not on the curve.
+    Key,
+}
+
+impl fmt::Display for PublicKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PublicKeyError::Length => write!(f, "the public key is not 33 or 65 bytes"),
+            PublicKeyError::Key => write!(f, "the bytes hold no valid public key"),
+        }
+    }
+}
+
+impl std::error::Error for PublicKeyError {}
+
 /// This device's key pair. The private key stays inside and cannot be read.
 pub struct DeviceKey {
     secret: SecretKey,
@@ -170,6 +190,25 @@ pub(crate) fn qr_code_of(text: &str) -> QrCode {
 pub struct PublicKey([u8; COMPRESSED_LEN]);
 
 impl PublicKey {
+    /// Reads a public key from SEC1 bytes: 33 bytes starting with `02` or
+    /// `03`, or 65 bytes starting with `04`. The point must be on the curve.
+    /// The key gives the same device code as any other key for the same point.
+    pub fn from_sec1(bytes: &[u8]) -> Result<PublicKey, PublicKeyError> {
+        let prefixes: &[u8] = match bytes.len() {
+            COMPRESSED_LEN => &[0x02, 0x03],
+            65 => &[0x04],
+            _ => return Err(PublicKeyError::Length),
+        };
+        if !prefixes.contains(&bytes[0]) {
+            return Err(PublicKeyError::Key);
+        }
+        let key = p256::PublicKey::from_sec1_bytes(bytes).map_err(|_| PublicKeyError::Key)?;
+        let point = key.to_encoded_point(true);
+        let compressed = <[u8; COMPRESSED_LEN]>::try_from(point.as_bytes())
+            .expect("a compressed point is 33 bytes");
+        Ok(PublicKey(compressed))
+    }
+
     /// The 33-byte SEC1 compressed encoding.
     pub fn to_compressed(&self) -> [u8; COMPRESSED_LEN] {
         self.0
@@ -373,6 +412,82 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_sec1_public_key_gives_the_documented_code_and_fingerprint() {
+        for row in code_rows() {
+            let expected = PublicKey(unhex(&row[0]).try_into().expect("33 bytes"));
+            let uncompressed = expected.to_uncompressed();
+            assert_eq!(uncompressed[0], 0x04);
+            for bytes in [expected.to_compressed().to_vec(), uncompressed.to_vec()] {
+                let key = PublicKey::from_sec1(&bytes).expect("a valid key");
+                assert_eq!(key, expected, "{}", row[0]);
+                assert_eq!(key.device_code(), row[1]);
+                assert_eq!(key.fingerprint(), row[2]);
+            }
+        }
+    }
+
+    #[test]
+    fn a_sec1_public_key_of_the_wrong_length_is_refused() {
+        let key = PublicKey(unhex(&code_rows()[0][0]).try_into().expect("33 bytes"));
+        let compressed = key.to_compressed();
+        let uncompressed = key.to_uncompressed();
+        let mut cases = vec![
+            vec![],
+            compressed[..32].to_vec(),
+            uncompressed[..64].to_vec(),
+        ];
+        cases.push([compressed.as_slice(), &[0]].concat());
+        cases.push([uncompressed.as_slice(), &[0]].concat());
+        cases.push(vec![0x02; 34]);
+        for bytes in cases {
+            assert_eq!(
+                PublicKey::from_sec1(&bytes),
+                Err(PublicKeyError::Length),
+                "{} bytes",
+                bytes.len()
+            );
+        }
+    }
+
+    #[test]
+    fn a_sec1_public_key_with_a_bad_prefix_or_point_is_refused() {
+        let key = PublicKey(unhex(&code_rows()[0][0]).try_into().expect("33 bytes"));
+        let p = unhex("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff");
+        let mut cases = Vec::new();
+        for prefix in [0x00, 0x04, 0x05] {
+            let mut bytes = key.to_compressed();
+            bytes[0] = prefix;
+            cases.push(bytes.to_vec());
+        }
+        for prefix in [0x00, 0x02, 0x03, 0x05] {
+            let mut bytes = key.to_uncompressed();
+            bytes[0] = prefix;
+            cases.push(bytes.to_vec());
+        }
+        // x = p
+        let mut bytes = key.to_compressed();
+        bytes[1..].copy_from_slice(&p);
+        cases.push(bytes.to_vec());
+        // x = 1 is not on the curve.
+        let mut bytes = [0u8; 33];
+        bytes[0] = 0x02;
+        bytes[32] = 1;
+        cases.push(bytes.to_vec());
+        // A flipped y coordinate leaves the curve.
+        let mut bytes = key.to_uncompressed();
+        bytes[64] ^= 1;
+        cases.push(bytes.to_vec());
+        for bytes in cases {
+            assert_eq!(
+                PublicKey::from_sec1(&bytes),
+                Err(PublicKeyError::Key),
+                "{}",
+                hex(&bytes)
+            );
+        }
+    }
+
+    #[test]
     fn the_codes_belong_to_the_documented_keys() {
         let keys: Vec<String> = key_rows().into_iter().map(|row| row[2].clone()).collect();
         let codes: Vec<String> = code_rows().into_iter().map(|row| row[0].clone()).collect();
@@ -501,6 +616,7 @@ pub(crate) mod tests {
     fn error_text_holds_no_private_scalar() {
         let scalars: Vec<String> = key_rows().into_iter().map(|row| row[1].clone()).collect();
         let key_errors = [DeviceKeyError::PrfLength, DeviceKeyError::ZeroScalar];
+        let sec1_errors = [PublicKeyError::Length, PublicKeyError::Key];
         let code_errors = [
             DeviceCodeError::Text,
             DeviceCodeError::Length,
@@ -511,6 +627,9 @@ pub(crate) mod tests {
         ];
         let mut texts = Vec::new();
         for error in key_errors {
+            texts.push(format!("{error:?} {error}"));
+        }
+        for error in sec1_errors {
             texts.push(format!("{error:?} {error}"));
         }
         for error in code_errors {

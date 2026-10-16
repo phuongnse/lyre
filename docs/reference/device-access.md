@@ -4,10 +4,12 @@ This doc fixes the bytes and text of what moves between devices besides the
 song file: device codes, fingerprints, access files and recovery keys.
 The web device key, the device code, its QR code, the fingerprint, the
 recovery key pair derivation, the recovery words and the core's access file
-wrap and open are built, and so is sharing in the web client. The web client
+wrap and open are built, and so is sharing in the web client. The core also
+opens an access file through a key agreement that the platform does, for a
+device key it cannot read. The web client
 also makes the recovery key and shows it once, and restores songs from typed or
-pasted recovery words. The Android device key and the way an access file opens
-with it are planned for M4.
+pasted recovery words. The Android device key in Keystore, and the app code
+that calls the core's open with it, are planned for M4.
 The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).
@@ -123,16 +125,19 @@ Keystore cannot export the private key, so Keystore does the key agreement.
 The core does the rest of the HPKE open.
 
 1. The core checks the whole file and the device match, as in
-   [Rejections](#rejections). It finds the entry by song ID and returns the
-   entry's validated 65-byte `enc`.
-2. The app runs `KeyAgreement.getInstance("ECDH", "AndroidKeyStore")` with the
+   [Rejections](#rejections). It finds the entry by song ID and takes the
+   entry's validated 65-byte `enc`. The core knows the device by its public
+   key alone, 33 or 65 bytes of SEC1.
+2. The core asks the platform once, through a callback that receives `enc`
+   and returns `dh` or nothing. The app runs `KeyAgreement.getInstance("ECDH", "AndroidKeyStore")` with the
    device key and `enc`. The result is the 32-byte big-endian x coordinate.
    This is `dh`, as RFC 9180 defines it for DHKEM(P-256).
-3. The app passes `dh` straight to the core. The core computes
+3. The app returns `dh` straight to the core. The core computes
    `shared_secret = ExtractAndExpand(dh, enc || pkRm)`, where `pkRm` is the
    uncompressed device key. It runs the key schedule with the same
    [`info`](#hpke-wrap) and empty `aad`, opens `ct` and keeps the content key
-   as an opaque handle.
+   as an opaque handle. It zeroes every buffer that holds `dh` or a key
+   derived from it.
 4. The app overwrites its buffer with zeros right away.
 
 The rules are those of the PRF output on the web. `dh` never reaches Compose
@@ -140,7 +145,7 @@ state, storage, logs or error messages. Clearing is best effort because the
 JVM may keep copies.
 
 *Why:* the step that needs the private key runs inside Keystore. `dh` opens
-only this one entry.
+only this one entry. The [vector](#platform-key-agreement) covers the core's part.
 
 ## Device code
 
@@ -384,7 +389,8 @@ entry's content key or role is used.
 | Input | Rule | When checked |
 | --- | --- | --- |
 | Web PRF output | It must be exactly 32 bytes. | Before HKDF |
-| Android key agreement output | It must be exactly 32 bytes. | Before HKDF |
+| Android key agreement output | It must be exactly 32 bytes. A longer or shorter output gives `AgreementLength`. No output, for example while the device is locked, gives `KeyAgreement`. | Before HKDF |
+| Platform public key | It must be 33 bytes starting with `02` or `03`, or 65 bytes starting with `04`. Its x coordinate must be less than `p` and yield a point on the curve. Another length gives `Length`, and anything else gives `Key`. | When the core reads the key |
 | Derived device or recovery scalar | It must not be zero after reduction modulo `n`. | During key derivation |
 | Device code text | HRP must be `lyre`, case-insensitively. Mixed case, internal whitespace and characters outside Bech32m are invalid. | Before decoding the key |
 | Device code length | After trimming, it must be 65 characters: one version group, 53 key groups and six checksum characters after the separator. | Before decoding the key |
@@ -416,6 +422,7 @@ failure. The [access file](#access-file) section describes this limit.
 | Android key agreement output | Exactly 32 bytes |
 | HKDF output for either key derivation | Exactly 48 bytes |
 | Compressed P-256 public key | Exactly 33 bytes |
+| Platform public key | Exactly 33 or 65 bytes |
 | Uncompressed P-256 public key or HPKE `enc` | Exactly 65 bytes |
 | Device code, excluding surrounding whitespace | Exactly 65 characters |
 | Device code version | `1` |
@@ -436,8 +443,8 @@ failure. The [access file](#access-file) section describes this limit.
 ## Known-answer vectors
 
 The web device key, the device code, the fingerprint, the recovery key pair,
-the recovery words and the access file have checked vectors.
-The vector for the Android open comes with the core issue *(planned for M4)*.
+the recovery words, the access file and the open through the platform key
+agreement have checked vectors.
 
 An independent script that uses only Python's standard library worked out the
 web device key, device code, fingerprint, recovery key pair and recovery words
@@ -562,6 +569,34 @@ another device's key gives `OtherDevice`. These rows give `Open`:
   with that device's key, because the entry was wrapped for the first device.
 
 One changed byte of `enc` leaves the curve and gives `Enc` instead.
+
+### Platform key agreement
+
+The vector opens the access file above through the platform key agreement,
+for the device of PRF output `000102…1f`. The private scalar `d` is row 2 of
+the [web device key](#web-device-key-1) table. The core computed the
+intermediate values `shared_secret`, `key` and `base_nonce`. Only the content
+key is also checked by the web open of the same file. A core test checks
+that `d × enc` gives `dh`, that the intermediate values match and that `dh`
+opens the file to the content key and the owner role.
+
+| Item | Value |
+| --- | --- |
+| Device public key (uncompressed) | `04b02c2646cac3ff157852cb6f7fd4fbcddcb00dbb0a851c286d40e671ff041c01f21841c7f260053c0bb4c38f61508812ab7545a30b1cca252d36d047ffe7b7fc` |
+| `d` | `3e2b6b111b520f4e92288a42c330f18395abb8967c3d68d26e076b9ed761954f` |
+| `enc` | `04afd5d8459fadab9ff6be66457108ef67e2fd8afee4a2d2952a0d032ce28652502ccc5045d118eacc6c29048c3ac2a5136f143d2012e52f595426dc49c0c1b61a` |
+| `dh` | `1a9f1d417ffd47948b44e833a290441d44dbca6b55989d5a955d10a850d02347` |
+| `shared_secret` | `33d116b9d732fb474f60e73d4220b9085c16c4e2b6e14152a3472dd7e0704f7a` |
+| `key` | `c49eaed2a4bf169cb91abef71e6a381d96eeabf71c4a08bc7b98a889167e2234` |
+| `base_nonce` | `4045275d9f9b93377fc9336b` |
+| Content key | `404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f` |
+| `role` | `01` |
+
+A `dh` of 31 or 33 bytes is refused with `AgreementLength`, and a platform
+that gives no result is refused with `KeyAgreement`. In both cases the core
+has asked the platform once. A file that fails a structural check, or is for
+another device, is refused with the reason in the access file tables, and the
+platform is never asked.
 
 ### Recovery key
 
