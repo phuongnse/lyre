@@ -1,5 +1,6 @@
 //! WebAssembly bindings of the Lyre core, for the web client.
 
+use lyre_core::access::{self, AccessFileError};
 use lyre_core::aligner;
 use lyre_core::alignment::{self, AlignmentError, Emissions};
 use lyre_core::alignment_windows::{self, WindowError};
@@ -13,7 +14,7 @@ use lyre_core::mel_roformer::{self, BrokenRun, SeparationError};
 use lyre_core::model;
 use lyre_core::song_file::{
     self, Chunk, ChunkType, Header, Index, IndexEntry, Next, PieceWriter, SegmentPlan, SongDetails,
-    SongFileError, SongPlan, SyllableTime, Timing, TrackPlan,
+    SongFileError, SongPlan, SyllableTime, Timing, TrackPlan, v1,
 };
 use lyre_core::timing_file::{self, TimingErrorKind, TimingFileError};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -32,39 +33,90 @@ pub fn stored_type(codec: &str, parameters: &str) -> Option<String> {
     song_file::stored_type(codec, parameters)
 }
 
+/// Why a song file was refused.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SongFileFaultKind {
+    /// Too short for a header, or with the wrong magic.
+    NotASongFile = 1,
+    /// Damaged or incomplete.
+    Damaged = 2,
+    /// A version-0 file, offered to the encrypted open.
+    OldVersion = 3,
+    /// The access file is missing, invalid, for another device or for another
+    /// song, or the header, the index or a chunk does not authenticate.
+    CannotOpen = 4,
+}
+
 /// Why a song file was refused. It holds no core message, because those are
-/// not meant for users.
+/// not meant for users, and no key bytes.
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SongFileFault {
-    not_a_song_file: bool,
+    kind: SongFileFaultKind,
 }
 
 #[wasm_bindgen]
 impl SongFileFault {
+    /// The kind of refusal.
+    #[wasm_bindgen(getter)]
+    pub fn kind(&self) -> SongFileFaultKind {
+        self.kind
+    }
+
     /// True when the file is not a song file at all: too short for a header
     /// or with the wrong magic. False when it is damaged or incomplete.
     #[wasm_bindgen(getter, js_name = notASongFile)]
     pub fn not_a_song_file(&self) -> bool {
-        self.not_a_song_file
+        self.kind == SongFileFaultKind::NotASongFile
     }
 }
 
 impl From<SongFileError> for SongFileFault {
     fn from(error: SongFileError) -> SongFileFault {
+        let kind = match error {
+            SongFileError::HeaderTooShort { .. } | SongFileError::BadMagic => {
+                SongFileFaultKind::NotASongFile
+            }
+            SongFileError::UnsupportedVersion { version: 0 } => SongFileFaultKind::OldVersion,
+            SongFileError::HeaderTag | SongFileError::ChunkTag { .. } => {
+                SongFileFaultKind::CannotOpen
+            }
+            _ => SongFileFaultKind::Damaged,
+        };
+        SongFileFault { kind }
+    }
+}
+
+impl From<AccessFileError> for SongFileFault {
+    fn from(_: AccessFileError) -> SongFileFault {
         SongFileFault {
-            not_a_song_file: matches!(
-                error,
-                SongFileError::HeaderTooShort { .. } | SongFileError::BadMagic
-            ),
+            kind: SongFileFaultKind::CannotOpen,
         }
     }
 }
 
 /// The fault for a file that is damaged or incomplete.
 const DAMAGED: SongFileFault = SongFileFault {
-    not_a_song_file: false,
+    kind: SongFileFaultKind::Damaged,
 };
+
+/// The format version of a header, from its first ten bytes. Fewer bytes, or
+/// the wrong magic, is not a song file.
+fn header_version(bytes: &[u8]) -> Result<u16, SongFileFault> {
+    match bytes.first_chunk::<10>() {
+        Some(start) if start[..8] == song_file::MAGIC => {
+            Ok(u16::from_le_bytes([start[8], start[9]]))
+        }
+        _ => Err(SongFileFaultKind::NotASongFile.into()),
+    }
+}
+
+impl From<SongFileFaultKind> for SongFileFault {
+    fn from(kind: SongFileFaultKind) -> SongFileFault {
+        SongFileFault { kind }
+    }
+}
 
 /// The type of a chunk, with the numbers the song file stores.
 #[wasm_bindgen]
@@ -904,13 +956,48 @@ impl SongWriter {
     }
 }
 
+/// The checked index of a version-0 or a version-1 song file.
+enum OpenIndex {
+    V0(Index),
+    V1(v1::Index),
+}
+
+impl OpenIndex {
+    fn entries(&self) -> &[IndexEntry] {
+        match self {
+            OpenIndex::V0(index) => index.entries(),
+            OpenIndex::V1(index) => index.entries(),
+        }
+    }
+
+    fn duration_ms(&self) -> u32 {
+        match self {
+            OpenIndex::V0(index) => index.duration_ms(),
+            OpenIndex::V1(index) => index.duration_ms(),
+        }
+    }
+
+    fn read_chunk(&self, position: usize, bytes: &[u8]) -> Result<Chunk, SongFileError> {
+        match self {
+            OpenIndex::V0(index) => {
+                let entry = index
+                    .entries()
+                    .get(position)
+                    .ok_or(SongFileError::NoEntry { position })?;
+                song_file::read_chunk(entry, bytes)
+            }
+            OpenIndex::V1(index) => index.read_chunk(position, bytes),
+        }
+    }
+}
+
 /// Reads a song file the way the format's reading model says: the header,
 /// then the index with the file size, then one chunk at a time. The client
 /// passes the bytes. The reader never needs the whole file.
 #[wasm_bindgen]
 pub struct SongReader {
     song_id: [u8; 16],
-    index: Index,
+    index: OpenIndex,
     entries: Vec<ChunkEntry>,
     details: Option<SongDetails>,
     lyrics: Option<Lyrics>,
@@ -924,11 +1011,30 @@ pub struct SongReader {
 
 #[wasm_bindgen]
 impl SongReader {
-    /// The length of the index that follows the 32-byte `header`.
+    /// The length of the header at the start of `start`: 32 bytes in version
+    /// 0 and 177 in version 1. Needs the first 10 bytes.
+    #[wasm_bindgen(js_name = headerLength)]
+    pub fn header_length(start: &[u8]) -> Result<u32, SongFileFault> {
+        let len = match header_version(start)? {
+            0 => song_file::HEADER_LEN,
+            1 => v1::HEADER_LEN,
+            _ => return Err(DAMAGED),
+        };
+        Ok(len as u32)
+    }
+
+    /// The length of the index that follows the `header`. In version 1 it
+    /// includes the 16-byte tag after the index.
     #[wasm_bindgen(js_name = indexLength)]
     pub fn index_length(header: &[u8]) -> Result<u32, SongFileFault> {
-        let header = Header::parse(header)?;
-        u32::try_from(header.index_len()).map_err(|_| DAMAGED)
+        // A version-1 header needs its 177 bytes. With only the 32 bytes of a
+        // version-0 header, the version-0 check gives its usual refusal.
+        let len = if header_version(header)? == 1 && header.len() >= v1::HEADER_LEN {
+            v1::Header::parse(header)?.index_len() + v1::TAG_LEN
+        } else {
+            Header::parse(header)?.index_len()
+        };
+        u32::try_from(len).map_err(|_| DAMAGED)
     }
 
     /// Checks the `header` and the `index` against the total `file_size`.
@@ -938,13 +1044,46 @@ impl SongReader {
         // A size that is negative, fractional or too large becomes one the
         // index check rejects or compares exactly.
         let index = Index::parse(&header, index, file_size as u64)?;
+        SongReader::with_index(header.song_id(), OpenIndex::V0(index))
+    }
+
+    /// Opens a version-1 song file: checks the `header`, opens the
+    /// `access_file` with this device's key, then checks the index and its
+    /// tag (`index_and_tag`) against the total `file_size`. The content key
+    /// stays in the core. A version-0 file is refused as an old version.
+    #[wasm_bindgen(js_name = openEncrypted)]
+    pub fn open_encrypted(
+        header: &[u8],
+        index_and_tag: &[u8],
+        file_size: f64,
+        device_key: &DeviceKey,
+        access_file: &[u8],
+    ) -> Result<SongReader, SongFileFault> {
+        match header_version(header)? {
+            0 => return Err(SongFileFaultKind::OldVersion.into()),
+            1 => {}
+            _ => return Err(DAMAGED),
+        }
+        let header = v1::Header::parse(header)?;
+        let access = access::open(access_file, &device_key.key, &header.song_id())?;
+        // `access` drops at the end, which wipes the content key.
+        let index = v1::Index::open(
+            &header,
+            &access.content_key,
+            index_and_tag,
+            file_size as u64,
+        )?;
+        SongReader::with_index(header.song_id(), OpenIndex::V1(index))
+    }
+
+    fn with_index(song_id: [u8; 16], index: OpenIndex) -> Result<SongReader, SongFileFault> {
         let entries = index
             .entries()
             .iter()
             .map(ChunkEntry::try_from)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(SongReader {
-            song_id: header.song_id(),
+            song_id,
             index,
             stored_types: vec![None; entries.len()],
             entries,
@@ -1152,8 +1291,10 @@ impl SongReader {
         bytes: &[u8],
     ) -> Result<Option<Vec<u8>>, SongFileFault> {
         let position = usize::try_from(position).map_err(|_| DAMAGED)?;
-        let entry = self.index.entries().get(position).ok_or(DAMAGED)?;
-        match song_file::read_chunk(entry, bytes)? {
+        if position >= self.entries.len() {
+            return Err(DAMAGED);
+        }
+        match self.index.read_chunk(position, bytes)? {
             Chunk::Init { stored_type, init } => {
                 self.stored_types[position] = Some(stored_type);
                 return Ok(Some(init));
@@ -1457,8 +1598,6 @@ pub fn device_prf_salt() -> Vec<u8> {
 /// cannot be read.
 #[wasm_bindgen]
 pub struct DeviceKey {
-    // Later M3 issues use the key to open access files.
-    #[allow(dead_code)]
     key: device::DeviceKey,
     device_code: String,
     fingerprint: String,
@@ -1509,6 +1648,9 @@ impl DeviceKey {
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+
+    use lyre_core::content_key::ContentKey;
+    use lyre_core::recovery::RecoveryKey;
 
     use super::*;
 
@@ -1562,6 +1704,55 @@ mod tests {
             }
         }
         Ok((reader, media))
+    }
+
+    /// Reads the version-1 `file` as a client does, with this device's key
+    /// and an access file. Returns the reader, then the media chunks' bytes.
+    fn read_encrypted(
+        file: &[u8],
+        device: &DeviceKey,
+        access_file: &[u8],
+    ) -> Result<(SongReader, Vec<Vec<u8>>), SongFileFault> {
+        let header_end = SongReader::header_length(file)? as usize;
+        let header = file.get(..header_end).ok_or(DAMAGED)?;
+        let index_end = header_end + SongReader::index_length(header)? as usize;
+        let index = file.get(header_end..index_end).ok_or(DAMAGED)?;
+        let mut reader =
+            SongReader::open_encrypted(header, index, file.len() as f64, device, access_file)?;
+        let mut media = Vec::new();
+        for (position, entry) in reader.entries().into_iter().enumerate() {
+            let start = entry.offset as usize;
+            let bytes = file
+                .get(start..start + entry.length as usize)
+                .ok_or(DAMAGED)?;
+            if let Some(bytes) = reader.read_chunk(position as u32, bytes)? {
+                media.push(bytes);
+            }
+        }
+        Ok((reader, media))
+    }
+
+    const PRF: [u8; 32] = [7; 32];
+
+    /// The device key as the core and as the wasm handle.
+    fn device_keys(prf: u8) -> (device::DeviceKey, DeviceKey) {
+        let core = device::DeviceKey::from_prf_output(&[prf; 32]).expect("a valid PRF output");
+        let handle = DeviceKey::new(&mut [prf; 32]).expect("a valid PRF output");
+        (core, handle)
+    }
+
+    fn fixture_manifest() -> &'static Path {
+        Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/fixtures/song/song.toml"
+        ))
+    }
+
+    fn kind_of<T>(result: Result<T, SongFileFault>) -> SongFileFaultKind {
+        match result {
+            Ok(_) => panic!("the file should be refused"),
+            Err(fault) => fault.kind(),
+        }
     }
 
     /// The 56-byte two-block test vector of FIPS 180-2.
@@ -2293,5 +2484,292 @@ mod tests {
         let fault = DeviceKey::new(&mut prf).err().expect("31 bytes");
         assert_eq!(fault.kind(), DeviceKeyFaultKind::PrfLength);
         assert_eq!(prf, vec![0; 31]);
+    }
+
+    #[test]
+    fn reads_a_version_1_song_with_its_access_file_like_the_core() {
+        let (core, handle) = device_keys(PRF[0]);
+        let build = lyre_cli::build_for_device(fixture_manifest(), &core.public_key())
+            .expect("the fixture song builds");
+        let song_id = v1::Header::parse(&build.song_file)
+            .expect("a version-1 header")
+            .song_id();
+        let access = access::open(&build.access_file, &core, &song_id).expect("the core opens it");
+        let song = v1::read(&build.song_file, &access.content_key).expect("the core reads it");
+
+        let (reader, media) =
+            read_encrypted(&build.song_file, &handle, &build.access_file).expect("opens");
+
+        // The media chunks come in the index's order: each track's init, then
+        // its segments.
+        let mut tracks = Vec::new();
+        if let Some(video) = &song.video {
+            tracks.push((ChunkKind::VideoInit, ChunkKind::VideoSegment, video));
+        }
+        tracks.push((
+            ChunkKind::KaraokeInit,
+            ChunkKind::KaraokeSegment,
+            &song.karaoke,
+        ));
+        tracks.push((
+            ChunkKind::OriginalInit,
+            ChunkKind::OriginalSegment,
+            &song.original,
+        ));
+        let mut queues: Vec<_> = tracks
+            .iter()
+            .map(|(init, segment, track)| {
+                let mut chunks = std::collections::VecDeque::from([track.init.clone()]);
+                chunks.extend(track.segments.iter().map(|s| s.bytes.clone()));
+                (*init, *segment, chunks)
+            })
+            .collect();
+        let mut expected_media = Vec::new();
+        for entry in reader.entries() {
+            if let Some((_, _, chunks)) = queues
+                .iter_mut()
+                .find(|(init, segment, _)| entry.kind == *init || entry.kind == *segment)
+            {
+                expected_media.push(chunks.pop_front().expect("a chunk for the entry"));
+            }
+        }
+        assert_eq!(media, expected_media);
+        assert_eq!(
+            media.len(),
+            song.video
+                .iter()
+                .chain([&song.karaoke, &song.original])
+                .map(|t| 1 + t.segments.len())
+                .sum::<usize>()
+        );
+
+        let mut times = song.timing.syllables().iter();
+        let mut expected = Vec::new();
+        for line in song.lyrics.lines() {
+            for syllable in line.syllables() {
+                let time = times.next().expect("a time per syllable");
+                expected.push((
+                    song.lyrics.as_str()[syllable.range()].to_owned(),
+                    time.start_ms,
+                    time.end_ms,
+                ));
+            }
+        }
+        let syllables: Vec<_> = reader
+            .syllables()
+            .into_iter()
+            .map(|s| (s.text, s.start_ms, s.end_ms))
+            .collect();
+        assert!(!expected.is_empty());
+        assert_eq!(syllables, expected);
+        assert_eq!(
+            reader.duration_ms(),
+            song.karaoke
+                .segments
+                .iter()
+                .map(|s| s.duration_ms)
+                .sum::<u32>()
+                + song.karaoke.start_ms
+        );
+    }
+
+    #[test]
+    fn a_version_1_song_cannot_be_opened_without_the_right_access_file() {
+        let (core, handle) = device_keys(PRF[0]);
+        let manifest = fixture_manifest();
+        let build = lyre_cli::build_for_device(manifest, &core.public_key()).expect("builds");
+        let cannot_open = SongFileFaultKind::CannotOpen;
+
+        assert_eq!(
+            kind_of(read_encrypted(&build.song_file, &handle, &[])),
+            cannot_open
+        );
+
+        let (other_core, _) = device_keys(9);
+        let other_device =
+            lyre_cli::build_for_device(manifest, &other_core.public_key()).expect("builds");
+        assert_eq!(
+            kind_of(read_encrypted(
+                &build.song_file,
+                &handle,
+                &other_device.access_file
+            )),
+            cannot_open
+        );
+
+        let other_song = access::wrap(
+            &ContentKey::generate(),
+            &[0xAA; 16],
+            &core.public_key(),
+            access::Role::Owner,
+        );
+        assert_eq!(
+            kind_of(read_encrypted(&build.song_file, &handle, &other_song)),
+            cannot_open
+        );
+
+        // The access file is for this song, but a different key than the file's.
+        let song_id = v1::Header::parse(&build.song_file)
+            .expect("header")
+            .song_id();
+        let wrong_key = access::wrap(
+            &ContentKey::generate(),
+            &song_id,
+            &core.public_key(),
+            access::Role::Owner,
+        );
+        assert_eq!(
+            kind_of(read_encrypted(&build.song_file, &handle, &wrong_key)),
+            cannot_open
+        );
+
+        let mut changed = build.song_file.clone();
+        changed[v1::HEADER_LEN + 5] ^= 1;
+        assert_eq!(
+            kind_of(read_encrypted(&changed, &handle, &build.access_file)),
+            cannot_open
+        );
+
+        let (mut reader, _) =
+            read_encrypted(&build.song_file, &handle, &build.access_file).expect("opens");
+        let entry = reader.entries()[0];
+        let mut chunk = build.song_file
+            [entry.offset as usize..entry.offset as usize + entry.length as usize]
+            .to_vec();
+        chunk[0] ^= 1;
+        let fault = reader.read_chunk(0, &chunk).expect_err("a changed chunk");
+        assert_eq!(fault.kind(), cannot_open);
+        assert!(!fault.not_a_song_file());
+    }
+
+    #[test]
+    fn an_old_version_or_a_wrong_magic_is_told_from_the_rest() {
+        let (core, handle) = device_keys(PRF[0]);
+        let example = example();
+        let old =
+            SongReader::open_encrypted(&example[..32], &example[32..200], 307.0, &handle, &[]);
+        assert_eq!(kind_of(old), SongFileFaultKind::OldVersion);
+
+        let build =
+            lyre_cli::build_for_device(fixture_manifest(), &core.public_key()).expect("builds");
+        let mut file = build.song_file.clone();
+        file[0] = 0x88;
+        let fault = SongReader::header_length(&file).expect_err("the magic is wrong");
+        assert_eq!(fault.kind(), SongFileFaultKind::NotASongFile);
+        assert_eq!(
+            kind_of(read_encrypted(&file, &handle, &build.access_file)),
+            SongFileFaultKind::NotASongFile
+        );
+        assert_eq!(
+            kind_of(SongReader::open_encrypted(&file, &[], 0.0, &handle, &[])),
+            SongFileFaultKind::NotASongFile
+        );
+        assert_eq!(
+            kind_of(SongReader::header_length(b"hello")),
+            SongFileFaultKind::NotASongFile
+        );
+    }
+
+    #[test]
+    fn gives_the_header_and_index_lengths_of_each_version() {
+        let example = example();
+        assert_eq!(SongReader::header_length(&example), Ok(32));
+        assert_eq!(SongReader::index_length(&example[..32]), Ok(168));
+
+        let (core, _) = device_keys(PRF[0]);
+        let build =
+            lyre_cli::build_for_device(fixture_manifest(), &core.public_key()).expect("builds");
+        let header = &build.song_file[..177];
+        assert_eq!(SongReader::header_length(&build.song_file), Ok(177));
+        let index = v1::Header::parse(header).expect("header").index_len() as u32;
+        assert_eq!(SongReader::index_length(header), Ok(index + 16));
+
+        let mut version_2 = build.song_file.clone();
+        version_2[8] = 2;
+        assert_eq!(
+            kind_of(SongReader::header_length(&version_2)),
+            SongFileFaultKind::Damaged
+        );
+    }
+
+    #[test]
+    fn a_version_1_file_given_to_the_version_0_open_is_damaged() {
+        let (core, _) = device_keys(PRF[0]);
+        let build =
+            lyre_cli::build_for_device(fixture_manifest(), &core.public_key()).expect("builds");
+        let result = SongReader::new(&build.song_file[..32], &build.song_file[32..200], 1000.0);
+        assert_eq!(kind_of(result), SongFileFaultKind::Damaged);
+    }
+
+    #[test]
+    fn no_fault_holds_the_content_key() {
+        let key_bytes: [u8; 32] = std::array::from_fn(|i| 0x40 + i as u8);
+        let hex: String = key_bytes.iter().map(|b| format!("{b:02x}")).collect();
+        let content_key = ContentKey::from_bytes(key_bytes);
+        let song_id = [3u8; 16];
+        let manifest = fixture_manifest();
+        let (core, handle) = device_keys(PRF[0]);
+        let build = lyre_cli::build_for_device(manifest, &core.public_key()).expect("builds");
+        let song = {
+            let header = v1::Header::parse(&build.song_file).expect("header");
+            let access = access::open(&build.access_file, &core, &header.song_id()).expect("opens");
+            v1::read(&build.song_file, &access.content_key).expect("reads")
+        };
+        let song = song_file::Song { song_id, ..song };
+        let recovery = RecoveryKey::from_seed(&[5; 32]).expect("a recovery key");
+        let file = v1::write(
+            &song,
+            &content_key,
+            &recovery.public_key(),
+            v1::Salt::generate(),
+        )
+        .expect("writes");
+        let access_file = access::wrap(
+            &content_key,
+            &song_id,
+            &core.public_key(),
+            access::Role::Owner,
+        );
+
+        let mut faults = Vec::new();
+        let (_, other) = device_keys(9);
+        let other_song = access::wrap(
+            &content_key,
+            &[4; 16],
+            &core.public_key(),
+            access::Role::Owner,
+        );
+        for (device, access) in [
+            (&handle, &[][..]),
+            (&other, &access_file[..]),
+            (&handle, &other_song[..]),
+        ] {
+            faults.push(
+                read_encrypted(&file, device, access)
+                    .err()
+                    .expect("refused"),
+            );
+        }
+        let mut changed = file.clone();
+        changed[v1::HEADER_LEN + 5] ^= 1;
+        faults.push(
+            read_encrypted(&changed, &handle, &access_file)
+                .err()
+                .expect("refused"),
+        );
+        let (mut reader, _) = read_encrypted(&file, &handle, &access_file).expect("opens");
+        let entry = reader.entries()[0];
+        let mut chunk = file[entry.offset as usize..][..entry.length as usize].to_vec();
+        chunk[0] ^= 1;
+        faults.push(reader.read_chunk(0, &chunk).expect_err("a changed chunk"));
+        faults.push(reader.read_chunk(99, &chunk).expect_err("no such chunk"));
+        faults.push(SongReader::header_length(b"x").expect_err("too short"));
+
+        assert_eq!(faults.len(), 7);
+        for fault in faults {
+            for text in [format!("{fault:?}"), format!("{fault:#?}")] {
+                assert!(!text.to_lowercase().contains(&hex), "{text}");
+            }
+        }
     }
 }
