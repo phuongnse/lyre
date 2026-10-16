@@ -91,8 +91,8 @@ Rules:
 milliseconds after the video. Letting that track start up to 50 ms late keeps
 it in sync, and the index still records each segment's true time.
 
-*Why fixed sizes:* a fixed grammar is simple to bound and to fuzz *(planned
-for M3)*, and a reader finds any chunk without scanning.
+*Why fixed sizes:* a fixed grammar is simple to bound and to fuzz, and a
+reader finds any chunk without scanning.
 
 ## Chunk types
 

@@ -354,7 +354,7 @@ The song file's encrypted layout and recovery wrap are specified in
 | Level | Tooling | Scope |
 | --- | --- | --- |
 | Core unit | `cargo test` | Format, crypto, access files, lyrics, layout, timing, with known-answer vectors |
-| Core fuzz | `cargo fuzz` *(planned for M3)* | Every parser of untrusted input |
+| Core fuzz | `cargo fuzz`, through `scripts/fuzz.sh`, which `scripts/test.sh` runs | Every parser of untrusted input |
 | Web unit | Vitest | Components and client logic |
 | Web end to end | Playwright | The built web client in Chromium: journeys and denied access |
 | Android unit | JUnit on the JVM | App logic, and the core through its Kotlin bindings |

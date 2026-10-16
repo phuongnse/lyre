@@ -29,6 +29,24 @@ if [[ -f core/Cargo.toml ]] && needs core; then
   export PATH="$HOME/.cargo/bin:$PATH"
   # rustup reads core/rust-toolchain.toml: toolchain, components and targets.
   (cd core && rustup toolchain install && cargo --version)
+  # cargo fuzz needs a nightly toolchain, which core/fuzz/rust-toolchain.toml pins. Everything else builds on the stable one.
+  fuzz_nightly=$(sed -nE 's/^channel = "([^"]+)"/\1/p' core/fuzz/rust-toolchain.toml)
+  rustup toolchain install "$fuzz_nightly" --profile minimal
+  # The version of cargo-fuzz is pinned here, with the hash of its prebuilt archive.
+  fuzz_version=0.13.2
+  fuzz_sha256=b5b704018b63e0f151c17a057ac53b5111e1db545d1b9f72fee79f08a545931c
+  if [[ "$(cargo fuzz --version 2>/dev/null)" != "cargo-fuzz $fuzz_version" ]]; then
+    if [[ $prebuilt == 1 ]]; then
+      tmp=$(mktemp -d)
+      fetch_checked "https://github.com/rust-fuzz/cargo-fuzz/releases/download/$fuzz_version/cargo-fuzz-$fuzz_version-x86_64-unknown-linux-musl.tar.gz" "$tmp/cargo-fuzz.tar.gz" "$fuzz_sha256"
+      tar -xzf "$tmp/cargo-fuzz.tar.gz" -C "$tmp"
+      mkdir -p "$HOME/.cargo/bin"
+      install -m 755 "$tmp/cargo-fuzz" "$HOME/.cargo/bin/cargo-fuzz"
+      rm -rf "$tmp"
+    else
+      (cd core && cargo install cargo-fuzz --version "$fuzz_version" --locked)
+    fi
+  fi
   # The command-line tool must match the wasm-bindgen crate version exactly.
   # The version is pinned in core/Cargo.toml. The hash of its prebuilt archive is pinned here.
   wbg_version=$(sed -nE 's/^wasm-bindgen = "=([^"]+)"/\1/p' core/Cargo.toml)

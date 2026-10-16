@@ -11,6 +11,8 @@ if [[ -f core/Cargo.toml ]] && checks core; then
   export PATH="$HOME/.cargo/bin:$PATH"
   # Run cargo inside core/ so rustup picks up core/rust-toolchain.toml.
   (cd core && cargo test --workspace --locked)
+  # Fuzzes every parser of untrusted input for a few seconds each.
+  scripts/fuzz.sh
 fi
 
 if [[ -f web/package.json ]] && checks web; then

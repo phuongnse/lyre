@@ -1,0 +1,86 @@
+[package]
+name = "lyre-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace, so the core workspace and its checks ignore it.
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+lyre-core = { path = "../lyre-core" }
+
+[[bin]]
+name = "song_file_header"
+path = "fuzz_targets/song_file_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "song_file_index"
+path = "fuzz_targets/song_file_index.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "song_file_chunk"
+path = "fuzz_targets/song_file_chunk.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "song_file_read"
+path = "fuzz_targets/song_file_read.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lyrics"
+path = "fuzz_targets/lyrics.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "timing"
+path = "fuzz_targets/timing.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "timing_file"
+path = "fuzz_targets/timing_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "device_code"
+path = "fuzz_targets/device_code.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "access_file"
+path = "fuzz_targets/access_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "recovery_words"
+path = "fuzz_targets/recovery_words.rs"
+test = false
+doc = false
+bench = false
