@@ -34,13 +34,13 @@
 | **M0** | Foundation | Done | The core, the web client and the Android app build; CI runs build, lint, unit and Playwright E2E for real; NexKit is installed with those checks. |
 | **M1** | Karaoke playback | Done | The web client opens a development song file and plays it: video, Karaoke / Original switch, lyrics highlighted syllable by syllable, display lines that never split a Vietnamese word. |
 | **M2** | Making songs on the device | Done | In the browser, the owner turns a source and its lyrics into a song: models downloaded and checked, separation and alignment on WebGPU, progress and cancel. A model measurement page measures the aligner's int8 and fp32 files (D29) on real devices and confirms the separator. |
-| **M3** | Devices, encryption and sharing | Next | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
-| **M4** | Android | Planned | The Android app plays songs and shows a device code to receive shared songs, with its device key in Android Keystore. Songs made in the web client play in the Android app. |
+| **M3** | Devices, encryption and sharing | Done | Every song file is encrypted. Each device has a device code; the owner shares a song with a device code; other devices cannot open it; the recovery key restores the owner's songs on a new device. |
+| **M4** | Android | Next | The Android app plays songs and shows a device code to receive shared songs, with its device key in Android Keystore. Songs made in the web client play in the Android app. |
 | **M5** | Library and queue | Planned | Library, queue in order or shuffled, search by title, artist, composer and lyrics that ignores Vietnamese diacritics, thumbnails, lyric corrections. |
 | **M6** | Clip editor | Planned | The owner cuts several sections from one source, each with its own details and lyrics, and each becomes a song. |
 | **M7** | Google Drive | Planned | The user picks Drive files or folders; songs play from Drive before they finish downloading and stay playable offline once cached. |
 | **M8** | Vocal roles | Planned | Each lyric line is coloured by its own vocal role, with duets only on proof and a clear failure on ambiguity. |
-| **M9** | Hardening and release | Planned | Fuzzing of every parser, an independent review of the crypto, model licences settled, the web client released on GitHub Pages and the Android app ready to install. |
+| **M9** | Hardening and release | Planned | An independent review of the crypto, model licences settled, the web client released on GitHub Pages and the Android app ready to install. |
 
 Milestones after M3 may be reordered when the owner's needs change. M0–M3
 stay in this order.
@@ -144,6 +144,41 @@ The message that names the codec in the Player, as in "This device cannot
 play H.265 video", was not built. It is planned for M4, with Android's
 Player.
 
+## M3 — Devices, encryption and sharing
+
+The third slice encrypts every song the web client makes and shares it
+with other devices. It follows the scheme of
+[D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
+
+M3 delivered:
+
+1. The device code: a device-bound passkey with the PRF extension gives the
+   device key, shown as a device code, a fingerprint and a QR code. A passkey
+   without PRF, or one that can sync, gets one message and no device code (D8).
+   The [device code section](ui-conventions.md#device-code) says why a passkey
+   was refused.
+2. Song file format version 1 in the core: each chunk encrypted and
+   authenticated, the content key and the recovery wrap. Its reference is
+   [song file format, version 1](reference/song-file-format-v1.md).
+3. Access files in the core, for owners and recipients, and `lyre-cli`
+   building a version-1 song and an access file for a device code. See
+   [the devices and access reference](reference/device-access.md).
+4. The web Player opens version 1 with its access file and refuses version
+   0. The song file alone, another device's access file and a changed file
+   do not open.
+5. The recovery key: made before the first song, shown once as 24 words and
+   a QR code, with only its public part kept.
+6. Make a song writes version 1 for this device and the recovery key, with
+   the owner access file. Only the model check page still makes version-0
+   files, which play from memory.
+7. Sharing from the Player: the owner checks the fingerprint of another
+   device's code and gets a recipient access file. A recipient cannot share
+   (D13).
+8. Restoring the owner's songs on a new device from the recovery words.
+9. Fuzzing of every core parser of untrusted input, run by `scripts/test.sh`.
+
+Done when all nine were merged.
+
 ## Early checks on real devices
 
 - The owner runs both checks on real devices, because the CI runners have no
@@ -197,7 +232,7 @@ No other OS or browser was run.
   a device-bound passkey.
 
 **Risks for the owner:** Chrome's default leaves many Chrome users without
-a device code. Phones and Apple devices are unproven before M3. No fallback
+a device code. Phones and Apple devices are still unproven. No fallback
 is added, because D8 forbids a key kept in browser storage.
 
 ## Later milestones
@@ -205,14 +240,6 @@ is added, because D8 forbids a key kept in browser storage.
 Each is broken down when the one before it is nearly done. Open points they
 must settle:
 
-- **M3:** the scheme is settled by
-  [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
-  Device codes, access files and recovery are specified in
-  [the devices and access reference](reference/device-access.md).
-  The encrypted format's byte layout is specified in
-  [song file format, version 1](reference/song-file-format-v1.md).
-  The web client's device code section says why a passkey was refused (see
-  [device code](ui-conventions.md#device-code)).
 - **M4:** Android playback and device keys
   ([D27](decisions.md#d27-the-android-app-plays-and-receives-songs--agreed));
   the lowest Android version, and emulator tests in CI.

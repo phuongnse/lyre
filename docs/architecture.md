@@ -133,8 +133,7 @@ file is ever published.
 The byte layout, limits and media codecs are specified in
 [song file format, version 0](reference/song-file-format-v0.md).
 The encrypted layout, keys and recovery wrap are specified in
-[song file format, version 1](reference/song-file-format-v1.md)
-*(planned for M3)*.
+[song file format, version 1](reference/song-file-format-v1.md).
 
 ## Devices and access
 
@@ -187,8 +186,7 @@ The scheme is [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recover
 The [devices and access reference](reference/device-access.md) specifies
 the device code, fingerprint, access file and recovery key.
 The song file's encrypted layout and recovery wrap are specified in
-[song file format, version 1](reference/song-file-format-v1.md)
-*(planned for M3)*.
+[song file format, version 1](reference/song-file-format-v1.md).
 
 ## Processing
 
