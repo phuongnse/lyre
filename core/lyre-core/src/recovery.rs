@@ -753,24 +753,39 @@ mod tests {
 
     #[test]
     fn debug_and_error_text_hold_no_words() {
-        let new = NewRecoveryKey::generate();
+        // A fixed key, so the words are the same on every run.
+        let new = NewRecoveryKey::generate_with_rng(&mut FixedIkm(seed(), false));
         let words = new.words();
         assert_eq!(format!("{new:?}"), "NewRecoveryKey { .. }");
         let key = RecoveryKey::from_words(&words).expect("valid words");
         assert_eq!(format!("{key:?}"), "RecoveryKey { .. }");
         let file = example_file(&new.public_key(), &ContentKey::generate());
         let errors = [
+            RecoverError::Words(RecoveryWordsError::Count),
             RecoverError::Words(RecoveryWordsError::Word),
             RecoverError::Words(RecoveryWordsError::Checksum),
             RecoverError::Wrap(RecoveryWrapError::Open),
             recover_access(&words, &file[..10], "nonsense").expect_err("refused"),
             recover_access(&words, &file, "nonsense").expect_err("refused"),
         ];
+        // The fixed messages, which do not change with the input.
+        let messages: Vec<String> = errors.iter().take(4).map(|e| e.to_string()).collect();
+        assert_eq!(
+            messages,
+            [
+                "the recovery key does not have 24 words",
+                "the recovery key has a word that is not in the list",
+                "the recovery key has a bad checksum",
+                "the recovery wrap did not open",
+            ]
+        );
         let mut texts: Vec<String> = errors.iter().map(|e| format!("{e:?} {e}")).collect();
         texts.push(format!("{:?}", new.public_key()));
+        let typed: Vec<&str> = words.split(' ').collect();
+        assert_eq!(typed.len(), 24);
         for text in texts {
-            for typed in words.split(' ') {
-                assert!(!text.split(' ').any(|part| part == typed), "{text}");
+            for part in text.split(|c: char| !c.is_ascii_alphanumeric()) {
+                assert!(!typed.contains(&part), "{text}");
             }
         }
     }
