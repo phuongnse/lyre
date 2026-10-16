@@ -3,8 +3,9 @@
 This doc fixes the bytes and text of what moves between devices besides the
 song file: device codes, fingerprints, access files and recovery keys.
 The web device key, the device code, its QR code, the fingerprint, the
-recovery key pair derivation and the core's access file wrap and open are
-built. Recovery words and sharing in the clients are *(planned for M3)*.
+recovery key pair derivation, the recovery words and the core's access file
+wrap and open are built. The recovery key screens and sharing in the clients
+are *(planned for M3)*.
 The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).
@@ -330,12 +331,12 @@ failure. The [access file](#access-file) section describes this limit.
 
 ## Known-answer vectors
 
-The web device key, the device code, the fingerprint, the recovery key pair
-and the access file have checked vectors. Only the recovery words still add
-theirs *(planned for M3)*.
+The web device key, the device code, the fingerprint, the recovery key pair,
+the recovery words and the access file have checked vectors.
 
 An independent script that uses only Python's standard library worked out the
-web device key, device code, fingerprint and recovery key pair vectors. The
+web device key, device code, fingerprint, recovery key pair and recovery words
+vectors. The
 core computed the access file vector. Its HPKE suite is the one the
 [recovery wrap vector](song-file-format-v1.md#recovery-wrap-vector) checks.
 The core's tests read the tables below. Each `d` is the private scalar of a
@@ -472,4 +473,30 @@ Each row gives a 32-byte recovery seed, the private scalar `d` that the
 
 A 48-byte HKDF output equal to `n` is rejected with `ZeroScalar`. No real
 seed is known to give it, so the core tests that rule with the value `n`
-itself. The word encoding has no vectors yet *(planned for M3)*.
+itself.
+
+Each row of this table gives a seed from the table above and its 24 words. The
+seeds `00…00` and `ff…ff` give the words that BIP39 publishes for the entropy
+`00…00` and `ff…ff`. The core makes the words from the seed, and reads them back
+to the same seed. The QR content is the same words in uppercase.
+
+| Seed | Words |
+| --- | --- |
+| `0000000000000000000000000000000000000000000000000000000000000000` | `abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art` |
+| `606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f` | `gather arch occur silver filter crisp payment coil hidden gloom fortune ten alpha rice soccer modify island rookie bundle visual result dirt wheat trust` |
+| `ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff` | `zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote` |
+
+Each row of this table gives words that the core refuses, and the reason. A
+reason is the name of a `RecoveryWordsError` variant. An error never repeats
+the words. A `Count` is found before any word is looked up.
+
+| Case | Words | Reason |
+| --- | --- | --- |
+| 23 words | `abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art` | `Count` |
+| 25 words | `abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art` | `Count` |
+| 23 words, one not in the list | `abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandonn` | `Count` |
+| Misspelled last word | `abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon artt` | `Word` |
+| First word is a prefix | `aban abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art` | `Word` |
+| Last word is a prefix | `abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon ar` | `Word` |
+| Last word changed to another listed word | `abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon` | `Checksum` |
+| Second word changed to another listed word | `gather arctic occur silver filter crisp payment coil hidden gloom fortune ten alpha rice soccer modify island rookie bundle visual result dirt wheat trust` | `Checksum` |

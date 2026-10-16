@@ -163,10 +163,13 @@ The encrypted layout, keys and recovery wrap are specified in
   16,384 entries with this device's key. Entries are matched to song files by
   song ID, never by file name or folder. The song file does not change when it
   is shared (D6).
-- **Recovery key.** *(planned for M3)* Created before the first song, shown once as 24 BIP39
+- **Recovery key.** Created before the first song, shown once as 24 BIP39
   English words and a QR code, and kept offline. The device keeps only the
   public part. Its wrap is stored inside each song file whenever the file is
   written, so a new device can be given access to all the owner's songs (D7).
+  The core makes the key, gives its words once, reads words back and opens a
+  song with them into an owner access file for a device code. The screens that
+  show, scan and use the recovery key in the clients are *(planned for M3)*.
 
 The scheme is [D31](decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The [devices and access reference](reference/device-access.md) specifies
