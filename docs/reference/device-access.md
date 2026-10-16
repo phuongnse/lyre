@@ -2,9 +2,10 @@
 
 This doc fixes the bytes and text of what moves between devices besides the
 song file: device codes, fingerprints, access files and recovery keys.
-The web device key, the device code, its QR code, the fingerprint and the
-recovery key pair derivation are built. Recovery words and access files are
-*(planned for M3)*. The scheme is
+The web device key, the device code, its QR code, the fingerprint, the
+recovery key pair derivation and the core's access file wrap and open are
+built. Recovery words and sharing in the clients are *(planned for M3)*.
+The scheme is
 [D31](../decisions.md#d31-song-files-are-encrypted-shared-and-recovered-with-one-scheme--agreed).
 The terms are defined in the [concepts](../domain/concepts.md).
 
@@ -329,14 +330,16 @@ failure. The [access file](#access-file) section describes this limit.
 
 ## Known-answer vectors
 
-The web device key, the device code, the fingerprint and the recovery key
-pair have checked vectors. The core changes that implement access files and
-recovery words add theirs, including invalid variants.
+The web device key, the device code, the fingerprint, the recovery key pair
+and the access file have checked vectors. Only the recovery words still add
+theirs *(planned for M3)*.
 
-The vectors were worked out with an independent script that uses only
-Python's standard library. The core's tests read the tables below. Each
-`d` is the private scalar of a public test input. Do not use these PRF outputs
-for real keys.
+An independent script that uses only Python's standard library worked out the
+web device key, device code, fingerprint and recovery key pair vectors. The
+core computed the access file vector. Its HPKE suite is the one the
+[recovery wrap vector](song-file-format-v1.md#recovery-wrap-vector) checks.
+The core's tests read the tables below. Each `d` is the private scalar of a
+public test input. Do not use these PRF outputs or seeds for real keys.
 
 ### Web device key
 
@@ -385,8 +388,74 @@ otherwise valid isolate the one rule they break.
 
 ### Access file
 
-The core change implementing access files adds its vectors here
-*(planned for M3)*.
+The vector wraps one content key for the web device key of PRF output
+`000102…1f`, as the owner. The fixed `ikmE` makes the wrap repeatable. A real
+wrap draws it from the system's random source.
+
+| Item | Value |
+| --- | --- |
+| Device PRF output | `000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f` |
+| Device public key | `02b02c2646cac3ff157852cb6f7fd4fbcddcb00dbb0a851c286d40e671ff041c01` |
+| Device code | `lyre1pq2czcfjxetpl79tc2t9k7l75l0xaevqdhv9g28pgd4qwvu0lqswqzflvara` |
+| `song_id` | `000102030405060708090a0b0c0d0e0f` |
+| `role` | `01` |
+| Content key | `404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f` |
+| Ephemeral input (`ikmE`) | `808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f` |
+| `info` | `6c7972652f76312f616363657373000102030405060708090a0b0c0d0e0f02b02c2646cac3ff157852cb6f7fd4fbcddcb00dbb0a851c286d40e671ff041c0101` |
+| `enc` | `04afd5d8459fadab9ff6be66457108ef67e2fd8afee4a2d2952a0d032ce28652502ccc5045d118eacc6c29048c3ac2a5136f143d2012e52f595426dc49c0c1b61a` |
+| `ct` | `b908c3fa1f72cf6b93763da99253cdeafa10cf65c133015c0f5755cc8410ee5b123c11ce7d8247d732787b955b80ee9d` |
+
+The whole 179-byte access file, as hex in 32-byte lines:
+
+```text
+894c4b45590d0a1a010000000100000002b02c2646cac3ff157852cb6f7fd4fb
+cddcb00dbb0a851c286d40e671ff041c01000102030405060708090a0b0c0d0e
+0f0104afd5d8459fadab9ff6be66457108ef67e2fd8afee4a2d2952a0d032ce2
+8652502ccc5045d118eacc6c29048c3ac2a5136f143d2012e52f595426dc49c0
+c1b61ab908c3fa1f72cf6b93763da99253cdeafa10cf65c133015c0f5755cc84
+10ee5b123c11ce7d8247d732787b955b80ee9d
+```
+
+Each invalid row changes the file above, or the entry in it, in one way.
+The reader refuses it with the reason, the name of a core `AccessFileError`
+variant. The two-entry rows repeat the entry, or swap two entries, so each
+entry alone is valid.
+
+| Case | Change | Reason |
+| --- | --- | --- |
+| Bad magic | Byte 0 is `88` | `Magic` |
+| Version 2 | Bytes 8–9 are `0200` | `Version` |
+| Reserved set | Bytes 10–11 are `0100` | `Reserved` |
+| Entry count 0 | Bytes 12–15 are `00000000` | `EntryCount` |
+| Entry count 16,385 | Bytes 12–15 are `01400000` | `EntryCount` |
+| Header too short | Only the first 48 bytes | `Size` |
+| One byte missing | The last byte is cut | `Size` |
+| One byte added | One `00` byte follows the file | `Size` |
+| Count 2, size of 1 | Bytes 12–15 are `02000000` | `Size` |
+| Header key prefix 04 | Byte 16 is `04` | `DeviceKey` |
+| Header key x = p | Byte 16 is `02`, and bytes 17–48 are `p` | `DeviceKey` |
+| Role 0 | Byte 65 is `00` | `Role` |
+| Role 3 | Byte 65 is `03` | `Role` |
+| Enc prefix 02 | Byte 66 is `02` | `Enc` |
+| Enc x = p | Bytes 67–98 are `p` | `Enc` |
+| Duplicate song ID | The entry twice, count 2 | `Order` |
+| Song IDs out of order | Two entries, the larger song ID first, count 2 | `Order` |
+
+Here `p` is P-256's field prime,
+`ffffffff00000001000000000000000000000000ffffffffffffffffffffffff`.
+Offsets are from the start of the file.
+
+Opening the file for another song ID gives `OtherSong`. Opening it with
+another device's key gives `OtherDevice`. These rows give `Open`:
+
+- One byte of `ct` changed.
+- One byte of the entry's `song_id` changed, and the file opened for that
+  changed song ID.
+- The entry's `enc` replaced by another valid point.
+- The header key replaced by another device's valid key, and the file opened
+  with that device's key, because the entry was wrapped for the first device.
+
+One changed byte of `enc` leaves the curve and gives `Enc` instead.
 
 ### Recovery key
 

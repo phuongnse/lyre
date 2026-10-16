@@ -1892,7 +1892,7 @@ fn encode_init(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const FORMAT_DOC: &str = include_str!("../../../docs/reference/song-file-format-v0.md");
@@ -1981,7 +1981,7 @@ mod tests {
     }
 
     /// The song the known-answer example holds.
-    pub(super) fn example_song() -> Song {
+    pub(crate) fn example_song() -> Song {
         Song {
             song_id: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
             details: details("Mưa", "", "", VocalRole::Female),

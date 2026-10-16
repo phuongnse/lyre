@@ -1,5 +1,6 @@
 //! The shared Lyre core. The web client and the Android app both call it.
 
+pub mod access;
 pub mod aligner;
 pub mod alignment;
 pub mod alignment_windows;

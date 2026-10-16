@@ -12,6 +12,7 @@ use p256::SecretKey;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
 use qrcodegen::{QrCodeEcc, QrSegment, Version};
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
 
 /// The fixed Lyre PRF salt, as text. The client passes its UTF-8 bytes as the
 /// WebAuthn PRF `eval.first` input.
@@ -126,6 +127,11 @@ impl DeviceKey {
             .expect("a compressed point is 33 bytes");
         PublicKey(bytes)
     }
+
+    /// The private key as bytes, for the crate's own HPKE code.
+    pub(crate) fn secret_bytes(&self) -> Zeroizing<[u8; 32]> {
+        Zeroizing::new(self.secret.to_bytes().into())
+    }
 }
 
 /// A QR code, as its dark modules. It has no quiet zone: the client adds the
@@ -146,6 +152,14 @@ impl PublicKey {
     /// The 33-byte SEC1 compressed encoding.
     pub fn to_compressed(&self) -> [u8; COMPRESSED_LEN] {
         self.0
+    }
+
+    /// The 65-byte SEC1 uncompressed encoding, for the crate's own HPKE code.
+    pub(crate) fn to_uncompressed(&self) -> [u8; 65] {
+        let key = p256::PublicKey::from_sec1_bytes(&self.0)
+            .expect("a device public key is a valid point");
+        <[u8; 65]>::try_from(key.to_encoded_point(false).as_bytes())
+            .expect("an uncompressed point is 65 bytes")
     }
 
     /// The device code: 65 lowercase characters starting with `lyre1p`.
